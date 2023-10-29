@@ -112,13 +112,10 @@ class Chat:
             }
         ]
         try:
-            # while True:
-            #    messages.append({"role": "user", "content": input("You: ")})
-            for question in Path("questions.txt").read_text().split("\n"):
-                question = question.strip()
+            while True:
+                question = input("You: ").strip()
                 if not question:
                     continue
-                print(question)
 
                 # Add context to the conversation
                 conversation = context.add_user_input(
@@ -241,7 +238,7 @@ def find_context(file_path: Path, parent_chat: Chat, option="both"):
             "name": parent_chat.system_name,
             "content": f"{parent_chat.assistant_name}'s knowledge: "
             + f"{context_for_current_user_query} + Previous messages.\n"
-            + f"Answer {parent_chat.username}'s last message.",
+            + "Only answer last message.",
         }
     ]
 
