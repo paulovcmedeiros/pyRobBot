@@ -14,10 +14,10 @@ from . import GeneralConstants
 
 
 class BaseChatContext:
-    def __init__(self, parent_chat):
+    def __init__(self, parent_chat: "Chat"):
         self.parent_chat = parent_chat
 
-    def add_user_input(self, conversation, user_input):
+    def add_user_input(self, conversation: list, user_input: str):
         user_input_msg_obj = {
             "role": "user",
             "name": self.parent_chat.username,
@@ -26,7 +26,7 @@ class BaseChatContext:
         conversation.append(user_input_msg_obj)
         return conversation
 
-    def add_chat_reply(self, conversation, chat_reply):
+    def add_chat_reply(self, conversation: list, chat_reply: str):
         reply_msg_obj = {
             "role": "assistant",
             "name": self.parent_chat.assistant_name,
@@ -39,22 +39,22 @@ class BaseChatContext:
 class EmbeddingBasedChatContext(BaseChatContext):
     """Chat context."""
 
-    def __init__(self, parent_chat):
+    def __init__(self, parent_chat: "Chat"):
         self.parent_chat = parent_chat
         self.context_file_path = GeneralConstants.EMBEDDINGS_FILE
 
-    def add_user_input(self, conversation, user_input):
+    def add_user_input(self, conversation: list, user_input: str):
         user_input_msg_obj = {
             "role": "user",
             "name": self.parent_chat.username,
             "content": user_input,
         }
-        store_message_to_file(
+        _store_message_to_file(
             msg_obj=user_input_msg_obj, file_path=self.context_file_path
         )
         intial_ai_instruct_msg = conversation[0]
         last_msg_exchange = conversation[-2:] if len(conversation) > 2 else []
-        current_context = find_context(
+        current_context = _find_context(
             file_path=self.context_file_path,
             parent_chat=self.parent_chat,
             option="both",
@@ -67,14 +67,14 @@ class EmbeddingBasedChatContext(BaseChatContext):
         ]
         return conversation
 
-    def add_chat_reply(self, conversation, chat_reply):
+    def add_chat_reply(self, conversation: list, chat_reply: str):
         reply_msg_obj = {
             "role": "assistant",
             "name": self.parent_chat.assistant_name,
             "content": chat_reply,
         }
         conversation.append(reply_msg_obj)
-        store_message_to_file(file_path=self.context_file_path, msg_obj=reply_msg_obj)
+        _store_message_to_file(file_path=self.context_file_path, msg_obj=reply_msg_obj)
         return conversation
 
 
@@ -83,7 +83,7 @@ class Chat:
         self, model: str, base_instructions: str, send_full_history: bool = False
     ):
         self.model = model
-        self.base_instructions = base_instructions
+        self.base_instructions = base_instructions.strip(" .")
         self.send_full_history = send_full_history
         self.username = "chat_user"
         self.assistant_name = f"chat_{model.replace('.', '_')}"
@@ -96,12 +96,12 @@ class Chat:
             context = EmbeddingBasedChatContext(parent_chat=self)
 
         TOTAL_N_TOKENS = 0
-        initial_ai_instructions = (
-            f"You are {self.assistant_name},"
-            + f" a helpful assistant to {self.username}.\n"
-            + "You answer correctly.\n"
-            + f"{self.base_instructions.strip()}.\n"
-            + f" Follow ALL directives by {self.system_name}."
+        initial_ai_instructions = " ".join(
+            [
+                f"You are {self.assistant_name}, a helpful assistant to {self.username}.",
+                f"You answer correctly. {self.base_instructions}."
+                f"Follow all directives given by {self.system_name}.",
+            ]
         )
 
         conversation = [
@@ -124,7 +124,7 @@ class Chat:
 
                 print("AI: ", end="")
                 full_reply_content = ""
-                for token in communicate_with_model(
+                for token in _communicate_with_model(
                     conversation=conversation, model=self.model
                 ):
                     print(token, end="")
@@ -142,11 +142,11 @@ class Chat:
                     model=self.model,
                 )
         except (KeyboardInterrupt, EOFError):
-            print("Exiting.")
-        print("TOTAL N TOKENS: ", TOTAL_N_TOKENS)
+            print("Exiting chat. ", end="")
+        print(f"You have used {TOTAL_N_TOKENS} tokens.")
 
 
-def communicate_with_model(conversation: list, model: str):
+def _communicate_with_model(conversation: list, model: str):
     success = False
     while not success:
         try:
@@ -155,6 +155,7 @@ def communicate_with_model(conversation: list, model: str):
                 messages=conversation,
                 request_timeout=30,
                 stream=True,
+                temperature=0.8,
             ):
                 reply_content_token = getattr(line.choices[0].delta, "content", "")
                 yield reply_content_token
@@ -166,7 +167,7 @@ def communicate_with_model(conversation: list, model: str):
             print(f"    > {error}. Retrying...")
 
 
-def store_message_to_file(
+def _store_message_to_file(
     msg_obj: dict, file_path: Path = GeneralConstants.EMBEDDINGS_FILE
 ):
     """Store message and embeddings to file."""
@@ -190,7 +191,7 @@ def store_message_to_file(
         writer.writerow(emb_mess_pair)
 
 
-def find_context(file_path: Path, parent_chat: Chat, option="both"):
+def _find_context(file_path: Path, parent_chat: Chat, option="both"):
     """Lookup context from file."""
     # Adapted from <https://community.openai.com/t/
     #  use-embeddings-to-retrieve-relevant-context-for-ai-assistant/268538>
