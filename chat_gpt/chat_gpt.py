@@ -13,13 +13,78 @@ from openai.embeddings_utils import distances_from_embeddings
 from . import GeneralConstants
 
 
+class BaseChatContext:
+    def add_user_input(self, conversation, user_input):
+        user_input_msg_obj = {"role": "user", "content": user_input}
+        conversation.append(user_input_msg_obj)
+        return conversation
+
+    def add_chat_reply(self, conversation, chat_reply):
+        reply_msg_obj = {"role": "assistant", "content": chat_reply}
+        conversation.append(reply_msg_obj)
+        return conversation
+
+
+class EmbeddingBasedChatContext(BaseChatContext):
+    """Chat context."""
+
+    def __init__(self):
+        self.context_file_path = GeneralConstants.EMBEDDINGS_FILE
+
+    def add_user_input(self, conversation, user_input):
+        user_input_msg_obj = {"role": "user", "content": user_input}
+        store_message_to_file(
+            msg_obj=user_input_msg_obj, file_path=self.context_file_path
+        )
+        intial_ai_instruct_msg = conversation[0]
+        last_msg_exchange = conversation[-2:] if len(conversation) > 2 else []
+        current_context = find_context(file_path=self.context_file_path, option="both")
+        conversation = [
+            intial_ai_instruct_msg,
+            *current_context,
+            *last_msg_exchange,
+            user_input_msg_obj,
+        ]
+        return conversation
+
+    def add_chat_reply(self, conversation, chat_reply):
+        reply_msg_obj = {"role": "assistant", "content": chat_reply}
+        conversation.append(reply_msg_obj)
+        store_message_to_file(file_path=self.context_file_path, msg_obj=reply_msg_obj)
+        return conversation
+
+
 def num_tokens_from_string(string: str, model: str) -> int:
     """Returns the number of tokens in a text string."""
     encoding = tiktoken.encoding_for_model(model)
     return len(encoding.encode(string))
 
 
-def simple_chat(args):
+def make_query(conversation: list, model: str):
+    success = False
+    print("=========================================")
+    for line in conversation:
+        print(line)
+    print("=========================================")
+    while not success:
+        try:
+            for line in openai.ChatCompletion.create(
+                model=model,
+                messages=conversation,
+                request_timeout=30,
+                stream=True,
+            ):
+                reply_content_token = getattr(line.choices[0].delta, "content", "")
+                yield reply_content_token
+                success = True
+        except (
+            openai.error.ServiceUnavailableError,
+            openai.error.Timeout,
+        ) as error:
+            print(f"    > {error}. Retrying...")
+
+
+def _base_chat(args, context):
     TOTAL_N_TOKENS = 0
     conversation = [{"role": "system", "content": args.intial_ai_instructions}]
     try:
@@ -29,41 +94,39 @@ def simple_chat(args):
             question = question.strip()
             if not question:
                 continue
-
-            conversation.append({"role": "user", "content": question})
             print(question)
 
-            success = False
-            while not success:
-                try:
-                    query_result = openai.ChatCompletion.create(
-                        messages=conversation,
-                        model=args.model,
-                        request_timeout=30,
-                    )
-                except (
-                    openai.error.ServiceUnavailableError,
-                    openai.error.Timeout,
-                ) as error:
-                    print(f"    > {error}. Retrying...")
-                else:
-                    success = True
-            response_msg = query_result["choices"][0]["message"]
-            conversation.append(response_msg)
-
-            ai_reply = response_msg["content"]
-            print(f"AI: {ai_reply}")
-
-            text_for_token_count = "".join(msg["content"] for msg in conversation)
-            n_tokens = num_tokens_from_string(
-                string=text_for_token_count, model=args.model
+            # Add context to the conversation
+            conversation = context.add_user_input(
+                conversation=conversation, user_input=question
             )
-            TOTAL_N_TOKENS += n_tokens
-            print("    > Total tokens used: ", n_tokens)
-            print()
+
+            print("AI: ", end="")
+            full_reply_content = ""
+            for token in make_query(conversation=conversation, model=args.model):
+                print(token, end="")
+                full_reply_content += token
+            print("\n")
+
+            # Update context with the reply
+            conversation = context.add_chat_reply(
+                conversation=conversation, chat_reply=full_reply_content
+            )
+
+            TOTAL_N_TOKENS += num_tokens_from_string(
+                string="".join(msg["content"] for msg in conversation), model=args.model
+            )
     except KeyboardInterrupt:
         print("Exiting.")
     print("TOTAL N TOKENS: ", TOTAL_N_TOKENS)
+
+
+def simple_chat(args):
+    return _base_chat(args, context=BaseChatContext())
+
+
+def chat_with_context(args):
+    return _base_chat(args, context=EmbeddingBasedChatContext())
 
 
 def store_message_to_file(
@@ -136,78 +199,7 @@ def find_context(file_path: Path = GeneralConstants.EMBEDDINGS_FILE, option="bot
         {
             "role": "system",
             "content": f"Your knowledge: {context_for_current_user_query} "
-            + "+ Previous messages. "
+            + "+ Previous messages.\n"
             + "Only answer next message.",
         }
     ]
-
-
-def chat_with_context(
-    args,
-    context_file_path: Path = GeneralConstants.EMBEDDINGS_FILE,
-):
-    intial_ai_instruct_msg = {"role": "system", "content": args.intial_ai_instructions}
-    conversation = []
-    TOTAL_N_TOKENS = 0
-    try:
-        # while True:
-        #    user_input = {"role": "user", "content": input("You: ")}
-        for question in Path("questions.txt").read_text().split("\n"):
-            question = question.strip()
-            if not question:
-                continue
-            user_input = {"role": "user", "content": question}
-            store_message_to_file(msg_obj=user_input, file_path=context_file_path)
-
-            last_msg_exchange = conversation[-2:] if len(conversation) > 2 else []
-            current_context = find_context(file_path=context_file_path, option="both")
-            conversation = [
-                intial_ai_instruct_msg,
-                *last_msg_exchange,
-                *current_context,
-                user_input,
-            ]
-
-            print(question, end="")
-            print(f" (conversation length: {len(conversation)})")
-
-            print("AI: ", end="")
-            full_reply_content = ""
-            success = False
-            while not success:
-                try:
-                    for line in openai.ChatCompletion.create(
-                        model=args.model,
-                        messages=conversation,
-                        request_timeout=30,
-                        stream=True,
-                    ):
-                        reply_content_token = getattr(
-                            line.choices[0].delta, "content", ""
-                        )
-                        print(reply_content_token, end="")
-                        full_reply_content += reply_content_token
-                except (
-                    openai.error.ServiceUnavailableError,
-                    openai.error.Timeout,
-                ) as error:
-                    print(f"    > {error}. Retrying...")
-                else:
-                    success = True
-            print()
-
-            reply_msg_obj = {"role": "assistant", "content": full_reply_content}
-            store_message_to_file(file_path=context_file_path, msg_obj=reply_msg_obj)
-            conversation.append(reply_msg_obj)
-
-            text_for_token_count = "".join(msg["content"] for msg in conversation)
-            n_tokens = num_tokens_from_string(
-                string=text_for_token_count, model=args.model
-            )
-            print("    > Total tokens used: ", n_tokens)
-            print()
-            TOTAL_N_TOKENS += n_tokens
-
-    except KeyboardInterrupt:
-        print("Exiting.")
-    print("TOTAL N TOKENS: ", TOTAL_N_TOKENS)
