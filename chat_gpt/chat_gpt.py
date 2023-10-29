@@ -141,7 +141,7 @@ class Chat:
                     string="".join(msg["content"] for msg in conversation),
                     model=self.model,
                 )
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             print("Exiting.")
         print("TOTAL N TOKENS: ", TOTAL_N_TOKENS)
 
