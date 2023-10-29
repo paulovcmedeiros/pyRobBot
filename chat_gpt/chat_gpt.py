@@ -12,6 +12,11 @@ from openai.embeddings_utils import distances_from_embeddings
 
 from . import GeneralConstants
 
+PRICING_PER_THOUSAND_TOKENS = {
+    "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
+    "gpt-4": {"input": 0.03, "output": 0.06},
+}
+
 
 class BaseChatContext:
     def __init__(self, parent_chat: "Chat"):
@@ -95,7 +100,7 @@ class Chat:
         else:
             context = EmbeddingBasedChatContext(parent_chat=self)
 
-        TOTAL_N_TOKENS = 0
+        TOTAL_N_TOKENS = {"input": 0, "output": 0}
         initial_ai_instructions = " ".join(
             [
                 f"You are {self.assistant_name}, a helpful assistant to {self.username}.",
@@ -122,6 +127,12 @@ class Chat:
                     conversation=conversation, user_input=question
                 )
 
+                # Update number of input tokens
+                TOTAL_N_TOKENS["input"] += _num_tokens_from_string(
+                    string="".join(msg["content"] for msg in conversation),
+                    model=self.model,
+                )
+
                 print("AI: ", end="")
                 full_reply_content = ""
                 for token in _communicate_with_model(
@@ -129,21 +140,25 @@ class Chat:
                 ):
                     print(token, end="")
                     full_reply_content += token
-                full_reply_content = full_reply_content.strip()
                 print("\n")
+
+                # Update number of output tokens
+                TOTAL_N_TOKENS["output"] += _num_tokens_from_string(
+                    string=full_reply_content, model=self.model
+                )
 
                 # Update context with the reply
                 conversation = context.add_chat_reply(
-                    conversation=conversation, chat_reply=full_reply_content
+                    conversation=conversation, chat_reply=full_reply_content.strip()
                 )
 
-                TOTAL_N_TOKENS += _num_tokens_from_string(
-                    string="".join(msg["content"] for msg in conversation),
-                    model=self.model,
-                )
         except (KeyboardInterrupt, EOFError):
             print("Exiting chat. ", end="")
-        print(f"You have used {TOTAL_N_TOKENS} tokens.")
+        finally:
+            model_costs = PRICING_PER_THOUSAND_TOKENS[self.model]
+            costs = {k: model_costs[k] * v / 1000.0 for k, v in TOTAL_N_TOKENS.items()}
+            print(f"You have used {sum(TOTAL_N_TOKENS.values())} tokens.")
+            print(f"The estimated cost is ${sum(costs.values()):.3f}.")
 
 
 def _communicate_with_model(conversation: list, model: str):
