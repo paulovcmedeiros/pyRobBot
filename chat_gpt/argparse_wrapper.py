@@ -23,10 +23,7 @@ def get_parsed_args(argv=None):
     parser.add_argument(
         "intial_ai_instructions",
         type=str,
-        default=(
-            "You are a helpful assistant You answer correctly.\n"
-            + "You answer using the minimum possible number of tokens."
-        ),
+        default="You answer using the minimum possible number of tokens.",
         help="Initial instructions for the AI",
         nargs="?",
     )
@@ -37,4 +34,5 @@ def get_parsed_args(argv=None):
         choices=["gpt-3.5-turbo", "gpt-4"],
         help="OpenAI API engine to use for completion",
     )
+    parser.add_argument("--send-full-history", action="store_true")
     return parser.parse_args(argv)
