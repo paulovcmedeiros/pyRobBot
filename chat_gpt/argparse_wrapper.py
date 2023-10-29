@@ -25,7 +25,7 @@ def get_parsed_args(argv=None):
         type=str,
         default=(
             "You are a helpful assistant that answers correctly and concisely. "
-            + "You use as few tokens as possible unless otherwise specified."
+            + "Use the fewest tokens possible unless otherwise instructed."
         ),
         help="Initial instructions for the AI",
         nargs="?",
