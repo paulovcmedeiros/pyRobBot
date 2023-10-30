@@ -12,7 +12,7 @@ from openai.embeddings_utils import distances_from_embeddings
 from . import GeneralConstants
 
 if TYPE_CHECKING:
-    from .chat_gpt import Chat
+    from .chat import Chat
 
 
 class BaseChatContext:

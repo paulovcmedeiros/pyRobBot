@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Program's entry point."""
 from .argparse_wrapper import get_parsed_args
-from .chat_gpt import Chat
+from .chat import Chat
 
 
 def main(argv=None):
