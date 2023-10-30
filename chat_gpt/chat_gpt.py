@@ -115,6 +115,31 @@ class Chat:
             n_output_tokens=self.token_usage["output"],
         )
 
+        for (
+            model,
+            accumulated_usage,
+        ) in self.token_usage_db.retrieve_sums_by_model().items():
+            accumulated_token_usage = {
+                "input": accumulated_usage["n_input_tokens"],
+                "output": accumulated_usage["n_output_tokens"],
+            }
+            acc_costs = {
+                "input": accumulated_usage["cost_input_tokens"],
+                "output": accumulated_usage["cost_output_tokens"],
+            }
+            print()
+            print(f"Model: {model}")
+            since = datetime.datetime.fromtimestamp(
+                accumulated_usage["earliest_timestamp"], datetime.timezone.utc
+            ).isoformat(sep=" ", timespec="seconds")
+            print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
+            for k, v in accumulated_token_usage.items():
+                print(f"    > {k.capitalize()}: {v}")
+            print(f"    > Total:  {sum(accumulated_token_usage.values())}")
+            print(
+                f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}."
+            )
+
         accumulated_usage = self.token_usage_db.retrieve_sums()
         accumulated_token_usage = {
             "input": accumulated_usage["n_input_tokens"],
