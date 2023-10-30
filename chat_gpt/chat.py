@@ -8,7 +8,11 @@ from .tokens import TokenUsageDatabase
 
 class Chat:
     def __init__(
-        self, model: str, base_instructions: str, send_full_history: bool = False
+        self,
+        model: str,
+        base_instructions: str,
+        send_full_history: bool = False,
+        report_estimated_costs_when_done: bool = True,
     ):
         self.model = model
         self.username = "chat_user"
@@ -40,6 +44,8 @@ class Chat:
         else:
             self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
 
+        self.report_estimated_costs_when_done = report_estimated_costs_when_done
+
         self.query_context = [
             {
                 "role": "system",
@@ -54,7 +60,17 @@ class Chat:
             n_input_tokens=self.token_usage["input"],
             n_output_tokens=self.token_usage["output"],
         )
-        self.report_token_usage()
+        if self.report_estimated_costs_when_done:
+            self.report_token_usage()
+
+    @classmethod
+    def from_cli_args(cls, cli_args):
+        return cls(
+            model=cli_args.model,
+            base_instructions=cli_args.initial_ai_instructions,
+            send_full_history=cli_args.send_full_history,
+            report_estimated_costs_when_done=not cli_args.skip_reporting_costs,
+        )
 
     def yield_response(self, question: str):
         question = question.strip()

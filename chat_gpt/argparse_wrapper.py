@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from .command_definitions import run_on_browser, run_on_terminal
+from .command_definitions import run_on_browser, run_on_terminal, show_accumulated_costs
 
 
 def get_parsed_args(argv=None):
@@ -37,6 +37,7 @@ def get_parsed_args(argv=None):
         help="OpenAI API engine to use for completion",
     )
     common_parser.add_argument("--send-full-history", action="store_true")
+    common_parser.add_argument("--skip-reporting-costs", action="store_true")
 
     main_parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -65,5 +66,12 @@ def get_parsed_args(argv=None):
         help="Run the chat on the terminal.",
     )
     parser_terminal.set_defaults(run_command=run_on_terminal)
+
+    parser_show_costs = subparsers.add_parser(
+        "show-costs",
+        parents=[common_parser],
+        help="Show the number of tokens used for each message.",
+    )
+    parser_show_costs.set_defaults(run_command=show_accumulated_costs)
 
     return main_parser.parse_args(argv)

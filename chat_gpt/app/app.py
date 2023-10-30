@@ -15,10 +15,7 @@ except KeyError:
     parsed_args_file = sys.argv[-1]
     with open(parsed_args_file, "rb") as parsed_args_file:
         args = pickle.load(parsed_args_file)
-    session_chat = Chat(
-        model=args.model,
-        base_instructions=args.initial_ai_instructions,
-    )
+    session_chat = Chat.from_cli_args(cli_args=args)
     st.session_state["chat"] = session_chat
 
 

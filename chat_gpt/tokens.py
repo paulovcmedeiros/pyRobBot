@@ -132,12 +132,16 @@ class TokenUsageDatabase:
         _print_accumulated_token_usage(accumulated_usage=self.retrieve_sums())
 
         print()
-        print("Token usage summary for this chat:")
-        for k, v in token_usage.items():
-            print(f"    > {k.capitalize()}: {v}")
-        print(f"    > Total:  {sum(token_usage.values())}")
-        costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
-        print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
+        total_tokens = sum(token_usage.values())
+        if total_tokens:
+            print("Token usage summary for this chat:")
+            for k, v in token_usage.items():
+                print(f"    > {k.capitalize()}: {v}")
+            print(f"    > Total:  {total_tokens}")
+            costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
+            print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
+        else:
+            print("> No tokens were exchanged in this interaction.")
 
 
 def _num_tokens_from_string(string: str, model: str) -> int:
