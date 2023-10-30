@@ -9,7 +9,7 @@ def main(argv=None):
     args = get_parsed_args(argv=argv)
     chat = Chat(
         model=args.model,
-        base_instructions=args.intial_ai_instructions,
+        base_instructions=args.initial_ai_instructions,
         send_full_history=args.send_full_history,
     )
     chat.start()

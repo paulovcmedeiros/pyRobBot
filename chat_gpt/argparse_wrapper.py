@@ -21,7 +21,7 @@ def get_parsed_args(argv=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "intial_ai_instructions",
+        "initial_ai_instructions",
         type=str,
         default="You answer using the minimum possible number of tokens.",
         help="Initial instructions for the AI",

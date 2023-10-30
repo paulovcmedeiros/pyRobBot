@@ -88,80 +88,89 @@ class Chat:
         self, model: str, base_instructions: str, send_full_history: bool = False
     ):
         self.model = model
-        self.base_instructions = base_instructions.strip(" .")
-        self.send_full_history = send_full_history
         self.username = "chat_user"
         self.assistant_name = f"chat_{model.replace('.', '_')}"
         self.system_name = "chat_manager"
 
-    def start(self):
-        if self.send_full_history:
-            context = BaseChatContext(parent_chat=self)
-        else:
-            context = EmbeddingBasedChatContext(parent_chat=self)
-
-        TOTAL_N_TOKENS = {"input": 0, "output": 0}
-        initial_ai_instructions = " ".join(
+        self.ground_ai_instructions = " ".join(
             [
-                f"You are {self.assistant_name}, a helpful assistant to {self.username}.",
-                f"You answer correctly. {self.base_instructions}."
-                f"Follow all directives given by {self.system_name}.",
+                instruction.strip()
+                for instruction in [
+                    f"Your name is {self.assistant_name}",
+                    f"You are a helpful assistant to {self.username}.",
+                    "You answer correctly. You do not lie.",
+                    f"{base_instructions.strip(' .')}.",
+                    f"You follow all directives by {self.system_name}.",
+                ]
+                if instruction.strip()
             ]
         )
 
+        self.token_usage = {"input": 0, "output": 0}
+        self.token_price = {
+            k: v / 1000.0 for k, v in PRICING_PER_THOUSAND_TOKENS[self.model].items()
+        }
+
+        if send_full_history:
+            self.context = BaseChatContext(parent_chat=self)
+        else:
+            self.context = EmbeddingBasedChatContext(parent_chat=self)
+
+    def get_n_tokens(self, string: str) -> int:
+        return _num_tokens_from_string(string=string, model=self.model)
+
+    def start(self):
         conversation = [
             {
                 "role": "system",
                 "name": self.system_name,
-                "content": initial_ai_instructions.strip(),
+                "content": self.ground_ai_instructions,
             }
         ]
         try:
             while True:
-                question = input("You: ").strip()
+                question = input(f"{self.username}: ").strip()
                 if not question:
                     continue
 
                 # Add context to the conversation
-                conversation = context.add_user_input(
+                conversation = self.context.add_user_input(
                     conversation=conversation, user_input=question
                 )
 
                 # Update number of input tokens
-                TOTAL_N_TOKENS["input"] += _num_tokens_from_string(
-                    string="".join(msg["content"] for msg in conversation),
-                    model=self.model,
+                self.token_usage["input"] += sum(
+                    self.get_n_tokens(string=msg["content"]) for msg in conversation
                 )
 
-                print("AI: ", end="")
+                print(f"{self.assistant_name}: ", end="")
                 full_reply_content = ""
-                for token in _communicate_with_model(
-                    conversation=conversation, model=self.model
-                ):
+                for token in _make_api_call(conversation=conversation, model=self.model):
                     print(token, end="")
                     full_reply_content += token
                 print("\n")
 
                 # Update number of output tokens
-                TOTAL_N_TOKENS["output"] += _num_tokens_from_string(
-                    string=full_reply_content, model=self.model
-                )
+                self.token_usage["output"] += self.get_n_tokens(full_reply_content)
 
                 # Update context with the reply
-                conversation = context.add_chat_reply(
+                conversation = self.context.add_chat_reply(
                     conversation=conversation, chat_reply=full_reply_content.strip()
                 )
 
         except (KeyboardInterrupt, EOFError):
-            print("Exiting chat. ", end="")
+            print("Exiting chat.")
         finally:
-            model_costs = PRICING_PER_THOUSAND_TOKENS[self.model]
-            costs = {k: model_costs[k] * v / 1000.0 for k, v in TOTAL_N_TOKENS.items()}
-            print(f"You have used {sum(TOTAL_N_TOKENS.values())} tokens.")
-            print(f"The estimated cost is ${sum(costs.values()):.3f}.")
+            print()
+            print("Token usage summary:")
+            for k, v in self.token_usage.items():
+                print(f"    > {k.capitalize()}: {v}")
+            print(f"    > Total:  {sum(self.token_usage.values())}")
+            costs = {k: v * self.token_price[k] for k, v in self.token_usage.items()}
+            print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
 
 
-def _communicate_with_model(conversation: list, model: str):
+def _make_api_call(conversation: list, model: str):
     success = False
     while not success:
         try:
