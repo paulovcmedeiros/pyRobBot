@@ -9,7 +9,8 @@ from .chat import Chat
 
 def show_accumulated_costs(args):
     """Show the accumulated costs of the chat and exit."""
-    Chat.from_cli_args(cli_args=args)
+    args.skip_reporting_costs = True
+    Chat.from_cli_args(cli_args=args).report_token_usage(current_chat=False)
 
 
 def run_on_terminal(args):

@@ -113,8 +113,8 @@ class Chat:
         except (KeyboardInterrupt, EOFError):
             print("Exiting chat.")
 
-    def report_token_usage(self):
-        self.token_usage_db.print_usage_costs(self.token_usage)
+    def report_token_usage(self, current_chat: bool = True):
+        self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
 
 
 def _make_api_call(conversation: list, model: str):

@@ -3,6 +3,7 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
+import pandas as pd
 import tiktoken
 
 PRICING_PER_THOUSAND_TOKENS = {
@@ -118,30 +119,73 @@ class TokenUsageDatabase:
                 sums[k] += v
         return sums
 
-    def print_usage_costs(self, token_usage: dict):
-        print()
-        print("=======================================================")
-        print("Summary of OpenAI API token usage and associated costs:")
-        print("=======================================================")
+    def get_usage_balance_dataframe(self):
+        sums_by_model = self.retrieve_sums_by_model()
+        df_rows = []
+        for model, accumulated_usage in sums_by_model.items():
+            accumulated_tokens_usage = {
+                "input": accumulated_usage["n_input_tokens"],
+                "output": accumulated_usage["n_output_tokens"],
+            }
+            accumlated_costs = {
+                "input": accumulated_usage["cost_input_tokens"],
+                "output": accumulated_usage["cost_output_tokens"],
+            }
+            first_used = datetime.datetime.fromtimestamp(
+                accumulated_usage["earliest_timestamp"], datetime.timezone.utc
+            ).isoformat(sep=" ", timespec="seconds")
+            df_row = {
+                "Model": model,
+                "First Registered Use": first_used.replace("+00:00", "Z"),
+                "Tokens: Input": accumulated_tokens_usage["input"],
+                "Tokens: Output": accumulated_tokens_usage["output"],
+                "Tokens: Total": sum(accumulated_tokens_usage.values()),
+                "Cost ($): Input": accumlated_costs["input"],
+                "Cost ($): Output": accumlated_costs["output"],
+                "Cost ($): Total": sum(accumlated_costs.values()),
+            }
+            df_rows.append(df_row)
 
-        for model, accumulated_usage in self.retrieve_sums_by_model().items():
-            _print_accumulated_token_usage(
-                accumulated_usage=accumulated_usage, model=model
-            )
+        df = _group_columns_by_prefix(pd.DataFrame(df_rows))
+        df = _add_totals_row(df)
 
-        _print_accumulated_token_usage(accumulated_usage=self.retrieve_sums())
+        return df
 
-        print()
-        total_tokens = sum(token_usage.values())
-        if total_tokens:
-            print("Token usage summary for this chat:")
-            for k, v in token_usage.items():
-                print(f"    > {k.capitalize()}: {v}")
-            print(f"    > Total:  {total_tokens}")
-            costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
-            print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
-        else:
-            print("> No tokens were exchanged in this interaction.")
+    def get_current_chat_usage_dataframe(self, token_usage: dict):
+        costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
+        df_row = {
+            "Model": self.model,
+            "Tokens: Input": token_usage["input"],
+            "Tokens: Output": token_usage["output"],
+            "Tokens: Total": sum(token_usage.values()),
+            "Cost ($): Input": costs["input"],
+            "Cost ($): Output": costs["output"],
+            "Cost ($): Total": sum(costs.values()),
+        }
+        df = pd.DataFrame([df_row])
+        df = _group_columns_by_prefix(df.set_index("Model"))
+
+        return df
+
+    def print_usage_costs(self, token_usage: dict, current_chat: bool = True):
+        header_start = "Estimated token usage and associated costs"
+        header2dataframe = {
+            f"{header_start}: Accumulated": self.get_usage_balance_dataframe(),
+            f"{header_start}: Current Chat": self.get_current_chat_usage_dataframe(
+                token_usage
+            ),
+        }
+
+        for header, df in header2dataframe.items():
+            if "Current" in header and not current_chat:
+                continue
+            underline = "-" * len(header)
+            print()
+            print(underline)
+            print(header)
+            print(underline)
+            print(df)
+            print()
 
 
 def _num_tokens_from_string(string: str, model: str) -> int:
@@ -150,25 +194,20 @@ def _num_tokens_from_string(string: str, model: str) -> int:
     return len(encoding.encode(string))
 
 
-def _print_accumulated_token_usage(accumulated_usage: dict, model: str = None):
-    print()
-    if model is not None:
-        print(f"Model: {model}")
+def _group_columns_by_prefix(df):
+    df = df.copy()
+    col_tuples_for_multiindex = df.columns.str.split(": ", expand=True).values
+    df.columns = pd.MultiIndex.from_tuples(
+        [("", x[0]) if pd.isnull(x[1]) else x for x in col_tuples_for_multiindex]
+    )
+    return df
 
-    since = datetime.datetime.fromtimestamp(
-        accumulated_usage["earliest_timestamp"], datetime.timezone.utc
-    ).isoformat(sep=" ", timespec="seconds")
-    print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
 
-    accumulated_token_usage = {
-        "input": accumulated_usage["n_input_tokens"],
-        "output": accumulated_usage["n_output_tokens"],
-    }
-    acc_costs = {
-        "input": accumulated_usage["cost_input_tokens"],
-        "output": accumulated_usage["cost_output_tokens"],
-    }
-    for k, v in accumulated_token_usage.items():
-        print(f"    > {k.capitalize()}: {v}")
-    print(f"    > Total:  {sum(accumulated_token_usage.values())}")
-    print(f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}.")
+def _add_totals_row(df):
+    df = df.copy()
+    dtypes = df.dtypes
+    df.loc["Total"] = df.sum(numeric_only=True)
+    for col in df.columns:
+        df[col] = df[col].astype(dtypes[col])
+    df = df.fillna("")
+    return df
