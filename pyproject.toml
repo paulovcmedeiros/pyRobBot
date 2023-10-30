@@ -15,18 +15,18 @@
 
 [tool.poetry.dependencies]
   # Python version
-  python = ">=3.9,<3.13"
+  python = ">=3.9,<3.9.7 || >3.9.7,<3.13"
   # Deps that should have been openapi deps
   matplotlib = "^3.8.0"
   plotly = "^5.18.0"
   scikit-learn = "^1.3.2"
   scipy = "^1.11.3"
   # Other dependencies
-  flask = "^3.0.0"
-  flask-bootstrap = "^3.3.7.1"
   numpy = "^1.26.1"
   openai = "^0.28.1"
   pandas = "^2.1.2"
+  streamlit = "^1.28.0"
+  streamlit-chat = "^0.1.1"
   tiktoken = "^0.5.1"
 
 [tool.poetry.group.dev.dependencies]
