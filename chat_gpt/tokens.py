@@ -3,6 +3,8 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
+import tiktoken
+
 PRICING_PER_THOUSAND_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
     "gpt-4": {"input": 0.03, "output": 0.06},
@@ -15,8 +17,11 @@ class TokenUsageDatabase:
         self.model = model.strip()
         pricing = PRICING_PER_THOUSAND_TOKENS[self.model]
         self.token_price = {k: v / 1000.0 for k, v in pricing.items()}
+        self.create()
 
-    # Function to create the database and table
+    def get_n_tokens(self, string: str) -> int:
+        return _num_tokens_from_string(string=string, model=self.model)
+
     def create(self):
         self.fpath.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.fpath)
@@ -112,3 +117,54 @@ class TokenUsageDatabase:
             for k, v in sums_by_model.items():
                 sums[k] += v
         return sums
+
+    def print_usage_costs(self, token_usage: dict):
+        print()
+        print("=======================================================")
+        print("Summary of OpenAI API token usage and associated costs:")
+        print("=======================================================")
+
+        for model, accumulated_usage in self.retrieve_sums_by_model().items():
+            _print_accumulated_token_usage(
+                accumulated_usage=accumulated_usage, model=model
+            )
+
+        _print_accumulated_token_usage(accumulated_usage=self.retrieve_sums())
+
+        print()
+        print("Token usage summary for this chat:")
+        for k, v in token_usage.items():
+            print(f"    > {k.capitalize()}: {v}")
+        print(f"    > Total:  {sum(token_usage.values())}")
+        costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
+        print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
+
+
+def _num_tokens_from_string(string: str, model: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(string))
+
+
+def _print_accumulated_token_usage(accumulated_usage: dict, model: str = None):
+    print()
+    if model is not None:
+        print(f"Model: {model}")
+
+    since = datetime.datetime.fromtimestamp(
+        accumulated_usage["earliest_timestamp"], datetime.timezone.utc
+    ).isoformat(sep=" ", timespec="seconds")
+    print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
+
+    accumulated_token_usage = {
+        "input": accumulated_usage["n_input_tokens"],
+        "output": accumulated_usage["n_output_tokens"],
+    }
+    acc_costs = {
+        "input": accumulated_usage["cost_input_tokens"],
+        "output": accumulated_usage["cost_output_tokens"],
+    }
+    for k, v in accumulated_token_usage.items():
+        print(f"    > {k.capitalize()}: {v}")
+    print(f"    > Total:  {sum(accumulated_token_usage.values())}")
+    print(f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}.")

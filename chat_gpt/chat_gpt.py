@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-import datetime
-
 import openai
-import tiktoken
 
 from . import GeneralConstants
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
-from .database import TokenUsageDatabase
+from .tokens import TokenUsageDatabase
 
 
 class Chat:
@@ -52,6 +49,11 @@ class Chat:
         ]
 
     def __del__(self):
+        # Store token usage to database
+        self.token_usage_db.insert_data(
+            n_input_tokens=self.token_usage["input"],
+            n_output_tokens=self.token_usage["output"],
+        )
         self.report_token_usage()
 
     def yield_response(self, question: str):
@@ -64,7 +66,8 @@ class Chat:
 
         # Update number of input tokens
         self.token_usage["input"] += sum(
-            self.get_n_tokens(string=msg["content"]) for msg in self.query_context
+            self.token_usage_db.get_n_tokens(string=msg["content"])
+            for msg in self.query_context
         )
 
         full_reply_content = ""
@@ -73,7 +76,7 @@ class Chat:
             yield chunk
 
         # Update number of output tokens
-        self.token_usage["output"] += self.get_n_tokens(full_reply_content)
+        self.token_usage["output"] += self.token_usage_db.get_n_tokens(full_reply_content)
 
         # Update context with the reply
         self.query_context = self.context_handler.add_chat_reply(
@@ -94,70 +97,8 @@ class Chat:
         except (KeyboardInterrupt, EOFError):
             print("Exiting chat.")
 
-    def get_n_tokens(self, string: str) -> int:
-        return _num_tokens_from_string(string=string, model=self.model)
-
     def report_token_usage(self):
-        print()
-        print("Token usage summary:")
-        for k, v in self.token_usage.items():
-            print(f"    > {k.capitalize()}: {v}")
-        print(f"    > Total:  {sum(self.token_usage.values())}")
-        costs = {
-            k: v * self.token_usage_db.token_price[k] for k, v in self.token_usage.items()
-        }
-        print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
-
-        # Store token usage to database
-        self.token_usage_db.create()
-        self.token_usage_db.insert_data(
-            n_input_tokens=self.token_usage["input"],
-            n_output_tokens=self.token_usage["output"],
-        )
-
-        for (
-            model,
-            accumulated_usage,
-        ) in self.token_usage_db.retrieve_sums_by_model().items():
-            accumulated_token_usage = {
-                "input": accumulated_usage["n_input_tokens"],
-                "output": accumulated_usage["n_output_tokens"],
-            }
-            acc_costs = {
-                "input": accumulated_usage["cost_input_tokens"],
-                "output": accumulated_usage["cost_output_tokens"],
-            }
-            print()
-            print(f"Model: {model}")
-            since = datetime.datetime.fromtimestamp(
-                accumulated_usage["earliest_timestamp"], datetime.timezone.utc
-            ).isoformat(sep=" ", timespec="seconds")
-            print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
-            for k, v in accumulated_token_usage.items():
-                print(f"    > {k.capitalize()}: {v}")
-            print(f"    > Total:  {sum(accumulated_token_usage.values())}")
-            print(
-                f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}."
-            )
-
-        accumulated_usage = self.token_usage_db.retrieve_sums()
-        accumulated_token_usage = {
-            "input": accumulated_usage["n_input_tokens"],
-            "output": accumulated_usage["n_output_tokens"],
-        }
-        acc_costs = {
-            "input": accumulated_usage["cost_input_tokens"],
-            "output": accumulated_usage["cost_output_tokens"],
-        }
-        print()
-        since = datetime.datetime.fromtimestamp(
-            accumulated_usage["earliest_timestamp"], datetime.timezone.utc
-        ).isoformat(sep=" ", timespec="seconds")
-        print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
-        for k, v in accumulated_token_usage.items():
-            print(f"    > {k.capitalize()}: {v}")
-        print(f"    > Total:  {sum(accumulated_token_usage.values())}")
-        print(f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}.")
+        self.token_usage_db.print_usage_costs(self.token_usage)
 
 
 def _make_api_call(conversation: list, model: str):
@@ -179,9 +120,3 @@ def _make_api_call(conversation: list, model: str):
             openai.error.Timeout,
         ) as error:
             print(f"    > {error}. Retrying...")
-
-
-def _num_tokens_from_string(string: str, model: str) -> int:
-    """Returns the number of tokens in a text string."""
-    encoding = tiktoken.encoding_for_model(model)
-    return len(encoding.encode(string))
