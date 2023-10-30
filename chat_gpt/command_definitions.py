@@ -27,6 +27,7 @@ def run_on_browser(args):
                 "streamlit",
                 "run",
                 app_path.as_posix(),
+                "--theme.base=dark",
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ]
