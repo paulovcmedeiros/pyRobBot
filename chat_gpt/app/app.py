@@ -1,6 +1,9 @@
-#!/usr/bin/env -S streamlit run
+#!/usr/bin/env python3
 # Adapted from
 # <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
+import pickle
+import sys
+
 import streamlit as st
 
 from chat_gpt.chat import Chat
@@ -9,11 +12,15 @@ from chat_gpt.chat import Chat
 try:
     session_chat = st.session_state["chat"]
 except KeyError:
+    parsed_args_file = sys.argv[-1]
+    with open(parsed_args_file, "rb") as parsed_args_file:
+        args = pickle.load(parsed_args_file)
     session_chat = Chat(
-        model="gpt-3.5-turbo",
-        base_instructions="You answer using the minimum possible number of tokens.",
+        model=args.model,
+        base_instructions=args.initial_ai_instructions,
     )
     st.session_state["chat"] = session_chat
+
 
 st.title(f"Chat with {session_chat.assistant_name}")
 
