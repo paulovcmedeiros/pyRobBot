@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import ast
 import csv
+import datetime
 import json
 from pathlib import Path
 
@@ -11,11 +12,7 @@ import tiktoken
 from openai.embeddings_utils import distances_from_embeddings
 
 from . import GeneralConstants
-
-PRICING_PER_THOUSAND_TOKENS = {
-    "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
-    "gpt-4": {"input": 0.03, "output": 0.06},
-}
+from .database import TokenUsageDatabase
 
 
 class BaseChatContext:
@@ -107,17 +104,15 @@ class Chat:
         )
 
         self.token_usage = {"input": 0, "output": 0}
-        self.token_price = {
-            k: v / 1000.0 for k, v in PRICING_PER_THOUSAND_TOKENS[self.model].items()
-        }
+        self.token_usage_db = TokenUsageDatabase(
+            fpath=GeneralConstants.TOKEN_USAGE_DATABASE,
+            model=self.model,
+        )
 
         if send_full_history:
             self.context = BaseChatContext(parent_chat=self)
         else:
             self.context = EmbeddingBasedChatContext(parent_chat=self)
-
-    def get_n_tokens(self, string: str) -> int:
-        return _num_tokens_from_string(string=string, model=self.model)
 
     def start(self):
         conversation = [
@@ -161,13 +156,47 @@ class Chat:
         except (KeyboardInterrupt, EOFError):
             print("Exiting chat.")
         finally:
-            print()
-            print("Token usage summary:")
-            for k, v in self.token_usage.items():
-                print(f"    > {k.capitalize()}: {v}")
-            print(f"    > Total:  {sum(self.token_usage.values())}")
-            costs = {k: v * self.token_price[k] for k, v in self.token_usage.items()}
-            print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
+            self.report_token_usage()
+
+    def get_n_tokens(self, string: str) -> int:
+        return _num_tokens_from_string(string=string, model=self.model)
+
+    def report_token_usage(self):
+        print()
+        print("Token usage summary:")
+        for k, v in self.token_usage.items():
+            print(f"    > {k.capitalize()}: {v}")
+        print(f"    > Total:  {sum(self.token_usage.values())}")
+        costs = {
+            k: v * self.token_usage_db.token_price[k] for k, v in self.token_usage.items()
+        }
+        print(f"Estimated total cost for this chat: ${sum(costs.values()):.3f}.")
+
+        # Store token usage to database
+        self.token_usage_db.create()
+        self.token_usage_db.insert_data(
+            n_input_tokens=self.token_usage["input"],
+            n_output_tokens=self.token_usage["output"],
+        )
+
+        accumulated_usage = self.token_usage_db.retrieve_sums()
+        accumulated_token_usage = {
+            "input": accumulated_usage["n_input_tokens"],
+            "output": accumulated_usage["n_output_tokens"],
+        }
+        acc_costs = {
+            "input": accumulated_usage["cost_input_tokens"],
+            "output": accumulated_usage["cost_output_tokens"],
+        }
+        print()
+        since = datetime.datetime.fromtimestamp(
+            accumulated_usage["earliest_timestamp"], datetime.timezone.utc
+        ).isoformat(sep=" ", timespec="seconds")
+        print(f"Accumulated token usage since {since.replace('+00:00', 'Z')}:")
+        for k, v in accumulated_token_usage.items():
+            print(f"    > {k.capitalize()}: {v}")
+        print(f"    > Total:  {sum(accumulated_token_usage.values())}")
+        print(f"Estimated total costs since same date: ${sum(acc_costs.values()):.3f}.")
 
 
 def _make_api_call(conversation: list, model: str):
