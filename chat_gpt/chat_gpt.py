@@ -39,53 +39,60 @@ class Chat:
         )
 
         if send_full_history:
-            self.context = BaseChatContext(parent_chat=self)
+            self.context_handler = BaseChatContext(parent_chat=self)
         else:
-            self.context = EmbeddingBasedChatContext(parent_chat=self)
+            self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
 
-    def start(self):
-        conversation = [
+        self.query_context = [
             {
                 "role": "system",
                 "name": self.system_name,
                 "content": self.ground_ai_instructions,
             }
         ]
+
+    def __del__(self):
+        self.report_token_usage()
+
+    def yield_response(self, question: str):
+        question = question.strip()
+
+        # Add context to the conversation
+        self.query_context = self.context_handler.add_user_input(
+            conversation=self.query_context, user_input=question
+        )
+
+        # Update number of input tokens
+        self.token_usage["input"] += sum(
+            self.get_n_tokens(string=msg["content"]) for msg in self.query_context
+        )
+
+        full_reply_content = ""
+        for chunk in _make_api_call(conversation=self.query_context, model=self.model):
+            full_reply_content += chunk
+            yield chunk
+
+        # Update number of output tokens
+        self.token_usage["output"] += self.get_n_tokens(full_reply_content)
+
+        # Update context with the reply
+        self.query_context = self.context_handler.add_chat_reply(
+            conversation=self.query_context, chat_reply=full_reply_content.strip()
+        )
+
+    def start(self):
         try:
             while True:
                 question = input(f"{self.username}: ").strip()
                 if not question:
                     continue
-
-                # Add context to the conversation
-                conversation = self.context.add_user_input(
-                    conversation=conversation, user_input=question
-                )
-
-                # Update number of input tokens
-                self.token_usage["input"] += sum(
-                    self.get_n_tokens(string=msg["content"]) for msg in conversation
-                )
-
-                print(f"{self.assistant_name}: ", end="")
-                full_reply_content = ""
-                for token in _make_api_call(conversation=conversation, model=self.model):
-                    print(token, end="")
-                    full_reply_content += token
-                print("\n")
-
-                # Update number of output tokens
-                self.token_usage["output"] += self.get_n_tokens(full_reply_content)
-
-                # Update context with the reply
-                conversation = self.context.add_chat_reply(
-                    conversation=conversation, chat_reply=full_reply_content.strip()
-                )
-
+                print(f"{self.assistant_name}: ", end="", flush=True)
+                for chunk in self.yield_response(question=question):
+                    print(chunk, end="", flush=True)
+                print()
+                print()
         except (KeyboardInterrupt, EOFError):
             print("Exiting chat.")
-        finally:
-            self.report_token_usage()
 
     def get_n_tokens(self, string: str) -> int:
         return _num_tokens_from_string(string=string, model=self.model)
