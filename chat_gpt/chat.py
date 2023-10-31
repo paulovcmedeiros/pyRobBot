@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import openai
 
@@ -26,7 +26,7 @@ class Chat:
             [
                 instruction.strip()
                 for instruction in [
-                    f"Your name is {self.assistant_name}",
+                    f"Your name is {self.assistant_name}.",
                     f"You are a helpful assistant to {self.username}.",
                     "You answer correctly. You do not lie.",
                     f"{base_instructions.strip(' .')}.",
@@ -42,19 +42,20 @@ class Chat:
         )
 
         if self.embedding_model == "text-embedding-ada-002":
-            self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
+            self.context_handler = EmbeddingBasedChatContext(
+                embedding_model=self.embedding_model, parent_chat=self
+            )
         else:
             self.context_handler = BaseChatContext(parent_chat=self)
+        self.history = deque(maxlen=2)
 
         self.report_estimated_costs_when_done = report_estimated_costs_when_done
 
-        self.query_context = [
-            {
-                "role": "system",
-                "name": self.system_name,
-                "content": self.ground_ai_instructions,
-            }
-        ]
+        self.base_directive = {
+            "role": "system",
+            "name": self.system_name,
+            "content": self.ground_ai_instructions,
+        }
 
     def __del__(self):
         # Store token usage to database
@@ -79,45 +80,57 @@ class Chat:
     def yield_response(self, question: str):
         question = question.strip()
 
-        # Add context to the conversation
-        context_handler_response = self.context_handler.add_user_input(
-            conversation=self.query_context, user_input=question
-        )
-        self.query_context = context_handler_response["conversation"]
+        prompt_as_msg = {"role": "user", "name": self.username, "content": question}
+        self.history.append(prompt_as_msg)
 
-        # Update number of tokens used in context handler
-        for direction in ["input", "output"]:
-            self.token_usage[self.embedding_model][direction] += context_handler_response[
-                "tokens_usage"
-            ][direction]
+        prompt_embedding_request = self.context_handler.get_embedding(text=question)
+        prompt_embedding = prompt_embedding_request["embedding"]
 
-        # Update number of input tokens used in the chat model
-        self.token_usage[self.model]["input"] += sum(
-            get_n_tokens(string=msg["content"], model=self.model)
-            for msg in self.query_context
-        )
+        context = self.context_handler.get_context(embedding=prompt_embedding)
+        conversation = [self.base_directive, *context, prompt_as_msg]
 
         full_reply_content = ""
-        for chunk in _make_api_call(conversation=self.query_context, model=self.model):
+        for chunk in _make_api_call(conversation=conversation, model=self.model):
             full_reply_content += chunk
             yield chunk
 
-        # Update number of tokens output from the chat
+        reply_as_msg = {
+            "role": "assistant",
+            "name": self.assistant_name,
+            "content": full_reply_content.strip(),
+        }
+        self.history.append(reply_as_msg)
+
+        reply_embedding_request = self.context_handler.get_embedding(
+            text=full_reply_content
+        )
+        reply_embedding = reply_embedding_request["embedding"]
+
+        self.context_handler.add_msg_and_embedding(
+            msg=prompt_as_msg, embedding=prompt_embedding
+        )
+
+        self.context_handler.add_msg_and_embedding(
+            msg=reply_as_msg, embedding=reply_embedding
+        )
+
+        # Update self.token_usage
+        # 1: With tokens used in chat input
+        self.token_usage[self.model]["input"] += sum(
+            get_n_tokens(string=msg["content"], model=self.model) for msg in conversation
+        )
+        # 2: With tokens used in chat output
         self.token_usage[self.model]["output"] += get_n_tokens(
             string=full_reply_content, model=self.model
         )
-
-        # Update context with the reply
-        context_handler_response = self.context_handler.add_chat_reply(
-            conversation=self.query_context, chat_reply=full_reply_content.strip()
+        # 3: With tokens used in context handler for prompt
+        self.token_usage[self.embedding_model]["input"] += sum(
+            prompt_embedding_request["tokens_usage"].values()
         )
-        self.query_context = context_handler_response["conversation"]
-
-        # Update number of tokens used in context handler to store the reply
-        for direction in ["input", "output"]:
-            self.token_usage[self.embedding_model][direction] += context_handler_response[
-                "tokens_usage"
-            ][direction]
+        # 4: With tokens used in context handler for reply
+        self.token_usage[self.embedding_model]["output"] += sum(
+            reply_embedding_request["tokens_usage"].values()
+        )
 
     def start(self):
         try:

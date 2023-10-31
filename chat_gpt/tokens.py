@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import tiktoken
 
-PRICING_PER_THOUSAND_TOKENS = {
+PRICE_PER_THOUSAND_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
     "gpt-4": {"input": 0.03, "output": 0.06},
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
@@ -18,7 +18,7 @@ class TokenUsageDatabase:
     def __init__(self, fpath: Path):
         self.fpath = fpath
         self.token_price = {}
-        for model, price_per_k_tokens in PRICING_PER_THOUSAND_TOKENS.items():
+        for model, price_per_k_tokens in PRICE_PER_THOUSAND_TOKENS.items():
             self.token_price[model] = {
                 k: v / 1000.0 for k, v in price_per_k_tokens.items()
             }
@@ -192,18 +192,9 @@ class TokenUsageDatabase:
         }
 
         for header, df in header2dataframe.items():
-            if "Current" in header and not current_chat:
+            if "current" in header.lower() and not current_chat:
                 continue
-            underline = "-" * len(header)
-            print()
-            print(underline)
-            print(header)
-            print(underline)
-            if df.empty:
-                print("None.")
-            else:
-                print(df)
-            print()
+            _print_df(df=df, header=header)
 
 
 def get_n_tokens(string: str, model: str) -> int:
@@ -229,3 +220,16 @@ def _add_totals_row(df):
         df[col] = df[col].astype(dtypes[col])
     df = df.fillna("")
     return df
+
+
+def _print_df(df: pd.DataFrame, header: str):
+    underline = "-" * len(header)
+    print()
+    print(underline)
+    print(header)
+    print(underline)
+    if df.empty:
+        print("None.")
+    else:
+        print(df)
+    print()
