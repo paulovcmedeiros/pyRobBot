@@ -1,6 +1,7 @@
 import ast
 import csv
 import json
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,12 +51,13 @@ class EmbeddingBasedChatContext(BaseChatContext):
         self.parent_chat = parent_chat
         self.context_file_path = GeneralConstants.EMBEDDINGS_FILE
 
-    def get_embedding(self, text: str):
+    def calculate_embedding(self, text: str):
+        text = text.lower().replace("\n", " ")
         return request_embedding_from_openai(text=text, model=self.embedding_model)
 
-    def add_msg_and_embedding(self, msg: dict, embedding):
+    def add_to_history(self, text, embedding):
         _store_message_and_embedding(
-            file_path=self.context_file_path, msg_obj=msg, embedding=embedding
+            file_path=self.context_file_path, msg_obj=text, embedding=embedding
         )
 
     def get_context(self, embedding):
@@ -88,7 +90,11 @@ def _store_message_and_embedding(
     #  use-embeddings-to-retrieve-relevant-context-for-ai-assistant/268538>
     # See also <https://platform.openai.com/docs/guides/embeddings>.
 
-    emb_mess_pair = {"message": json.dumps(msg_obj), "embedding": json.dumps(embedding)}
+    emb_mess_pair = {
+        "timestamp": int(time.time()),
+        "message": json.dumps(msg_obj),
+        "embedding": json.dumps(embedding),
+    }
 
     init_file = not file_path.exists() or file_path.stat().st_size == 0
     write_mode = "w" if init_file else "a"
@@ -100,7 +106,13 @@ def _store_message_and_embedding(
         writer.writerow(emb_mess_pair)
 
 
-def _find_context(file_path: Path, embedding: str, parent_chat: "Chat", n=4, **kwargs):
+def _find_context(
+    file_path: Path,
+    embedding: str,
+    parent_chat: "Chat",
+    n_related_entries: int = 4,
+    n_directly_preceeding_exchanges: int = 2,
+):
     try:
         df = pd.read_csv(file_path)
     except FileNotFoundError:
@@ -110,15 +122,22 @@ def _find_context(file_path: Path, embedding: str, parent_chat: "Chat", n=4, **k
 
     df["similarity"] = df["embedding"].apply(lambda x: cosine_similarity(x, embedding))
 
-    df = df.sort_values("similarity", ascending=False).head(n)
+    # Get the last n messages added to the history
+    df_last_n_chats = df.tail(n_directly_preceeding_exchanges)
 
-    selected_history = df["message"].apply(ast.literal_eval).values
+    df_similar_chats = (
+        df.sort_values("similarity", ascending=False)
+        .head(n_related_entries)
+        .sort_values("timestamp")
+    )
+    df_context = pd.concat([df_similar_chats, df_last_n_chats])
+    selected = df_context["message"].apply(ast.literal_eval).drop_duplicates().tolist()
 
     context_msg_content = "You know previous messages.\n"
     context_msg_content = "You also know that the following was said:\n"
-    for message in selected_history:
-        context_msg_content += f"{message['name']}: {message['content']}\n"
-    context_msg_content += "Answer the next message."
+    for message in selected:
+        context_msg_content += f"{message}\n"
+    context_msg_content += "Answer the last message."
     context_msg = {
         "role": "system",
         "name": parent_chat.system_name,

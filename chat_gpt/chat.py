@@ -83,7 +83,7 @@ class Chat:
         prompt_as_msg = {"role": "user", "name": self.username, "content": question}
         self.history.append(prompt_as_msg)
 
-        prompt_embedding_request = self.context_handler.get_embedding(text=question)
+        prompt_embedding_request = self.context_handler.calculate_embedding(text=question)
         prompt_embedding = prompt_embedding_request["embedding"]
 
         context = self.context_handler.get_context(embedding=prompt_embedding)
@@ -101,17 +101,15 @@ class Chat:
         }
         self.history.append(reply_as_msg)
 
-        reply_embedding_request = self.context_handler.get_embedding(
-            text=full_reply_content
+        this_exchange_text = (
+            f"{self.username}: {question}. {self.assistant_name}: {full_reply_content}"
         )
-        reply_embedding = reply_embedding_request["embedding"]
-
-        self.context_handler.add_msg_and_embedding(
-            msg=prompt_as_msg, embedding=prompt_embedding
+        this_exchange_text_embedding_request = self.context_handler.calculate_embedding(
+            text=this_exchange_text
         )
-
-        self.context_handler.add_msg_and_embedding(
-            msg=reply_as_msg, embedding=reply_embedding
+        this_exchange_text_embedding = this_exchange_text_embedding_request["embedding"]
+        self.context_handler.add_to_history(
+            text=this_exchange_text, embedding=this_exchange_text_embedding
         )
 
         # Update self.token_usage
@@ -129,7 +127,7 @@ class Chat:
         )
         # 4: With tokens used in context handler for reply
         self.token_usage[self.embedding_model]["output"] += sum(
-            reply_embedding_request["tokens_usage"].values()
+            this_exchange_text_embedding_request["tokens_usage"].values()
         )
 
     def start(self):
