@@ -26,7 +26,9 @@ class BaseChatContext:
             "content": user_input,
         }
         conversation.append(user_input_msg_obj)
-        return conversation
+        tokens_usage = {"input": 0, "output": 0}
+
+        return {"conversation": conversation, "tokens_usage": tokens_usage}
 
     def add_chat_reply(self, conversation: list, chat_reply: str):
         reply_msg_obj = {
@@ -35,7 +37,9 @@ class BaseChatContext:
             "content": chat_reply,
         }
         conversation.append(reply_msg_obj)
-        return conversation
+        tokens_usage = {"input": 0, "output": 0}
+
+        return {"conversation": conversation, "tokens_usage": tokens_usage}
 
 
 class EmbeddingBasedChatContext(BaseChatContext):
@@ -51,9 +55,11 @@ class EmbeddingBasedChatContext(BaseChatContext):
             "name": self.parent_chat.username,
             "content": user_input,
         }
-        _store_message_to_file(
+
+        tokens_usage = _store_message_to_file(
             msg_obj=user_input_msg_obj, file_path=self.context_file_path
         )
+
         intial_ai_instruct_msg = conversation[0]
         last_msg_exchange = conversation[-2:] if len(conversation) > 2 else []
         current_context = _find_context(
@@ -67,7 +73,8 @@ class EmbeddingBasedChatContext(BaseChatContext):
             *current_context,
             user_input_msg_obj,
         ]
-        return conversation
+
+        return {"conversation": conversation, "tokens_usage": tokens_usage}
 
     def add_chat_reply(self, conversation: list, chat_reply: str):
         reply_msg_obj = {
@@ -76,8 +83,11 @@ class EmbeddingBasedChatContext(BaseChatContext):
             "content": chat_reply,
         }
         conversation.append(reply_msg_obj)
-        _store_message_to_file(file_path=self.context_file_path, msg_obj=reply_msg_obj)
-        return conversation
+        tokens_usage = _store_message_to_file(
+            file_path=self.context_file_path, msg_obj=reply_msg_obj
+        )
+
+        return {"conversation": conversation, "tokens_usage": tokens_usage}
 
 
 def _store_message_to_file(
@@ -86,9 +96,15 @@ def _store_message_to_file(
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
     #  use-embeddings-to-retrieve-relevant-context-for-ai-assistant/268538>
+    # See also <https://platform.openai.com/docs/guides/embeddings>.
     response = openai.Embedding.create(
         model="text-embedding-ada-002", input=msg_obj["content"]
     )
+
+    input_tokens = response["usage"]["prompt_tokens"]
+    output_tokens = response["usage"]["total_tokens"] - input_tokens
+    tokens_usage = {"input": input_tokens, "output": output_tokens}
+
     emb_mess_pair = {
         "embedding": json.dumps(response["data"][0]["embedding"]),
         "message": json.dumps(msg_obj),
@@ -102,6 +118,8 @@ def _store_message_to_file(
         if init_file:
             writer.writeheader()
         writer.writerow(emb_mess_pair)
+
+    return tokens_usage
 
 
 def _find_context(file_path: Path, parent_chat: "Chat", option="both"):

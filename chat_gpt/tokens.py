@@ -9,19 +9,21 @@ import tiktoken
 PRICING_PER_THOUSAND_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
+    None: {"input": 0.0, "output": 0.0},
 }
 
 
 class TokenUsageDatabase:
-    def __init__(self, fpath: Path, model: str):
+    def __init__(self, fpath: Path):
         self.fpath = fpath
-        self.model = model.strip()
-        pricing = PRICING_PER_THOUSAND_TOKENS[self.model]
-        self.token_price = {k: v / 1000.0 for k, v in pricing.items()}
-        self.create()
+        self.token_price = {}
+        for model, price_per_k_tokens in PRICING_PER_THOUSAND_TOKENS.items():
+            self.token_price[model] = {
+                k: v / 1000.0 for k, v in price_per_k_tokens.items()
+            }
 
-    def get_n_tokens(self, string: str) -> int:
-        return _num_tokens_from_string(string=string, model=self.model)
+        self.create()
 
     def create(self):
         self.fpath.parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +48,10 @@ class TokenUsageDatabase:
         conn.close()
 
     # Function to insert data into the database
-    def insert_data(self, n_input_tokens, n_output_tokens):
+    def insert_data(self, model, n_input_tokens, n_output_tokens):
+        if model is None:
+            return
+
         conn = sqlite3.connect(self.fpath)
         cursor = conn.cursor()
 
@@ -65,11 +70,11 @@ class TokenUsageDatabase:
         """,
             (
                 datetime.datetime.utcnow().timestamp(),
-                self.model,
+                model,
                 n_input_tokens,
                 n_output_tokens,
-                n_input_tokens * self.token_price["input"],
-                n_output_tokens * self.token_price["output"],
+                n_input_tokens * self.token_price[model]["input"],
+                n_output_tokens * self.token_price[model]["output"],
             ),
         )
 
@@ -123,6 +128,9 @@ class TokenUsageDatabase:
         sums_by_model = self.retrieve_sums_by_model()
         df_rows = []
         for model, accumulated_usage in sums_by_model.items():
+            if model is None:
+                continue
+
             accumulated_tokens_usage = {
                 "input": accumulated_usage["n_input_tokens"],
                 "output": accumulated_usage["n_output_tokens"],
@@ -151,20 +159,27 @@ class TokenUsageDatabase:
 
         return df
 
-    def get_current_chat_usage_dataframe(self, token_usage: dict):
-        costs = {k: v * self.token_price[k] for k, v in token_usage.items()}
-        df_row = {
-            "Model": self.model,
-            "Tokens: Input": token_usage["input"],
-            "Tokens: Output": token_usage["output"],
-            "Tokens: Total": sum(token_usage.values()),
-            "Cost ($): Input": costs["input"],
-            "Cost ($): Output": costs["output"],
-            "Cost ($): Total": sum(costs.values()),
-        }
-        df = pd.DataFrame([df_row])
-        df = _group_columns_by_prefix(df.set_index("Model"))
+    def get_current_chat_usage_dataframe(self, token_usage_per_model: dict):
+        df_rows = []
+        for model, token_usage in token_usage_per_model.items():
+            if model is None:
+                continue
 
+            costs = {k: v * self.token_price[model][k] for k, v in token_usage.items()}
+            df_row = {
+                "Model": model,
+                "Tokens: Input": token_usage["input"],
+                "Tokens: Output": token_usage["output"],
+                "Tokens: Total": sum(token_usage.values()),
+                "Cost ($): Input": costs["input"],
+                "Cost ($): Output": costs["output"],
+                "Cost ($): Total": sum(costs.values()),
+            }
+            df_rows.append(df_row)
+        df = pd.DataFrame(df_rows)
+        if df_rows:
+            df = _group_columns_by_prefix(df.set_index("Model"))
+            df = _add_totals_row(df)
         return df
 
     def print_usage_costs(self, token_usage: dict, current_chat: bool = True):
@@ -184,11 +199,14 @@ class TokenUsageDatabase:
             print(underline)
             print(header)
             print(underline)
-            print(df)
+            if df.empty:
+                print("None.")
+            else:
+                print(df)
             print()
 
 
-def _num_tokens_from_string(string: str, model: str) -> int:
+def get_n_tokens(string: str, model: str) -> int:
     """Returns the number of tokens in a text string."""
     encoding = tiktoken.encoding_for_model(model)
     return len(encoding.encode(string))

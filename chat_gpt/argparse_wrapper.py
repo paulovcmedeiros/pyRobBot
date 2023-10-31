@@ -31,12 +31,18 @@ def get_parsed_args(argv=None):
     )
     common_parser.add_argument(
         "--model",
-        type=str,
+        type=lambda x: str(x).lower(),
         default="gpt-3.5-turbo",
         choices=["gpt-3.5-turbo", "gpt-4"],
         help="OpenAI API engine to use for completion",
     )
-    common_parser.add_argument("--send-full-history", action="store_true")
+    common_parser.add_argument(
+        "--embedding-model",
+        type=lambda x: None if str(x).lower() == "none" else str(x).lower(),
+        default="text-embedding-ada-002",
+        choices=["text-embedding-ada-002", None],
+        help="OpenAI API engine to use for embedding",
+    )
     common_parser.add_argument("--skip-reporting-costs", action="store_true")
 
     main_parser = argparse.ArgumentParser(

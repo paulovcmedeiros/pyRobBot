@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+from collections import defaultdict
+
 import openai
 
 from . import GeneralConstants
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
-from .tokens import TokenUsageDatabase
+from .tokens import TokenUsageDatabase, get_n_tokens
 
 
 class Chat:
@@ -11,10 +13,11 @@ class Chat:
         self,
         model: str,
         base_instructions: str,
-        send_full_history: bool = False,
+        embedding_model: str = "text-embedding-ada-002",
         report_estimated_costs_when_done: bool = True,
     ):
         self.model = model
+        self.embedding_model = embedding_model
         self.username = "chat_user"
         self.assistant_name = f"chat_{model.replace('.', '_')}"
         self.system_name = "chat_manager"
@@ -33,16 +36,15 @@ class Chat:
             ]
         )
 
-        self.token_usage = {"input": 0, "output": 0}
+        self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
         self.token_usage_db = TokenUsageDatabase(
-            fpath=GeneralConstants.TOKEN_USAGE_DATABASE,
-            model=self.model,
+            fpath=GeneralConstants.TOKEN_USAGE_DATABASE
         )
 
-        if send_full_history:
-            self.context_handler = BaseChatContext(parent_chat=self)
-        else:
+        if self.embedding_model == "text-embedding-ada-002":
             self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
+        else:
+            self.context_handler = BaseChatContext(parent_chat=self)
 
         self.report_estimated_costs_when_done = report_estimated_costs_when_done
 
@@ -56,10 +58,12 @@ class Chat:
 
     def __del__(self):
         # Store token usage to database
-        self.token_usage_db.insert_data(
-            n_input_tokens=self.token_usage["input"],
-            n_output_tokens=self.token_usage["output"],
-        )
+        for model in [self.model, self.embedding_model]:
+            self.token_usage_db.insert_data(
+                model=model,
+                n_input_tokens=self.token_usage[model]["input"],
+                n_output_tokens=self.token_usage[model]["output"],
+            )
         if self.report_estimated_costs_when_done:
             self.report_token_usage()
 
@@ -67,8 +71,8 @@ class Chat:
     def from_cli_args(cls, cli_args):
         return cls(
             model=cli_args.model,
+            embedding_model=cli_args.embedding_model,
             base_instructions=cli_args.initial_ai_instructions,
-            send_full_history=cli_args.send_full_history,
             report_estimated_costs_when_done=not cli_args.skip_reporting_costs,
         )
 
@@ -76,13 +80,20 @@ class Chat:
         question = question.strip()
 
         # Add context to the conversation
-        self.query_context = self.context_handler.add_user_input(
+        context_handler_response = self.context_handler.add_user_input(
             conversation=self.query_context, user_input=question
         )
+        self.query_context = context_handler_response["conversation"]
 
-        # Update number of input tokens
-        self.token_usage["input"] += sum(
-            self.token_usage_db.get_n_tokens(string=msg["content"])
+        # Update number of tokens used in context handler
+        for direction in ["input", "output"]:
+            self.token_usage[self.embedding_model][direction] += context_handler_response[
+                "tokens_usage"
+            ][direction]
+
+        # Update number of input tokens used in the chat model
+        self.token_usage[self.model]["input"] += sum(
+            get_n_tokens(string=msg["content"], model=self.model)
             for msg in self.query_context
         )
 
@@ -91,13 +102,22 @@ class Chat:
             full_reply_content += chunk
             yield chunk
 
-        # Update number of output tokens
-        self.token_usage["output"] += self.token_usage_db.get_n_tokens(full_reply_content)
+        # Update number of tokens output from the chat
+        self.token_usage[self.model]["output"] += get_n_tokens(
+            string=full_reply_content, model=self.model
+        )
 
         # Update context with the reply
-        self.query_context = self.context_handler.add_chat_reply(
+        context_handler_response = self.context_handler.add_chat_reply(
             conversation=self.query_context, chat_reply=full_reply_content.strip()
         )
+        self.query_context = context_handler_response["conversation"]
+
+        # Update number of tokens used in context handler to store the reply
+        for direction in ["input", "output"]:
+            self.token_usage[self.embedding_model][direction] += context_handler_response[
+                "tokens_usage"
+            ][direction]
 
     def start(self):
         try:
