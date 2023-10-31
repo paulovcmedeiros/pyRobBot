@@ -106,11 +106,9 @@ def _store_object_and_embedding(
 
 
 def _compose_context_msg(history: list[str], system_name: str):
-    context_msg_content = "You know that the following was said:\n"
-    for message in history:
-        context_msg_content += f"{message}\n"
+    context_msg_content = "You know that the following was said:\n\n"
+    context_msg_content += "\x1f\n".join(rf"{message}" for message in history) + "\n\n"
     context_msg_content += "Answer the last message."
-
     return {"role": "system", "name": system_name, "content": context_msg_content}
 
 
