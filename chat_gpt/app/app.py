@@ -19,12 +19,16 @@ except KeyError:
     st.session_state["chat"] = session_chat
 
 
-st.title(f"Chat with {session_chat.assistant_name}")
+page_title = f"Chat with {session_chat.model}"
+# Set the title that is shown in the browser's tab
+st.set_page_config(page_title=page_title)
+# Set page title
+st.title(page_title)
+
 
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
