@@ -65,7 +65,6 @@ class EmbeddingBasedChatContext(BaseChatContext):
             embedding=embedding,
             file_path=self.context_file_path,
             parent_chat=self.parent_chat,
-            option="both",
         )
 
 
@@ -108,7 +107,7 @@ def _store_message_and_embedding(
 
 def _find_context(
     file_path: Path,
-    embedding: str,
+    embedding: list[float],
     parent_chat: "Chat",
     n_related_entries: int = 4,
     n_directly_preceeding_exchanges: int = 2,
