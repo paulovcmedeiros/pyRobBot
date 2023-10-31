@@ -155,7 +155,7 @@ def _make_api_call(conversation: list, model: str):
             for line in openai.ChatCompletion.create(
                 model=model,
                 messages=conversation,
-                request_timeout=30,
+                request_timeout=10,
                 stream=True,
                 temperature=0.8,
             ):
