@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from collections import defaultdict, deque
+from collections import defaultdict
 
 import openai
 
@@ -13,11 +13,15 @@ class Chat:
         self,
         model: str,
         base_instructions: str,
-        embedding_model: str = "text-embedding-ada-002",
+        context_model: str = "text-embedding-ada-002",
         report_estimated_costs_when_done: bool = True,
     ):
-        self.model = model
-        self.embedding_model = embedding_model
+        self.model = model.lower()
+
+        if context_model is not None:
+            context_model = context_model.lower()
+        self.context_model = context_model
+
         self.username = "chat_user"
         self.assistant_name = f"chat_{model.replace('.', '_')}"
         self.system_name = "chat_manager"
@@ -41,13 +45,14 @@ class Chat:
             fpath=GeneralConstants.TOKEN_USAGE_DATABASE
         )
 
-        if self.embedding_model == "text-embedding-ada-002":
+        if self.context_model is None:
+            self.context_handler = BaseChatContext(parent_chat=self)
+        elif self.context_model == "text-embedding-ada-002":
             self.context_handler = EmbeddingBasedChatContext(
-                embedding_model=self.embedding_model, parent_chat=self
+                embedding_model=self.context_model, parent_chat=self
             )
         else:
-            self.context_handler = BaseChatContext(parent_chat=self)
-        self.history = deque(maxlen=2)
+            raise NotImplementedError(f"Unknown context model: {self.context_model}")
 
         self.report_estimated_costs_when_done = report_estimated_costs_when_done
 
@@ -59,7 +64,7 @@ class Chat:
 
     def __del__(self):
         # Store token usage to database
-        for model in [self.model, self.embedding_model]:
+        for model in [self.model, self.context_model]:
             self.token_usage_db.insert_data(
                 model=model,
                 n_input_tokens=self.token_usage[model]["input"],
@@ -72,21 +77,17 @@ class Chat:
     def from_cli_args(cls, cli_args):
         return cls(
             model=cli_args.model,
-            embedding_model=cli_args.embedding_model,
+            context_model=cli_args.context_model,
             base_instructions=cli_args.initial_ai_instructions,
             report_estimated_costs_when_done=not cli_args.skip_reporting_costs,
         )
 
-    def yield_response(self, question: str):
-        question = question.strip()
+    def yield_response(self, prompt: str):
+        prompt = prompt.strip()
+        prompt_as_msg = {"role": "user", "name": self.username, "content": prompt}
 
-        prompt_as_msg = {"role": "user", "name": self.username, "content": question}
-        self.history.append(prompt_as_msg)
-
-        prompt_embedding_request = self.context_handler.calculate_embedding(text=question)
-        prompt_embedding = prompt_embedding_request["embedding"]
-
-        context = self.context_handler.get_context(embedding=prompt_embedding)
+        prompt_context_request = self.context_handler.get_context(text=prompt)
+        context = prompt_context_request["context_messages"]
         conversation = [self.base_directive, *context, prompt_as_msg]
 
         full_reply_content = ""
@@ -94,22 +95,8 @@ class Chat:
             full_reply_content += chunk
             yield chunk
 
-        reply_as_msg = {
-            "role": "assistant",
-            "name": self.assistant_name,
-            "content": full_reply_content.strip(),
-        }
-        self.history.append(reply_as_msg)
-
-        this_exchange_text = (
-            f"{self.username}: {question}. {self.assistant_name}: {full_reply_content}"
-        )
-        this_exchange_text_embedding_request = self.context_handler.calculate_embedding(
-            text=this_exchange_text
-        )
-        this_exchange_text_embedding = this_exchange_text_embedding_request["embedding"]
-        self.context_handler.add_to_history(
-            text=this_exchange_text, embedding=this_exchange_text_embedding
+        history_entry_registration_tokens_usage = self.context_handler.add_to_history(
+            text=f"{self.username}: {prompt}. {self.assistant_name}: {full_reply_content}"
         )
 
         # Update self.token_usage
@@ -122,12 +109,12 @@ class Chat:
             string=full_reply_content, model=self.model
         )
         # 3: With tokens used in context handler for prompt
-        self.token_usage[self.embedding_model]["input"] += sum(
-            prompt_embedding_request["tokens_usage"].values()
+        self.token_usage[self.context_model]["input"] += sum(
+            prompt_context_request["tokens_usage"].values()
         )
         # 4: With tokens used in context handler for reply
-        self.token_usage[self.embedding_model]["output"] += sum(
-            this_exchange_text_embedding_request["tokens_usage"].values()
+        self.token_usage[self.context_model]["output"] += sum(
+            history_entry_registration_tokens_usage.values()
         )
 
     def start(self):
@@ -137,7 +124,7 @@ class Chat:
                 if not question:
                     continue
                 print(f"{self.assistant_name}: ", end="", flush=True)
-                for chunk in self.yield_response(question=question):
+                for chunk in self.yield_response(prompt=question):
                     print(chunk, end="", flush=True)
                 print()
                 print()

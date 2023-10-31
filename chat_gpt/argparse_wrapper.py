@@ -37,7 +37,7 @@ def get_parsed_args(argv=None):
         help="OpenAI API engine to use for completion",
     )
     common_parser.add_argument(
-        "--embedding-model",
+        "--context-model",
         type=lambda x: None if str(x).lower() == "none" else str(x).lower(),
         default="text-embedding-ada-002",
         choices=["text-embedding-ada-002", None],

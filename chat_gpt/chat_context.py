@@ -2,6 +2,7 @@ import ast
 import csv
 import json
 import time
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,57 +20,56 @@ if TYPE_CHECKING:
 class BaseChatContext:
     def __init__(self, parent_chat: "Chat"):
         self.parent_chat = parent_chat
+        self.history = deque(maxlen=50)
+        self._tokens_usage = {"input": 0, "output": 0}
 
-    def add_user_input(self, conversation: list, user_input: str):
-        user_input_msg_obj = {
-            "role": "user",
-            "name": self.parent_chat.username,
-            "content": user_input,
-        }
-        conversation.append(user_input_msg_obj)
-        tokens_usage = {"input": 0, "output": 0}
+    def add_to_history(self, text: str):
+        self.history.append(text)
+        return self._tokens_usage
 
-        return {"conversation": conversation, "tokens_usage": tokens_usage}
-
-    def add_chat_reply(self, conversation: list, chat_reply: str):
-        reply_msg_obj = {
-            "role": "assistant",
-            "name": self.parent_chat.assistant_name,
-            "content": chat_reply,
-        }
-        conversation.append(reply_msg_obj)
-        tokens_usage = {"input": 0, "output": 0}
-
-        return {"conversation": conversation, "tokens_usage": tokens_usage}
+    def get_context(self, text: str):
+        context_msg = _compose_context_msg(
+            history=self.history, system_name=self.parent_chat.system_name
+        )
+        return {"context_messages": [context_msg], "tokens_usage": self._tokens_usage}
 
 
 class EmbeddingBasedChatContext(BaseChatContext):
     """Chat context."""
 
     def __init__(self, embedding_model: str, parent_chat: "Chat"):
-        self.embedding_model = embedding_model
         self.parent_chat = parent_chat
+        self.embedding_model = embedding_model
         self.context_file_path = GeneralConstants.EMBEDDINGS_FILE
 
-    def calculate_embedding(self, text: str):
-        text = text.lower().replace("\n", " ")
-        return request_embedding_from_openai(text=text, model=self.embedding_model)
-
-    def add_to_history(self, text, embedding):
-        _store_message_and_embedding(
-            file_path=self.context_file_path, msg_obj=text, embedding=embedding
+    def add_to_history(self, text: str):
+        embedding_request = self.calculate_embedding(text=text)
+        _store_object_and_embedding(
+            obj=text,
+            embedding=embedding_request["embedding"],
+            file_path=self.context_file_path,
         )
+        return embedding_request["tokens_usage"]
 
-    def get_context(self, embedding):
-        return _find_context(
-            embedding=embedding,
+    def get_context(self, text: str):
+        embedding_request = self.calculate_embedding(text=text)
+        context_messages = _find_context(
+            embedding=embedding_request["embedding"],
             file_path=self.context_file_path,
             parent_chat=self.parent_chat,
         )
 
+        return {
+            "context_messages": context_messages,
+            "tokens_usage": embedding_request["tokens_usage"],
+        }
+
+    def calculate_embedding(self, text: str):
+        return request_embedding_from_openai(text=text, model=self.embedding_model)
+
 
 def request_embedding_from_openai(text: str, model: str):
-    text = text.replace("\n", " ")
+    text.lower().replace("\n", " ")
     embedding_request = openai.Embedding.create(input=[text], model=model)
 
     embedding = embedding_request["data"][0]["embedding"]
@@ -81,8 +81,8 @@ def request_embedding_from_openai(text: str, model: str):
     return {"embedding": embedding, "tokens_usage": tokens_usage}
 
 
-def _store_message_and_embedding(
-    msg_obj: dict, embedding, file_path: Path = GeneralConstants.EMBEDDINGS_FILE
+def _store_object_and_embedding(
+    obj, embedding, file_path: Path = GeneralConstants.EMBEDDINGS_FILE
 ):
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
@@ -91,7 +91,7 @@ def _store_message_and_embedding(
 
     emb_mess_pair = {
         "timestamp": int(time.time()),
-        "message": json.dumps(msg_obj),
+        "message": json.dumps(obj),
         "embedding": json.dumps(embedding),
     }
 
@@ -103,6 +103,15 @@ def _store_message_and_embedding(
         if init_file:
             writer.writeheader()
         writer.writerow(emb_mess_pair)
+
+
+def _compose_context_msg(history: list[str], system_name: str):
+    context_msg_content = "You know that the following was said:\n"
+    for message in history:
+        context_msg_content += f"{message}\n"
+    context_msg_content += "Answer the last message."
+
+    return {"role": "system", "name": system_name, "content": context_msg_content}
 
 
 def _find_context(
@@ -132,15 +141,4 @@ def _find_context(
     df_context = pd.concat([df_similar_chats, df_last_n_chats])
     selected = df_context["message"].apply(ast.literal_eval).drop_duplicates().tolist()
 
-    context_msg_content = "You know previous messages.\n"
-    context_msg_content = "You also know that the following was said:\n"
-    for message in selected:
-        context_msg_content += f"{message}\n"
-    context_msg_content += "Answer the last message."
-    context_msg = {
-        "role": "system",
-        "name": parent_chat.system_name,
-        "content": context_msg_content,
-    }
-
-    return [context_msg]
+    return [_compose_context_msg(history=selected, system_name=parent_chat.system_name)]
