@@ -2,6 +2,7 @@ import ast
 import csv
 import json
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,7 +41,8 @@ class EmbeddingBasedChatContext(BaseChatContext):
     def __init__(self, embedding_model: str, parent_chat: "Chat"):
         self.parent_chat = parent_chat
         self.embedding_model = embedding_model
-        self.context_file_path = GeneralConstants.EMBEDDINGS_FILE
+        embd_file = GeneralConstants.PACKAGE_TMPDIR / f"embeddings_{uuid.uuid4()}.csv"
+        self.context_file_path = embd_file
 
     def add_to_history(self, text: str):
         embedding_request = self.calculate_embedding(text=text)
@@ -81,9 +83,7 @@ def request_embedding_from_openai(text: str, model: str):
     return {"embedding": embedding, "tokens_usage": tokens_usage}
 
 
-def _store_object_and_embedding(
-    obj, embedding, file_path: Path = GeneralConstants.EMBEDDINGS_FILE
-):
+def _store_object_and_embedding(obj, embedding, file_path: Path):
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
     #  use-embeddings-to-retrieve-relevant-context-for-ai-assistant/268538>

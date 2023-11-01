@@ -16,7 +16,6 @@ class GeneralConstants:
     PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME
     _PACKAGE_TMPDIR = tempfile.TemporaryDirectory()
     PACKAGE_TMPDIR = Path(_PACKAGE_TMPDIR.name)
-    EMBEDDINGS_FILE = PACKAGE_TMPDIR / "embeddings.csv"
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
     TOKEN_USAGE_DATABASE = PACKAGE_CACHE_DIRECTORY / "token_usage.db"
 
