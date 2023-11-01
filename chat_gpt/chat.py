@@ -11,10 +11,10 @@ from .tokens import TokenUsageDatabase, get_n_tokens
 class Chat:
     def __init__(
         self,
-        model: str,
-        base_instructions: str,
+        model: str = "gpt-3.5-turbo",
+        base_instructions: str = "",
         context_model: str = "text-embedding-ada-002",
-        report_estimated_costs_when_done: bool = True,
+        report_accounting_when_done: bool = False,
     ):
         self.model = model.lower()
 
@@ -54,7 +54,7 @@ class Chat:
         else:
             raise NotImplementedError(f"Unknown context model: {self.context_model}")
 
-        self.report_estimated_costs_when_done = report_estimated_costs_when_done
+        self.report_accounting_when_done = report_accounting_when_done
 
         self.base_directive = {
             "role": "system",
@@ -70,7 +70,7 @@ class Chat:
                 n_input_tokens=self.token_usage[model]["input"],
                 n_output_tokens=self.token_usage[model]["output"],
             )
-        if self.report_estimated_costs_when_done:
+        if self.report_accounting_when_done:
             self.report_token_usage()
 
     @classmethod
@@ -79,40 +79,44 @@ class Chat:
             model=cli_args.model,
             context_model=cli_args.context_model,
             base_instructions=cli_args.initial_ai_instructions,
-            report_estimated_costs_when_done=not cli_args.skip_reporting_costs,
+            report_accounting_when_done=not cli_args.skip_reporting_costs,
         )
 
     def yield_response(self, prompt: str):
         prompt = prompt.strip()
         prompt_as_msg = {"role": "user", "name": self.username, "content": prompt}
 
+        # Get appropriate context for prompt from the context handler
         prompt_context_request = self.context_handler.get_context(text=prompt)
         context = prompt_context_request["context_messages"]
-        conversation = [self.base_directive, *context, prompt_as_msg]
-
-        full_reply_content = ""
-        for chunk in _make_api_call(conversation=conversation, model=self.model):
-            full_reply_content += chunk
-            yield chunk
-
-        history_entry_registration_tokens_usage = self.context_handler.add_to_history(
-            text=f"{self.username}: {prompt}. {self.assistant_name}: {full_reply_content}"
-        )
-
-        # Update self.token_usage
-        # 1: With tokens used in chat input
-        self.token_usage[self.model]["input"] += sum(
-            get_n_tokens(string=msg["content"], model=self.model) for msg in conversation
-        )
-        # 2: With tokens used in chat output
-        self.token_usage[self.model]["output"] += get_n_tokens(
-            string=full_reply_content, model=self.model
-        )
-        # 3: With tokens used in context handler for prompt
+        # Update token_usage with tokens used in context handler for prompt
         self.token_usage[self.context_model]["input"] += sum(
             prompt_context_request["tokens_usage"].values()
         )
-        # 4: With tokens used in context handler for reply
+
+        contextualised_prompt = [self.base_directive, *context, prompt_as_msg]
+        # Update token_usage with tokens used in chat input
+        self.token_usage[self.model]["input"] += sum(
+            get_n_tokens(string=msg["content"], model=self.model)
+            for msg in contextualised_prompt
+        )
+
+        # Make API request and yield response chunks
+        full_reply_content = ""
+        for chunk in _make_api_call(conversation=contextualised_prompt, model=self.model):
+            full_reply_content += chunk
+            yield chunk
+
+        # Update token_usage ith tokens used in chat output
+        self.token_usage[self.model]["output"] += get_n_tokens(
+            string=full_reply_content, model=self.model
+        )
+
+        # Put current chat exchande in context handler's history
+        history_entry_registration_tokens_usage = self.context_handler.add_to_history(
+            text=f"{self.username}: {prompt}. {self.assistant_name}: {full_reply_content}"
+        )
+        # Update token_usage with tokens used in context handler for reply
         self.token_usage[self.context_model]["output"] += sum(
             history_entry_registration_tokens_usage.values()
         )
@@ -146,11 +150,12 @@ def _make_api_call(conversation: list, model: str):
                 stream=True,
                 temperature=0.8,
             ):
-                reply_content_token = getattr(line.choices[0].delta, "content", "")
-                yield reply_content_token
-                success = True
+                reply_chunk = getattr(line.choices[0].delta, "content", "")
+                yield reply_chunk
         except (
             openai.error.ServiceUnavailableError,
             openai.error.Timeout,
         ) as error:
             print(f"    > {error}. Retrying...")
+        else:
+            success = True

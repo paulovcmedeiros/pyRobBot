@@ -9,8 +9,7 @@ from .chat import Chat
 
 def accounting(args):
     """Show the accumulated costs of the chat and exit."""
-    args.skip_reporting_costs = True
-    Chat.from_cli_args(cli_args=args).report_token_usage(current_chat=False)
+    Chat().report_token_usage(current_chat=False)
 
 
 def run_on_terminal(args):
@@ -18,12 +17,12 @@ def run_on_terminal(args):
     Chat.from_cli_args(cli_args=args).start()
 
 
-def run_on_browser(args):
+def run_on_ui(args):
     """Run the chat on the browser."""
     with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as parsed_args_file:
         pickle.dump(args, parsed_args_file)
     app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
-    with contextlib.suppress(KeyboardInterrupt):
+    try:
         run(
             [
                 "streamlit",
@@ -34,3 +33,5 @@ def run_on_browser(args):
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ]
         )
+    except (KeyboardInterrupt, EOFError):
+        print("Exiting.")

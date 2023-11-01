@@ -228,7 +228,7 @@ def _print_df(df: pd.DataFrame, header: str):
     print(underline)
     print(header)
     print(underline)
-    if df.empty:
+    if df.empty or df.loc["Total"]["Tokens"]["Total"] == 0:
         print("None.")
     else:
         print(df)

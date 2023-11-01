@@ -3,10 +3,10 @@
 import argparse
 import sys
 
-from .command_definitions import accounting, run_on_browser, run_on_terminal
+from .command_definitions import accounting, run_on_terminal, run_on_ui
 
 
-def get_parsed_args(argv=None, default_command="browser"):
+def get_parsed_args(argv=None, default_command="ui"):
     """Get parsed command line arguments.
 
     Args:
@@ -21,29 +21,29 @@ def get_parsed_args(argv=None, default_command="browser"):
     if not argv:
         argv = [default_command]
 
-    common_parser = argparse.ArgumentParser(add_help=False)
-    common_parser.add_argument(
+    chat_options_parser = argparse.ArgumentParser(add_help=False)
+    chat_options_parser.add_argument(
         "initial_ai_instructions",
         type=str,
         default="You answer using the minimum possible number of tokens.",
         help="Initial instructions for the AI",
         nargs="?",
     )
-    common_parser.add_argument(
+    chat_options_parser.add_argument(
         "--model",
         type=lambda x: str(x).lower(),
         default="gpt-3.5-turbo",
         choices=["gpt-3.5-turbo", "gpt-4"],
         help="OpenAI API engine to use for completion",
     )
-    common_parser.add_argument(
+    chat_options_parser.add_argument(
         "--context-model",
         type=lambda x: None if str(x).lower() == "none" else str(x).lower(),
         default="text-embedding-ada-002",
         choices=["text-embedding-ada-002", None],
         help="OpenAI API engine to use for embedding",
     )
-    common_parser.add_argument("--skip-reporting-costs", action="store_true")
+    chat_options_parser.add_argument("--skip-reporting-costs", action="store_true")
 
     main_parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -61,21 +61,26 @@ def get_parsed_args(argv=None, default_command="browser"):
         help="command description",
     )
 
-    parser_browser = subparsers.add_parser(
-        "browser", parents=[common_parser], help="Run the chat on the browser."
+    parser_ui = subparsers.add_parser(
+        "ui",
+        aliases=["app"],
+        parents=[chat_options_parser],
+        help="Run the chat UI on the browser.",
     )
-    parser_browser.set_defaults(run_command=run_on_browser)
+    parser_ui.set_defaults(run_command=run_on_ui)
 
     parser_terminal = subparsers.add_parser(
-        "terminal", parents=[common_parser], help="Run the chat on the terminal."
+        "terminal",
+        aliases=["."],
+        parents=[chat_options_parser],
+        help="Run the chat on the terminal.",
     )
     parser_terminal.set_defaults(run_command=run_on_terminal)
 
     parser_accounting = subparsers.add_parser(
         "accounting",
         aliases=["acc"],
-        parents=[common_parser],
-        help="Show the number of tokens used for each message.",
+        help="Show the estimated number of used tokens and associated costs, and exit.",
     )
     parser_accounting.set_defaults(run_command=accounting)
 
