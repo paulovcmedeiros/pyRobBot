@@ -5,44 +5,49 @@ import pickle
 import sys
 
 import streamlit as st
+from streamlit_javascript import st_javascript
 
 from chat_gpt.chat import Chat
 
+this_page_url = st_javascript("await fetch('').then(r => window.parent.location.href)")
+
+
+this_page_state = st.session_state.get(this_page_url, {})
+st.session_state[this_page_url] = this_page_state
+
+# Set page title
+page_title = f"Chat"
+if len(this_page_state.get("messages", [])) == 2:
+    session_chat = this_page_state["chat"]
+    prompt = "Summarize the following message exchange as a short title:\n"
+    prompt += "\n\x1f".join(message["content"] for message in this_page_state["messages"])
+    page_title = "".join(session_chat.yield_response(prompt))
+    # st.title(page_title)
+    st.set_page_config(page_title=page_title)
+
 # Initialize chat. Kepp it throughout the session.
 try:
-    session_chat = st.session_state["chat"]
+    session_chat = this_page_state["chat"]
 except KeyError:
     parsed_args_file = sys.argv[-1]
     with open(parsed_args_file, "rb") as parsed_args_file:
         args = pickle.load(parsed_args_file)
     session_chat = Chat.from_cli_args(cli_args=args)
-    st.session_state["chat"] = session_chat
+    this_page_state["chat"] = session_chat
 
-page_title = f"Chat with {session_chat.model}"
-# Set the title that is shown in the browser's tab
-st.set_page_config(page_title=page_title)
-# Set page title
-st.title(page_title)
-
-
-# Using "with" notation
-with st.sidebar:
-    add_radio = st.radio(
-        "Choose a shipping method", ("Standard (5-15 days)", "Express (2-5 days)")
-    )
 
 # Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "messages" not in this_page_state:
+    this_page_state["messages"] = []
 # Display chat messages from history on app rerun
-for message in st.session_state.messages:
+for message in this_page_state["messages"]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # Accept user input
 if prompt := st.chat_input("Send a message"):
     # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    this_page_state["messages"].append({"role": "user", "content": prompt})
     # Display user message in chat message container
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -58,4 +63,4 @@ if prompt := st.chat_input("Send a message"):
             message_placeholder.markdown(full_response + "▌")
         message_placeholder.markdown(full_response)
     # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    this_page_state["messages"].append({"role": "assistant", "content": full_response})
