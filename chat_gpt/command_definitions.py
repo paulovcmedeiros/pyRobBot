@@ -7,7 +7,7 @@ from . import GeneralConstants
 from .chat import Chat
 
 
-def show_accumulated_costs(args):
+def accounting(args):
     """Show the accumulated costs of the chat and exit."""
     args.skip_reporting_costs = True
     Chat.from_cli_args(cli_args=args).report_token_usage(current_chat=False)

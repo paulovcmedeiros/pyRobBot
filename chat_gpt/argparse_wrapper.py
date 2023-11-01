@@ -3,10 +3,10 @@
 import argparse
 import sys
 
-from .command_definitions import run_on_browser, run_on_terminal, show_accumulated_costs
+from .command_definitions import accounting, run_on_browser, run_on_terminal
 
 
-def get_parsed_args(argv=None):
+def get_parsed_args(argv=None, default_command="browser"):
     """Get parsed command line arguments.
 
     Args:
@@ -19,7 +19,7 @@ def get_parsed_args(argv=None):
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
-        argv = ["browser"]
+        argv = [default_command]
 
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument(
@@ -67,17 +67,16 @@ def get_parsed_args(argv=None):
     parser_browser.set_defaults(run_command=run_on_browser)
 
     parser_terminal = subparsers.add_parser(
-        "terminal",
-        parents=[common_parser],
-        help="Run the chat on the terminal.",
+        "terminal", parents=[common_parser], help="Run the chat on the terminal."
     )
     parser_terminal.set_defaults(run_command=run_on_terminal)
 
-    parser_show_costs = subparsers.add_parser(
-        "show-costs",
+    parser_accounting = subparsers.add_parser(
+        "accounting",
+        aliases=["acc"],
         parents=[common_parser],
         help="Show the number of tokens used for each message.",
     )
-    parser_show_costs.set_defaults(run_command=show_accumulated_costs)
+    parser_accounting.set_defaults(run_command=accounting)
 
     return main_parser.parse_args(argv)
