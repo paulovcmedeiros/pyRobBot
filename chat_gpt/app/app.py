@@ -14,7 +14,7 @@ st.title("Chat GPT UI")
 available_chats = st.session_state.get("available_chats", {})
 
 with st.sidebar:
-    if st.button(label="Create New Chat"):
+    if st.button(label="Create New Chat") or not available_chats:
         # Add all your applications (pages) here
         new_chat = {
             "page_id": str(uuid.uuid4()),
