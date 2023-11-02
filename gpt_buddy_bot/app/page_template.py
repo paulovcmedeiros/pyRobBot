@@ -6,7 +6,8 @@ import sys
 
 import streamlit as st
 
-from chat_gpt.chat import Chat
+from gpt_buddy_bot import GeneralConstants
+from gpt_buddy_bot.chat import Chat
 
 
 def app(page_id):
@@ -23,7 +24,11 @@ def app(page_id):
         session_chat = Chat.from_cli_args(cli_args=args)
         this_page_state["chat"] = session_chat
 
-    st.title(this_page_state.get("page_title", f"Chat with {session_chat.model}"))
+    st.title(
+        this_page_state.get(
+            "page_title", f"{GeneralConstants.APP_NAME} ({session_chat.model})"
+        )
+    )
 
     # Initialize chat history
     if "messages" not in this_page_state:

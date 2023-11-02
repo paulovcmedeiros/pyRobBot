@@ -11,6 +11,7 @@ import openai
 class GeneralConstants:
     PACKAGE_NAME = __name__
     VERSION = version(__name__)
+    APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
     PACKAGE_DIRECTORY = Path(__file__).parent
     RUN_ID = uuid.uuid4().hex
     PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME

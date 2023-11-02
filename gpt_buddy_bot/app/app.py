@@ -5,7 +5,9 @@ import page_template
 import streamlit as st
 from multipage import MultiPage
 
-st.set_page_config(page_title="ChatGPT UI", page_icon=":speech_balloon:")
+from gpt_buddy_bot import GeneralConstants
+
+st.set_page_config(page_title=GeneralConstants.APP_NAME, page_icon=":speech_balloon:")
 
 # Create an instance of the app
 app = MultiPage()

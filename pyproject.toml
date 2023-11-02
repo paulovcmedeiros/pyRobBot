@@ -1,8 +1,8 @@
 [tool.poetry]
   authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
-  description = "A simple package to test OpenAI API capabilities."
+  description = "A simple UI & terminal ChatGPT chatbot that uses OpenAI API."
   license = "MIT"
-  name = "chat_gpt"
+  name = "gpt-buddy-bot"
   readme = "README.md"
   version = "0.1.0"
 
@@ -11,7 +11,7 @@
   requires = ["poetry-core"]
 
 [tool.poetry.scripts]
-  chatgpt = "chat_gpt.__main__:main"
+  gbb = "gpt_buddy_bot.__main__:main"
 
 [tool.poetry.dependencies]
   # Python version
