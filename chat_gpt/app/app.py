@@ -5,17 +5,16 @@ import page_template
 import streamlit as st
 from multipage import MultiPage
 
+st.set_page_config(page_title="ChatGPT UI", page_icon=":speech_balloon:")
+
 # Create an instance of the app
 app = MultiPage()
-
-# Title of the main page
-st.title("Chat GPT UI")
 
 available_chats = st.session_state.get("available_chats", {})
 
 with st.sidebar:
+    # Create a new chat upon init or button press
     if st.button(label="Create New Chat") or not available_chats:
-        # Add all your applications (pages) here
         new_chat = {
             "page_id": str(uuid.uuid4()),
             "title": f"Chat {len(available_chats) + 1}",
@@ -28,6 +27,5 @@ with st.sidebar:
 for chat in available_chats.values():
     app.add_page(**chat)
 
-
-# The main app
+# Run the main app
 app.run()

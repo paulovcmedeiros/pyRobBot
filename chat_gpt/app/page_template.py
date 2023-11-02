@@ -13,20 +13,6 @@ def app(page_id):
     this_page_state = st.session_state.get(page_id, {})
     st.session_state[page_id] = this_page_state
 
-    # Set page title
-    page_title = this_page_state.get("page_title")
-    if page_title is None and len(this_page_state.get("messages", [])) == 2:
-        session_chat = this_page_state["chat"]
-        prompt = "Summarize the following message exchange as a short title:\n"
-        prompt += "\n\x1f".join(
-            message["content"] for message in this_page_state["messages"]
-        )
-        page_title = "".join(session_chat.yield_response(prompt))
-        st.title(page_title)
-        this_page_state["page_title"] = page_title
-        st.session_state["available_chats"][page_id]["title"] = page_title
-        # st.set_page_config(page_title=page_title)
-
     # Initialize chat. Kepp it throughout the session.
     try:
         session_chat = this_page_state["chat"]
@@ -36,6 +22,8 @@ def app(page_id):
             args = pickle.load(parsed_args_file)
         session_chat = Chat.from_cli_args(cli_args=args)
         this_page_state["chat"] = session_chat
+
+    st.title(this_page_state.get("page_title", f"Chat with {session_chat.model}"))
 
     # Initialize chat history
     if "messages" not in this_page_state:
@@ -67,3 +55,17 @@ def app(page_id):
         this_page_state["messages"].append(
             {"role": "assistant", "content": full_response}
         )
+
+        # Reset title according to conversation initial contents
+        if "page_title" not in this_page_state and len(this_page_state["messages"]) > 1:
+            with st.spinner("Working out conversation topic..."):
+                prompt = (
+                    "Summarize the following message exchange in a maximum of 4 words:\n"
+                )
+                prompt += "\n\x1f".join(
+                    message["content"] for message in this_page_state["messages"]
+                )
+                page_title = "".join(session_chat.yield_response(prompt))
+                st.title(page_title)
+                st.session_state["available_chats"][page_id]["title"] = page_title
+                this_page_state["page_title"] = page_title
