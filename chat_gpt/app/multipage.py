@@ -16,7 +16,7 @@ class MultiPage:
 
     def __init__(self) -> None:
         """Constructor class to generate a list which will store all our applications as an instance variable."""
-        self.pages = []
+        self.pages = {}
 
     def add_page(self, page_id, title, func) -> None:
         """Class Method to Add pages to the project
@@ -26,16 +26,17 @@ class MultiPage:
             func: Python function to render this page in Streamlit
         """
 
-        self.pages.append({"page_id": page_id, "title": title, "function": func})
+        self.pages[page_id] = {"title": title, "function": func}
 
     def run(self):
         # Drodown to select the page to run
-        page = st.sidebar.selectbox(
+        id_and_page = st.sidebar.selectbox(
             label="Select Chat",
-            options=self.pages,
-            format_func=lambda page: page["title"],
+            options=self.pages.items(),
+            format_func=lambda id_and_page: id_and_page[1]["title"],
         )
 
         # run the app function
-        if page is not None:
-            page["function"](page_id=page["page_id"])
+        if id_and_page is not None:
+            page_id, page = id_and_page
+            page["function"](page_id=page_id)

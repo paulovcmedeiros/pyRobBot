@@ -11,7 +11,7 @@ app = MultiPage()
 # Title of the main page
 st.title("Chat GPT UI")
 
-available_chats = st.session_state.get("available_chats", [])
+available_chats = st.session_state.get("available_chats", {})
 
 with st.sidebar:
     if st.button(label="Create New Chat"):
@@ -22,10 +22,10 @@ with st.sidebar:
             "func": copy.deepcopy(page_template.app),
         }
         app.add_page(**new_chat)
-        available_chats.append(new_chat)
+        available_chats[new_chat["page_id"]] = new_chat
         st.session_state["available_chats"] = available_chats
 
-for chat in available_chats:
+for chat in available_chats.values():
     app.add_page(**chat)
 
 

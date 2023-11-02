@@ -14,15 +14,17 @@ def app(page_id):
     st.session_state[page_id] = this_page_state
 
     # Set page title
-    page_title = f"Chat"
-    if len(this_page_state.get("messages", [])) == 2:
+    page_title = this_page_state.get("page_title")
+    if page_title is None and len(this_page_state.get("messages", [])) == 2:
         session_chat = this_page_state["chat"]
         prompt = "Summarize the following message exchange as a short title:\n"
         prompt += "\n\x1f".join(
             message["content"] for message in this_page_state["messages"]
         )
         page_title = "".join(session_chat.yield_response(prompt))
-        # st.title(page_title)
+        st.title(page_title)
+        this_page_state["page_title"] = page_title
+        st.session_state["available_chats"][page_id]["title"] = page_title
         # st.set_page_config(page_title=page_title)
 
     # Initialize chat. Kepp it throughout the session.
