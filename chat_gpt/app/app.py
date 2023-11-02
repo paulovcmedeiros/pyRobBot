@@ -1,22 +1,33 @@
-import shutil
+import copy
+import uuid
 
-from st_pages import Page, add_page_title, show_pages
+import page_template
+import streamlit as st
+from multipage import MultiPage
 
-from chat_gpt import GeneralConstants
+# Create an instance of the app
+app = MultiPage()
 
-# Optional -- adds the title and icon to the current page
-add_page_title()
+# Title of the main page
+st.title("Chat GPT UI")
 
-pkg_root = GeneralConstants.PACKAGE_DIRECTORY / "app"
-n_pages = 2
+available_chats = st.session_state.get("available_chats", [])
 
-pages = []
-for ipage in range(n_pages):
-    page_path = GeneralConstants.PACKAGE_TMPDIR / f"app_page_{ipage+1}.py"
-    shutil.copy(src=pkg_root / "pages/template.py", dst=page_path)
-    pages.append(Page(page_path.as_posix(), f"Chat {ipage+1}", ":books:"))
+with st.sidebar:
+    if st.button(label="Create New Chat"):
+        # Add all your applications (pages) here
+        new_chat = {
+            "page_id": str(uuid.uuid4()),
+            "title": f"Chat {len(available_chats) + 1}",
+            "func": copy.deepcopy(page_template.app),
+        }
+        app.add_page(**new_chat)
+        available_chats.append(new_chat)
+        st.session_state["available_chats"] = available_chats
+
+for chat in available_chats:
+    app.add_page(**chat)
 
 
-# Specify what pages should be shown in the sidebar, and what their titles
-# and icons should be
-show_pages(pages)
+# The main app
+app.run()
