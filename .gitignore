@@ -161,3 +161,6 @@ cython_debug/
 
 # Vim
 *.swp
+
+# Temporary files and directories
+tmp/
