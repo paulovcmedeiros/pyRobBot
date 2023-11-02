@@ -1,45 +1,40 @@
-"""
-This file is the framework for generating multiple Streamlit applications
-through an object oriented framework.
-
-Adapted from:
-<https://towardsdatascience.com/creating-multipage-applications-using-streamlit-efficiently-b58a58134030>
-"""
-
-# Import necessary libraries
+"Code for the creation streamlit apps with dynamically created pages."
 import streamlit as st
+from app_page_templates import AppPage
 
 
-# Define the multipage class to manage the multiple apps in our program
-class MultiPage:
-    """Framework for combining multiple streamlit applications."""
+class MultiPageApp:
+    """Framework for creating streamlite multipage apps.
 
-    def __init__(self) -> None:
-        """Constructor class to generate a list which will store all our applications as an instance variable."""
-        self.pages = {}
-        # Keep track of which page we're on, so we remain in it when adding a new page
-        self.selected_chat_index = None
+    Adapted from:
+    <https://towardsdatascience.com/
+     creating-multipage-applications-using-streamlit-efficiently-b58a58134030>.
 
-    def add_page(self, page_id, title, func) -> None:
-        """Class Method to Add pages to the project
-        Args:
-            title ([str]): The title of page which we are adding to the list of apps
+    """
 
-            func: Python function to render this page in Streamlit
-        """
+    def __init__(self, **kwargs) -> None:
+        """Initialise streamlit page configs."""
+        st.set_page_config(**kwargs)
 
-        self.pages[page_id] = {"title": title, "function": func}
-        # Signal to `run` taht we should move to the newly added page
-        self.selected_chat_index = list(self.pages.keys()).index(page_id)
+    @property
+    def pages(self) -> AppPage:
+        """Return the pages of the app."""
+        if "available_pages" not in st.session_state:
+            st.session_state["available_pages"] = {}
+        return st.session_state["available_pages"]
+
+    def add_page(self, page: AppPage) -> None:
+        """Add a page to the app."""
+        self.pages[page.page_id] = page
+        st.session_state["switch_page"] = True
 
     def run(self):
-        # Drodown to select the page to run
-        if id_and_page := st.sidebar.selectbox(
+        """Run the app."""
+        # Drodown menu to select the page to run
+        if page := st.sidebar.selectbox(
             label="Select Chat",
-            options=self.pages.items(),
-            format_func=lambda id_and_page: id_and_page[1]["title"],
-            index=self.selected_chat_index,
+            options=self.pages.values(),
+            format_func=lambda page: page.sidebar_title,
+            index=len(self.pages) - 1,
         ):
-            # run the app function
-            page_id, page = id_and_page
-            page["function"](page_id=page_id)
+            page.create()

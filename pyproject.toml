@@ -25,10 +25,7 @@
   numpy = "^1.26.1"
   openai = "^0.28.1"
   pandas = "^2.1.2"
-  st-pages = "^0.4.5"
   streamlit = "^1.28.0"
-  streamlit-chat = "^0.1.1"
-  streamlit-javascript = "^0.1.5"
   tiktoken = "^0.5.1"
 
 [tool.poetry.group.dev.dependencies]

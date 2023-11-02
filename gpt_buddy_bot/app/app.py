@@ -1,33 +1,20 @@
-import copy
-import uuid
-
-import page_template
+"""Entrypoint for the package's UI."""
 import streamlit as st
-from multipage import MultiPage
+from app_page_templates import ChatBotPage
+from multipage import MultiPageApp
 
 from gpt_buddy_bot import GeneralConstants
 
-st.set_page_config(page_title=GeneralConstants.APP_NAME, page_icon=":speech_balloon:")
 
-# Create an instance of the app
-app = MultiPage()
+def run_app():
+    """Create and run an instance of the pacage's app."""
+    app = MultiPageApp(page_title=GeneralConstants.APP_NAME, page_icon=":speech_balloon:")
+    with st.sidebar:
+        # Create a new chat upon init or button press
+        if st.button(label="Create New Chat") or not app.pages:
+            app.add_page(ChatBotPage(sidebar_title=f"Chat {len(app.pages) + 1}"))
+    app.run()
 
-available_chats = st.session_state.get("available_chats", {})
 
-with st.sidebar:
-    # Create a new chat upon init or button press
-    if st.button(label="Create New Chat") or not available_chats:
-        new_chat = {
-            "page_id": str(uuid.uuid4()),
-            "title": f"Chat {len(available_chats) + 1}",
-            "func": copy.deepcopy(page_template.app),
-        }
-        app.add_page(**new_chat)
-        available_chats[new_chat["page_id"]] = new_chat
-        st.session_state["available_chats"] = available_chats
-
-for chat in available_chats.values():
-    app.add_page(**chat)
-
-# Run the main app
-app.run()
+if __name__ == "__main__":
+    run_app()
