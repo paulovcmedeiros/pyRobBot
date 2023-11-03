@@ -14,10 +14,9 @@ class MultiPageApp:
 
     """
 
-    def __init__(self, sidebar_mode="buttons", **kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         """Initialise streamlit page configs."""
         st.set_page_config(**kwargs)
-        self.sidebar_mode = sidebar_mode.lower()
 
     @property
     def n_created_pages(self):
@@ -60,38 +59,25 @@ class MultiPageApp:
 
     def handle_ui_page_selection(self):
         """Control page selection in the UI sidebar."""
-        if self.sidebar_mode == "buttons":
-            with st.sidebar:
-                col1, col2 = st.columns([0.75, 0.25])
-                for page in self.pages.values():
-                    with col1:
-                        st.button(
-                            label=page.sidebar_title,
-                            key=f"select_{page.page_id}",
-                            on_click=partial(self.register_selected_page, page),
-                            use_container_width=True,
-                        )
-                    with col2:
-                        st.button(
-                            ":wastebasket:",
-                            key=f"delete_{page.page_id}",
-                            type="primary",
-                            use_container_width=True,
-                            on_click=partial(self.remove_page, page),
-                            help="Delete this chat.",
-                        )
-        elif self.sidebar_mode == "dropdown":
-            if page := st.sidebar.selectbox(
-                label="Select Chat",
-                options=self.pages.values(),
-                format_func=lambda page: page.sidebar_title,
-                index=len(self.pages) - 1,
-            ):
-                self.register_selected_page(page)
-        else:
-            raise NotImplementedError(
-                f"Sidebar mode '{self.sidebar_mode}' is not implemented."
-            )
+        with st.sidebar:
+            col1, col2 = st.columns([0.75, 0.25])
+            for page in self.pages.values():
+                with col1:
+                    st.button(
+                        label=page.sidebar_title,
+                        key=f"select_{page.page_id}",
+                        on_click=partial(self.register_selected_page, page),
+                        use_container_width=True,
+                    )
+                with col2:
+                    st.button(
+                        ":wastebasket:",
+                        key=f"delete_{page.page_id}",
+                        type="primary",
+                        use_container_width=True,
+                        on_click=partial(self.remove_page, page),
+                        help="Delete this chat.",
+                    )
 
     def render(self):
         """Render the multipage app with focus on the selected page."""
