@@ -23,7 +23,7 @@ class AppPage(ABC):
 
         if not page_title:
             page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
-            page_title += f"## {sidebar_title}: {self.chat_obj.model}"
+            page_title += f"## {self.chat_obj.model}\n### {sidebar_title}"
         self._initial_title = page_title
 
     @property

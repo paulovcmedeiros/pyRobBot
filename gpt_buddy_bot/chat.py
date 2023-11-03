@@ -59,7 +59,10 @@ class Chat:
 
     @classmethod
     def from_cli_args(cls, cli_args):
-        configs = ChatOptions.model_validate(vars(cli_args))
+        chat_opts = {
+            k: v for k, v in vars(cli_args).items() if k in ChatOptions.model_fields
+        }
+        configs = ChatOptions.model_validate(chat_opts)
         return cls(configs)
 
     def respond_user_prompt(self, prompt: str):

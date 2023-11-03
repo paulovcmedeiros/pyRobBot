@@ -1,8 +1,10 @@
 "Code for the creation streamlit apps with dynamically created pages."
-from functools import partial
+import contextlib
 
 import streamlit as st
 from app_page_templates import AppPage
+
+from gpt_buddy_bot.chat_configs import ChatOptions
 
 
 class MultiPageApp:
@@ -57,16 +59,17 @@ class MultiPageApp:
             return next(iter(self.pages.values()))
         return st.session_state["selected_page"]
 
-    def handle_ui_page_selection(self):
+    def handle_ui_page_selection(self, sidebar_tabs: dict):
         """Control page selection in the UI sidebar."""
-        with st.sidebar:
+        with sidebar_tabs["chats"]:
             for page in self.pages.values():
-                col1, col2 = st.columns([0.75, 0.25])
+                col1, col2 = st.columns([0.8, 0.2])
                 with col1:
                     st.button(
                         label=page.sidebar_title,
                         key=f"select_{page.page_id}",
-                        on_click=partial(self.register_selected_page, page),
+                        on_click=self.register_selected_page,
+                        kwargs={"page": page},
                         use_container_width=True,
                     )
                 with col2:
@@ -75,11 +78,43 @@ class MultiPageApp:
                         key=f"delete_{page.page_id}",
                         type="primary",
                         use_container_width=True,
-                        on_click=partial(self.remove_page, page),
+                        on_click=self.remove_page,
+                        kwargs={"page": page},
                         help="Delete this chat.",
                     )
+        with sidebar_tabs["settings"]:
+            chat_options = ChatOptions()
+            for field_name, field in chat_options.model_fields.items():
+                title = field_name.replace("_", " ").title()
+                choices = ChatOptions.get_allowed_values(field=field_name)
+                field_type = ChatOptions.get_type(field=field_name)
 
-    def render(self):
+                if choices:
+                    st.selectbox(title, choices, index=0)
+                elif field_type == str:
+                    st.text_input(title, value=getattr(chat_options, field_name))
+                elif field_type in [int, float]:
+                    step = 1 if field_type == int else 0.01
+                    bounds = [None, None]
+                    for item in field.metadata:
+                        with contextlib.suppress(AttributeError):
+                            bounds[0] = item.gt + step
+                        with contextlib.suppress(AttributeError):
+                            bounds[0] = item.ge
+                        with contextlib.suppress(AttributeError):
+                            bounds[1] = item.lt - step
+                        with contextlib.suppress(AttributeError):
+                            bounds[1] = item.le
+                    st.number_input(
+                        title,
+                        value=getattr(chat_options, field_name),
+                        placeholder="OpenAI Default",
+                        min_value=bounds[0],
+                        max_value=bounds[1],
+                        step=step,
+                    )
+
+    def render(self, sidebar_tabs: dict):
         """Render the multipage app with focus on the selected page."""
-        self.handle_ui_page_selection()
+        self.handle_ui_page_selection(sidebar_tabs=sidebar_tabs)
         self.selected_page.render()

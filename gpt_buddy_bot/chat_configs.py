@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
+import types
+import typing
 from functools import reduce
 from getpass import getuser
 from pathlib import Path
 from typing import Any, Literal, Optional, get_args
 
 from pydantic import BaseModel, Field, validator
-from typing_extensions import Annotated
 
 from gpt_buddy_bot import GeneralConstants
 
@@ -22,17 +23,21 @@ class BaseConfigModel(BaseModel):
     @classmethod
     def get_type(cls, field: str):
         """Return type of `field`."""
-        annotation = cls._get_field_param(field=field, param="annotation")
-        if isinstance(annotation, type):
-            return annotation
+        type_hint = typing.get_type_hints(cls)[field]
+        if isinstance(type_hint, type):
+            return type_hint
+        type_hint_first_arg = get_args(type_hint)[0]
+        if isinstance(type_hint_first_arg, type):
+            return type_hint_first_arg
 
     @classmethod
     def get_default(cls, field: str):
         """Return allowed value(s) for `field`."""
-        return cls._get_field_param(field=field, param="default")
+        return cls.model_fields[field].get_default()
 
     @classmethod
     def get_description(cls, field: str):
+        """Return description of `field`."""
         return cls._get_field_param(field=field, param="description")
 
     @classmethod
@@ -66,15 +71,36 @@ class BaseConfigModel(BaseModel):
                 raise KeyError(item) from error
 
 
-openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
-
-
-class ChatOptions(BaseConfigModel):
-    """Model for the chat's configuration options."""
+class OpenAiApiCallOptions(BaseConfigModel):
+    _openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
 
     model: Literal["gpt-3.5-turbo", "gpt-4"] = Field(
-        default="gpt-3.5-turbo", description="OpenAI API engine to use for completion"
+        default="gpt-3.5-turbo",
+        description=f"OpenAI LLM model to use. See {_openai_url}-model",
     )
+    max_tokens: Optional[int] = Field(
+        default=None, gt=0, description=f"See <{_openai_url}-max_tokens>"
+    )
+    presence_penalty: Optional[float] = Field(
+        default=None, ge=-2.0, le=2.0, description=f"See <{_openai_url}-presence_penalty>"
+    )
+    frequency_penalty: Optional[float] = Field(
+        default=None,
+        ge=-2.0,
+        le=2.0,
+        description=f"See <{_openai_url}-frequency_penalty>",
+    )
+    temperature: Optional[float] = Field(
+        default=None, ge=0.0, le=2.0, description=f"See <{_openai_url}-temperature>"
+    )
+    top_p: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0, description=f"See <{_openai_url}-top_p>"
+    )
+
+
+class ChatOptions(OpenAiApiCallOptions):
+    """Model for the chat's configuration options."""
+
     username: str = Field(default=getuser(), description="Name of the chat's user")
     assistant_name: str = Field(
         default="Based on model", description="Name of the chat's assistant"
@@ -84,39 +110,12 @@ class ChatOptions(BaseConfigModel):
     )
     context_model: Literal["text-embedding-ada-002", None] = Field(
         default="text-embedding-ada-002",
-        description="OpenAI API engine to use for embedding",
+        description="OpenAI API model to use for embedding",
     )
     ai_instructions: tuple[str, ...] = Field(
         default=("Answer with the fewest tokens possible.",),
         description="Initial instructions for the AI",
     )
-    max_tokens: Optional[
-        Annotated[int, Field(gt=0, description=f"See <{openai_url}-max_tokens>")]
-    ] = None
-    frequency_penalty: Optional[
-        Annotated[
-            float,
-            Field(ge=-2.0, le=2.0, description=f"See <{openai_url}-frequency_penalty>"),
-        ]
-    ] = None
-    presence_penalty: Optional[
-        Annotated[
-            float,
-            Field(ge=-2.0, le=2.0, description=f"See <{openai_url}-presence_penalty>"),
-        ]
-    ] = None
-    temperature: Optional[
-        Annotated[
-            float,
-            Field(ge=0.0, le=2.0, description=f"See <{openai_url}-temperature>"),
-        ]
-    ] = None
-    top_p: Optional[
-        Annotated[
-            float,
-            Field(defaut=None, ge=0.0, le=1.0, description=f"See <{openai_url}-top_p>"),
-        ]
-    ] = None
     token_usage_db_path: Path = Field(
         default=GeneralConstants.TOKEN_USAGE_DATABASE,
         description="Path to the token usage database",
@@ -131,6 +130,3 @@ class ChatOptions(BaseConfigModel):
         if assistant_name == "based on model":
             return f"chat_{values.get('model', 'assistant').replace('.', '_')}"
         return assistant_name
-
-
-DEFAULT_CHAT_OPTIONS = ChatOptions()
