@@ -3,47 +3,19 @@ from collections import defaultdict
 
 import openai
 
-from . import GeneralConstants
+from .chat_configs import ChatOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
 from .tokens import TokenUsageDatabase, get_n_tokens
 
 
 class Chat:
-    def __init__(
-        self,
-        model: str = "gpt-3.5-turbo",
-        base_instructions: str = "",
-        context_model: str = "text-embedding-ada-002",
-        report_accounting_when_done: bool = False,
-    ):
-        self.model = model.lower()
-
-        if context_model is not None:
-            context_model = context_model.lower()
-        self.context_model = context_model
-
-        self.username = "chat_user"
-        self.assistant_name = f"chat_{model.replace('.', '_')}"
-        self.system_name = "chat_manager"
-
-        self.ground_ai_instructions = " ".join(
-            [
-                instruction.strip()
-                for instruction in [
-                    f"Your name is {self.assistant_name}.",
-                    f"You are a helpful assistant to {self.username}.",
-                    "You answer correctly. You do not lie.",
-                    f"{base_instructions.strip(' .')}.",
-                    f"You must remember and follow all directives by {self.system_name}.",
-                ]
-                if instruction.strip()
-            ]
-        )
+    def __init__(self, configs: ChatOptions):
+        self.configs = configs
+        for field in self.configs.model_fields:
+            setattr(self, field, self.configs[field])
 
         self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
-        self.token_usage_db = TokenUsageDatabase(
-            fpath=GeneralConstants.TOKEN_USAGE_DATABASE
-        )
+        self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
 
         if self.context_model is None:
             self.context_handler = BaseChatContext(parent_chat=self)
@@ -54,13 +26,25 @@ class Chat:
         else:
             raise NotImplementedError(f"Unknown context model: {self.context_model}")
 
-        self.report_accounting_when_done = report_accounting_when_done
+    @property
+    def base_directive(self):
+        msg_content = " ".join(
+            [
+                instruction.strip()
+                for instruction in [
+                    f"Your name is {self.assistant_name}.",
+                    f"You are a helpful assistant to {self.username}.",
+                    "You answer correctly. You do not lie.",
+                    " ".join(
+                        [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
+                    ),
+                    f"You must remember and follow all directives by {self.system_name}.",
+                ]
+                if instruction.strip()
+            ]
+        )
 
-        self.base_directive = {
-            "role": "system",
-            "name": self.system_name,
-            "content": self.ground_ai_instructions,
-        }
+        return {"role": "system", "name": self.system_name, "content": msg_content}
 
     def __del__(self):
         # Store token usage to database
@@ -75,12 +59,8 @@ class Chat:
 
     @classmethod
     def from_cli_args(cls, cli_args):
-        return cls(
-            model=cli_args.model,
-            context_model=cli_args.context_model,
-            base_instructions=cli_args.initial_ai_instructions,
-            report_accounting_when_done=not cli_args.skip_reporting_costs,
-        )
+        configs = ChatOptions.model_validate(vars(cli_args))
+        return cls(configs)
 
     def respond_user_prompt(self, prompt: str):
         yield from self._respond_prompt(prompt=prompt, role="user")
