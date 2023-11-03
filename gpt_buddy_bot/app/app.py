@@ -12,10 +12,7 @@ def run_app():
     with st.sidebar:
         # Create a new chat upon init or button press
         if st.button(label=":speech_balloon: Create New Chat") or not app.pages:
-            app.add_page(
-                ChatBotPage(sidebar_title=f"Chat {app.n_created_pages + 1}"),
-                selected=True,
-            )
+            app.add_page(ChatBotPage(), selected=True)
     app.render()
 
 

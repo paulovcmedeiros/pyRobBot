@@ -13,11 +13,17 @@ from gpt_buddy_bot.chat import Chat
 class AppPage(ABC):
     """Abstract base class for pages in a streamlit app."""
 
-    def __init__(self, sidebar_title: str = "App Page", page_title: str = ""):
+    def __init__(self, sidebar_title: str = "", page_title: str = ""):
         self.page_id = str(uuid.uuid4())
+
+        if not sidebar_title:
+            n_created_pages = st.session_state.get("n_created_pages", 0)
+            sidebar_title = f"Chat {n_created_pages + 1}"
         self._initial_sidebar_title = sidebar_title
+
         if not page_title:
-            page_title = f"{GeneralConstants.APP_NAME} ({self.chat_obj.model})"
+            page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
+            page_title += f"## {sidebar_title}: {self.chat_obj.model}"
         self._initial_title = page_title
 
     @property
