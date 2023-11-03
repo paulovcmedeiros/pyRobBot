@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import contextlib
 import pickle
 from subprocess import run
 
@@ -29,6 +28,12 @@ def run_on_ui(args):
                 "run",
                 app_path.as_posix(),
                 "--theme.base=dark",
+                "--runner.fastReruns",
+                "True",
+                "--server.runOnSave",
+                "True",
+                "--browser.gatherUsageStats",
+                "False",
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ]

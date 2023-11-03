@@ -11,9 +11,11 @@ def run_app():
     app = MultiPageApp(page_title=GeneralConstants.APP_NAME, page_icon=":speech_balloon:")
     with st.sidebar:
         # Create a new chat upon init or button press
-        if st.button(label="Create New Chat") or not app.pages:
-            app.add_page(ChatBotPage(sidebar_title=f"Chat {len(app.pages) + 1}"))
-    app.run()
+        if st.button(label=":speech_balloon: Create New Chat") or not app.pages:
+            app.add_page(
+                ChatBotPage(sidebar_title=f"Chat {len(app.pages) + 1}"), selected=True
+            )
+    app.render()
 
 
 if __name__ == "__main__":

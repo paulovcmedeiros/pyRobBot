@@ -34,7 +34,7 @@ class Chat:
                     f"You are a helpful assistant to {self.username}.",
                     "You answer correctly. You do not lie.",
                     f"{base_instructions.strip(' .')}.",
-                    f"You follow all directives by {self.system_name}.",
+                    f"You must remember and follow all directives by {self.system_name}.",
                 ]
                 if instruction.strip()
             ]
@@ -82,13 +82,20 @@ class Chat:
             report_accounting_when_done=not cli_args.skip_reporting_costs,
         )
 
-    def yield_response(self, prompt: str):
-        prompt = prompt.strip()
-        prompt_as_msg = {"role": "user", "name": self.username, "content": prompt}
+    def respond_user_prompt(self, prompt: str):
+        yield from self._respond_prompt(prompt=prompt, role="user")
+
+    def respond_system_prompt(self, prompt: str):
+        yield from self._respond_prompt(prompt=prompt, role="system")
+
+    def yield_response_from_msg(self, prompt_as_msg: dict):
+        role = prompt_as_msg["role"]
+        prompt = prompt_as_msg["content"]
 
         # Get appropriate context for prompt from the context handler
         prompt_context_request = self.context_handler.get_context(text=prompt)
         context = prompt_context_request["context_messages"]
+
         # Update token_usage with tokens used in context handler for prompt
         self.token_usage[self.context_model]["input"] += sum(
             prompt_context_request["tokens_usage"].values()
@@ -112,10 +119,11 @@ class Chat:
             string=full_reply_content, model=self.model
         )
 
-        # Put current chat exchande in context handler's history
+        # Put current chat exchange in context handler's history
         history_entry_registration_tokens_usage = self.context_handler.add_to_history(
-            text=f"{self.username}: {prompt}. {self.assistant_name}: {full_reply_content}"
+            text=f"{role}: {prompt}. {self.assistant_name}: {full_reply_content}"
         )
+
         # Update token_usage with tokens used in context handler for reply
         self.token_usage[self.context_model]["output"] += sum(
             history_entry_registration_tokens_usage.values()
@@ -128,7 +136,7 @@ class Chat:
                 if not question:
                     continue
                 print(f"{self.assistant_name}: ", end="", flush=True)
-                for chunk in self.yield_response(prompt=question):
+                for chunk in self.respond_user_prompt(prompt=question):
                     print(chunk, end="", flush=True)
                 print()
                 print()
@@ -137,6 +145,13 @@ class Chat:
 
     def report_token_usage(self, current_chat: bool = True):
         self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
+
+    def _respond_prompt(self, prompt: str, role: str):
+        prompt = prompt.strip()
+        role = role.lower().strip()
+        role2name = {"user": self.username, "system": self.system_name}
+        prompt_as_msg = {"role": role, "name": role2name[role], "content": prompt}
+        yield from self.yield_response_from_msg(prompt_as_msg)
 
 
 def _make_api_call(conversation: list, model: str):

@@ -45,7 +45,7 @@ class AppPage(ABC):
         return self.state.get("sidebar_title", self._initial_sidebar_title)
 
     @abstractmethod
-    def create(self):
+    def render(self):
         """Create the page."""
 
 
@@ -76,8 +76,8 @@ class ChatBotPage(AppPage):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    def create(self):
-        """Create a chatbot page.
+    def render(self):
+        """Render a chatbot page.
 
         Adapted from:
         <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
@@ -101,17 +101,17 @@ class ChatBotPage(AppPage):
                 message_placeholder.markdown("▌")
                 full_response = ""
                 # Stream assistant response
-                for chunk in self.chat_obj.yield_response(prompt):
+                for chunk in self.chat_obj.respond_user_prompt(prompt):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
                 message_placeholder.markdown(full_response)
             self.chat_history.append({"role": "assistant", "content": full_response})
 
             # Reset title according to conversation initial contents
-            if "page_title" not in self.state and len(self.chat_history) > 1:
+            if "page_title" not in self.state and len(self.chat_history) > 3:
                 with st.spinner("Working out conversation topic..."):
-                    prompt = "Summarize the following msg exchange. Use max of 4 words:\n"
+                    prompt = "Summarize the following msg exchange in max 4 words:\n"
                     prompt += "\n\x1f".join(
                         message["content"] for message in self.chat_history
                     )
-                    self.title = "".join(self.chat_obj.yield_response(prompt))
+                    self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
