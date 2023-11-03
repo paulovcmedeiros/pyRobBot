@@ -60,8 +60,8 @@ class MultiPageApp:
     def handle_ui_page_selection(self):
         """Control page selection in the UI sidebar."""
         with st.sidebar:
-            col1, col2 = st.columns([0.75, 0.25])
             for page in self.pages.values():
+                col1, col2 = st.columns([0.75, 0.25])
                 with col1:
                     st.button(
                         label=page.sidebar_title,
