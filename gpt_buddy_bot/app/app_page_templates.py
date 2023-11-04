@@ -113,7 +113,9 @@ class ChatBotPage(AppPage):
 
         # Accept user input
         if prompt := st.chat_input("Send a message"):
-            self.chat_history.append({"role": "user", "content": prompt})
+            self.chat_history.append(
+                {"role": "user", "name": self.chat_obj.username, "content": prompt}
+            )
             # Display user message in chat message container
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -129,7 +131,13 @@ class ChatBotPage(AppPage):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
                 message_placeholder.markdown(full_response)
-            self.chat_history.append({"role": "assistant", "content": full_response})
+            self.chat_history.append(
+                {
+                    "role": "assistant",
+                    "name": self.chat_obj.assistant_name,
+                    "content": full_response,
+                }
+            )
 
             # Reset title according to conversation initial contents
             if "page_title" not in self.state and len(self.chat_history) > 3:

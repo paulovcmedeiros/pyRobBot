@@ -6,8 +6,6 @@ from app_page_templates import AppPage, ChatBotPage
 
 from gpt_buddy_bot.chat_configs import ChatOptions
 
-UnchangedValue = object()
-
 
 class MultiPageApp:
     """Framework for creating streamlite multipage apps.
@@ -93,19 +91,17 @@ class MultiPageApp:
                 field_type = ChatOptions.get_type(field=field_name)
 
                 element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
-                current_field_value = getattr(current_chat_configs, field_name)
-                new_field_value = UnchangedValue
+                last_field_value = getattr(current_chat_configs, field_name)
                 if choices:
-                    new_field_value = st.selectbox(
-                        title,
-                        choices,
-                        key=element_key,
-                        index=choices.index(current_field_value),
+                    index = (
+                        0
+                        if st.session_state.get("last_rendered_page")
+                        == self.selected_page.page_id
+                        else choices.index(last_field_value)
                     )
+                    st.selectbox(title, choices, key=element_key, index=index)
                 elif field_type == str:
-                    new_field_value = st.text_input(
-                        title, value=current_field_value, key=element_key
-                    )
+                    st.text_input(title, value=last_field_value, key=element_key)
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
                     bounds = [None, None]
@@ -118,9 +114,10 @@ class MultiPageApp:
                             bounds[1] = item.lt - step
                         with contextlib.suppress(AttributeError):
                             bounds[1] = item.le
-                    new_field_value = st.number_input(
+
+                    st.number_input(
                         title,
-                        value=current_field_value,
+                        value=last_field_value,
                         placeholder="OpenAI Default",
                         min_value=bounds[0],
                         max_value=bounds[1],
@@ -128,7 +125,8 @@ class MultiPageApp:
                         key=element_key,
                     )
 
-                if new_field_value is not UnchangedValue:
+                new_field_value = st.session_state.get(element_key)
+                if new_field_value != last_field_value:
                     new_chat_configs[field_name] = new_field_value
 
         if new_chat_configs:
@@ -142,3 +140,4 @@ class MultiPageApp:
         """Render the multipage app with focus on the selected page."""
         self.handle_ui_page_selection(sidebar_tabs=sidebar_tabs)
         self.selected_page.render()
+        st.session_state["last_rendered_page"] = self.selected_page.page_id
