@@ -2,9 +2,11 @@
 import contextlib
 
 import streamlit as st
-from app_page_templates import AppPage
+from app_page_templates import AppPage, ChatBotPage
 
 from gpt_buddy_bot.chat_configs import ChatOptions
+
+UnchangedValue = object()
 
 
 class MultiPageApp:
@@ -53,7 +55,7 @@ class MultiPageApp:
         st.session_state["selected_page"] = page
 
     @property
-    def selected_page(self) -> AppPage:
+    def selected_page(self) -> ChatBotPage:
         """Return the selected page."""
         if "selected_page" not in st.session_state:
             return next(iter(self.pages.values()))
@@ -83,19 +85,26 @@ class MultiPageApp:
                         help="Delete this chat.",
                     )
         with sidebar_tabs["settings"]:
-            chat_configs: ChatOptions = self.selected_page.chat_obj.configs
-            updates_for_chat_configs = {}
-            for field_name, field in chat_configs.model_fields.items():
+            current_chat_configs = self.selected_page.chat_configs
+            new_chat_configs = {}
+            for field_name, field in ChatOptions.model_fields.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
                 field_type = ChatOptions.get_type(field=field_name)
 
-                new_field_value = None
+                element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
+                current_field_value = getattr(current_chat_configs, field_name)
+                new_field_value = UnchangedValue
                 if choices:
-                    new_field_value = st.selectbox(title, choices, index=0)
+                    new_field_value = st.selectbox(
+                        title,
+                        choices,
+                        key=element_key,
+                        index=choices.index(current_field_value),
+                    )
                 elif field_type == str:
                     new_field_value = st.text_input(
-                        title, value=getattr(chat_configs, field_name)
+                        title, value=current_field_value, key=element_key
                     )
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
@@ -111,21 +120,23 @@ class MultiPageApp:
                             bounds[1] = item.le
                     new_field_value = st.number_input(
                         title,
-                        value=getattr(chat_configs, field_name),
+                        value=current_field_value,
                         placeholder="OpenAI Default",
                         min_value=bounds[0],
                         max_value=bounds[1],
                         step=step,
+                        key=element_key,
                     )
 
-                if new_field_value:
-                    updates_for_chat_configs[field_name] = new_field_value
-            self.selected_page.chat_obj.configs = chat_configs.model_copy(
-                update=updates_for_chat_configs
+                if new_field_value is not UnchangedValue:
+                    new_chat_configs[field_name] = new_field_value
+
+        if new_chat_configs:
+            # Update chat configs. Make sure not to lose the conversation context.
+            new_chat_configs["context_file_path"] = current_chat_configs.context_file_path
+            self.selected_page.chat_configs = current_chat_configs.model_copy(
+                update=new_chat_configs
             )
-        print(self.selected_page.page_number)
-        print(self.selected_page.chat_obj.configs)
-        print()
 
     def render(self, sidebar_tabs: dict):
         """Render the multipage app with focus on the selected page."""

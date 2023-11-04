@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import uuid
 from collections import defaultdict
 
 import openai
 
+from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
 from .tokens import TokenUsageDatabase, get_n_tokens
@@ -10,19 +12,26 @@ from .tokens import TokenUsageDatabase, get_n_tokens
 
 class Chat:
     def __init__(self, configs: ChatOptions):
+        self.id = uuid.uuid4()
         self.configs = configs
         for field in self.configs.model_fields:
             setattr(self, field, self.configs[field])
 
+        if self.assistant_name is None:
+            self.assistant_name = self.model
+
         self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
         self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
+
+        if self.context_file_path is None:
+            self.context_file_path = (
+                GeneralConstants.PACKAGE_TMPDIR / f"embeddings_for_chat_{self.id}.csv"
+            )
 
         if self.context_model is None:
             self.context_handler = BaseChatContext(parent_chat=self)
         elif self.context_model == "text-embedding-ada-002":
-            self.context_handler = EmbeddingBasedChatContext(
-                embedding_model=self.context_model, parent_chat=self
-            )
+            self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
         else:
             raise NotImplementedError(f"Unknown context model: {self.context_model}")
 
@@ -60,7 +69,9 @@ class Chat:
     @classmethod
     def from_cli_args(cls, cli_args):
         chat_opts = {
-            k: v for k, v in vars(cli_args).items() if k in ChatOptions.model_fields
+            k: v
+            for k, v in vars(cli_args).items()
+            if k in ChatOptions.model_fields and v is not None
         }
         configs = ChatOptions.model_validate(chat_opts)
         return cls(configs)
@@ -154,6 +165,6 @@ def _make_api_call(conversation: list, model: str):
             openai.error.ServiceUnavailableError,
             openai.error.Timeout,
         ) as error:
-            print(f"    > {error}. Retrying...")
+            print(f"\n    > {error}. Retrying...")
         else:
             success = True

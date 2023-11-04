@@ -4,6 +4,7 @@ from subprocess import run
 
 from . import GeneralConstants
 from .chat import Chat
+from .chat_configs import ChatOptions
 
 
 def accounting(args):
@@ -18,8 +19,9 @@ def run_on_terminal(args):
 
 def run_on_ui(args):
     """Run the chat on the browser."""
-    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as parsed_args_file:
-        pickle.dump(args, parsed_args_file)
+    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
+        pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
+
     app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
     try:
         run(

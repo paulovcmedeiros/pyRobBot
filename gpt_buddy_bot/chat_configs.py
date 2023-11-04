@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
-import types
+import argparse
 import typing
 from functools import reduce
 from getpass import getuser
 from pathlib import Path
-from typing import Any, Literal, Optional, get_args
+from typing import Literal, Optional, get_args
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 
 from gpt_buddy_bot import GeneralConstants
 
@@ -39,6 +39,16 @@ class BaseConfigModel(BaseModel):
     def get_description(cls, field: str):
         """Return description of `field`."""
         return cls._get_field_param(field=field, param="description")
+
+    @classmethod
+    def from_cli_args(cls, cli_args: argparse.Namespace):
+        """Return an instance of the class from CLI args."""
+        relevant_args = {
+            k: v
+            for k, v in vars(cli_args).items()
+            if k in cls.model_fields and v is not None
+        }
+        return cls.model_validate(relevant_args)
 
     @classmethod
     def _get_field_param(cls, field: str, param: str):
@@ -102,15 +112,17 @@ class ChatOptions(OpenAiApiCallOptions):
     """Model for the chat's configuration options."""
 
     username: str = Field(default=getuser(), description="Name of the chat's user")
-    assistant_name: str = Field(
-        default="Based on model", description="Name of the chat's assistant"
-    )
+    assistant_name: str = Field(default=None, description="Name of the chat's assistant")
     system_name: str = Field(
         default=GeneralConstants.PACKAGE_NAME, description="Name of the chat's system"
     )
     context_model: Literal["text-embedding-ada-002", None] = Field(
         default="text-embedding-ada-002",
         description="OpenAI API model to use for embedding",
+    )
+    context_file_path: Path = Field(
+        default=None,
+        description="Path to the file to read/write the chat context from/to.",
     )
     ai_instructions: tuple[str, ...] = Field(
         default=("Answer with the fewest tokens possible.",),
@@ -123,10 +135,3 @@ class ChatOptions(OpenAiApiCallOptions):
     report_accounting_when_done: bool = Field(
         default=False, description="Report estimated costs when done with the chat."
     )
-
-    @validator("assistant_name", always=True)
-    def get_address(cls, assistant_name: str, values: dict[str, Any]) -> str:
-        assistant_name = assistant_name.lower().strip()
-        if assistant_name == "based on model":
-            return f"chat_{values.get('model', 'assistant').replace('.', '_')}"
-        return assistant_name

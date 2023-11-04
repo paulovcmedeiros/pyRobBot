@@ -1,4 +1,5 @@
 """Utilities for creating pages in a streamlit app."""
+import contextlib
 import pickle
 import sys
 import uuid
@@ -8,6 +9,7 @@ import streamlit as st
 
 from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.chat import Chat
+from gpt_buddy_bot.chat_configs import ChatOptions
 
 
 class AppPage(ABC):
@@ -16,16 +18,15 @@ class AppPage(ABC):
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         self.page_id = str(uuid.uuid4())
         self.page_number = st.session_state.get("n_created_pages", 0) + 1
+        self._initial_sidebar_title = (
+            sidebar_title if sidebar_title else f"Page {self.page_number}"
+        )
+        self._init_page_title = page_title if page_title else self.default_page_title
 
-        if not sidebar_title:
-            n_created_pages = st.session_state.get("n_created_pages", 0)
-            sidebar_title = f"Chat {n_created_pages + 1}"
-        self._initial_sidebar_title = sidebar_title
-
-        if not page_title:
-            page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
-            page_title += f"## {self.chat_obj.model}\n### {sidebar_title}"
-        self._initial_title = page_title
+    @property
+    def default_page_title(self):
+        """Return the default page title."""
+        return self.sidebar_title
 
     @property
     def state(self):
@@ -37,7 +38,7 @@ class AppPage(ABC):
     @property
     def title(self):
         """Get the title of the page."""
-        return self.state.get("page_title", self._initial_title)
+        return self.state.get("page_title", self._init_page_title)
 
     @title.setter
     def title(self, value):
@@ -58,17 +59,33 @@ class AppPage(ABC):
 
 class ChatBotPage(AppPage):
     @property
+    def default_page_title(self):
+        """Return the default page title."""
+        page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
+        page_title += f"## {self.chat_obj.model}\n### {self.sidebar_title}"
+        return page_title
+
+    @property
+    def chat_configs(self) -> ChatOptions:
+        """Return the configs used for the page's chat object."""
+        if "chat_configs" not in self.state:
+            chat_options_file_path = sys.argv[-1]
+            with open(chat_options_file_path, "rb") as chat_configs_file:
+                self.state["chat_configs"] = pickle.load(chat_configs_file)
+        return self.state["chat_configs"]
+
+    @chat_configs.setter
+    def chat_configs(self, value: ChatOptions):
+        self.state["chat_configs"] = ChatOptions.model_validate(value)
+        with contextlib.suppress(KeyError):
+            del self.state["chat_obj"]
+
+    @property
     def chat_obj(self) -> Chat:
         """Return the chat object responsible for the queries in this page."""
-        try:
-            this_page_chat = self.state["chat"]
-        except KeyError:
-            parsed_args_file = sys.argv[-1]
-            with open(parsed_args_file, "rb") as parsed_args_file:
-                args = pickle.load(parsed_args_file)
-            this_page_chat = Chat.from_cli_args(cli_args=args)
-            self.state["chat"] = this_page_chat
-        return self.state["chat"]
+        if "chat_obj" not in self.state:
+            self.state["chat_obj"] = Chat(self.chat_configs)
+        return self.state["chat_obj"]
 
     @property
     def chat_history(self) -> list[dict[str, str]]:
