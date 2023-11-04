@@ -83,16 +83,20 @@ class MultiPageApp:
                         help="Delete this chat.",
                     )
         with sidebar_tabs["settings"]:
-            chat_options = ChatOptions()
-            for field_name, field in chat_options.model_fields.items():
+            chat_configs: ChatOptions = self.selected_page.chat_obj.configs
+            updates_for_chat_configs = {}
+            for field_name, field in chat_configs.model_fields.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
                 field_type = ChatOptions.get_type(field=field_name)
 
+                new_field_value = None
                 if choices:
-                    st.selectbox(title, choices, index=0)
+                    new_field_value = st.selectbox(title, choices, index=0)
                 elif field_type == str:
-                    st.text_input(title, value=getattr(chat_options, field_name))
+                    new_field_value = st.text_input(
+                        title, value=getattr(chat_configs, field_name)
+                    )
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
                     bounds = [None, None]
@@ -105,14 +109,23 @@ class MultiPageApp:
                             bounds[1] = item.lt - step
                         with contextlib.suppress(AttributeError):
                             bounds[1] = item.le
-                    st.number_input(
+                    new_field_value = st.number_input(
                         title,
-                        value=getattr(chat_options, field_name),
+                        value=getattr(chat_configs, field_name),
                         placeholder="OpenAI Default",
                         min_value=bounds[0],
                         max_value=bounds[1],
                         step=step,
                     )
+
+                if new_field_value:
+                    updates_for_chat_configs[field_name] = new_field_value
+            self.selected_page.chat_obj.configs = chat_configs.model_copy(
+                update=updates_for_chat_configs
+            )
+        print(self.selected_page.page_number)
+        print(self.selected_page.chat_obj.configs)
+        print()
 
     def render(self, sidebar_tabs: dict):
         """Render the multipage app with focus on the selected page."""

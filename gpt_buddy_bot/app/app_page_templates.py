@@ -15,6 +15,7 @@ class AppPage(ABC):
 
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         self.page_id = str(uuid.uuid4())
+        self.page_number = st.session_state.get("n_created_pages", 0) + 1
 
         if not sidebar_title:
             n_created_pages = st.session_state.get("n_created_pages", 0)
@@ -67,7 +68,7 @@ class ChatBotPage(AppPage):
                 args = pickle.load(parsed_args_file)
             this_page_chat = Chat.from_cli_args(cli_args=args)
             self.state["chat"] = this_page_chat
-        return this_page_chat
+        return self.state["chat"]
 
     @property
     def chat_history(self) -> list[dict[str, str]]:
