@@ -107,7 +107,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
             st.caption(caption)
             current_chat_configs = self.selected_page.chat_obj.configs
             updates_to_chat_configs = {}
-            for field_name, field in ChatOptions.model_fields.items():
+
+            # Present the user with the model and instructions fields first
+            field_names = ["model", "ai_instructions"]
+            field_names += [field_name for field_name in ChatOptions.model_fields]
+            field_names = list(dict.fromkeys(field_names))
+            model_fiedls = {k: ChatOptions.model_fields[k] for k in field_names}
+
+            for field_name, field in model_fiedls.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
                 field_type = ChatOptions.get_type(field=field_name)
@@ -121,9 +128,13 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         == self.selected_page.page_id
                         else choices.index(last_field_value)
                     )
-                    st.selectbox(title, choices, key=element_key, index=index)
+                    new_field_value = st.selectbox(
+                        title, choices, key=element_key, index=index
+                    )
                 elif field_type == str:
-                    st.text_input(title, value=last_field_value, key=element_key)
+                    new_field_value = st.text_input(
+                        title, value=last_field_value, key=element_key
+                    )
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
                     bounds = [None, None]
@@ -137,7 +148,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         with contextlib.suppress(AttributeError):
                             bounds[1] = item.le
 
-                    st.number_input(
+                    new_field_value = st.number_input(
                         title,
                         value=last_field_value,
                         placeholder="OpenAI Default",
@@ -146,10 +157,17 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         step=step,
                         key=element_key,
                     )
+                elif field_type in (list, tuple):
+                    new_field_value = st.text_area(
+                        title,
+                        value="\n".join(last_field_value),
+                        key=element_key,
+                        help="Directives that the AI should follow.",
+                    )
+                    new_field_value = tuple(new_field_value.split("\n"))
                 else:
                     continue
 
-                new_field_value = st.session_state.get(element_key)
                 if new_field_value != last_field_value:
                     updates_to_chat_configs[field_name] = new_field_value
 

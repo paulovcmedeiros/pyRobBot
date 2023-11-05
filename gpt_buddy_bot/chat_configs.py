@@ -26,6 +26,8 @@ class BaseConfigModel(BaseModel):
         """Return type of `field`."""
         type_hint = typing.get_type_hints(cls)[field]
         if isinstance(type_hint, type):
+            if isinstance(type_hint, types.GenericAlias):
+                return get_origin(type_hint)
             return type_hint
         type_hint_first_arg = get_args(type_hint)[0]
         if isinstance(type_hint_first_arg, type):
