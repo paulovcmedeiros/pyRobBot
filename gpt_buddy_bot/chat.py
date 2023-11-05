@@ -5,7 +5,7 @@ from collections import defaultdict
 import openai
 
 from . import GeneralConstants
-from .chat_configs import ChatOptions
+from .chat_configs import ChatOptions, OpenAiApiCallOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
 from .tokens import TokenUsageDatabase, get_n_tokens
 
@@ -125,7 +125,7 @@ class Chat:
         # Make API request and yield response chunks
         full_reply_content = ""
         for chunk in _make_api_chat_completion_call(
-            conversation=contextualised_prompt, model=self.model
+            conversation=contextualised_prompt, chat_obj=self
         ):
             full_reply_content += chunk
             yield chunk
@@ -172,16 +172,20 @@ class Chat:
         yield from self.yield_response_from_msg(prompt_as_msg)
 
 
-def _make_api_chat_completion_call(conversation: list, model: str):
+def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
     success = False
+
+    api_call_args = {}
+    for field in OpenAiApiCallOptions.model_fields:
+        if getattr(chat_obj, field) is not None:
+            api_call_args[field] = getattr(chat_obj, field)
+
     while not success:
         try:
             for line in openai.ChatCompletion.create(
-                model=model,
                 messages=conversation,
-                request_timeout=10,
                 stream=True,
-                temperature=0.8,
+                **api_call_args,
             ):
                 reply_chunk = getattr(line.choices[0].delta, "content", "")
                 yield reply_chunk
