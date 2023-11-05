@@ -31,7 +31,8 @@ def run_on_ui(args):
                 app_path.as_posix(),
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
-            ]
+            ],
+            cwd=app_path.parent.as_posix(),
         )
     except (KeyboardInterrupt, EOFError):
         print("Exiting.")

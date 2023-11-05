@@ -3,12 +3,19 @@ import pickle
 import sys
 import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import streamlit as st
+from PIL import Image
 
 from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
+
+_ASSISTANT_AVATAR_FILE_PATH = Path("data/assistant_avatar.png")
+_USER_AVATAR_FILE_PATH = Path("data/user_avatar.png")
+_ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
+_USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
 
 
 class AppPage(ABC):
@@ -67,6 +74,8 @@ class ChatBotPage(AppPage):
         )
         self._sidebar_title = sidebar_title if sidebar_title else chat_title
 
+        self.avatars = {"assistant": _ASSISTANT_AVATAR_IMAGE, "user": _USER_AVATAR_IMAGE}
+
     @property
     def chat_configs(self) -> ChatOptions:
         """Return the configs used for the page's chat object."""
@@ -98,7 +107,8 @@ class ChatBotPage(AppPage):
     def render_chat_history(self):
         """Render the chat history of the page."""
         for message in self.chat_history:
-            with st.chat_message(message["role"]):
+            role = message["role"]
+            with st.chat_message(role, avatar=self.avatars[role]):
                 st.markdown(message["content"])
 
     def render(self):
@@ -117,7 +127,8 @@ class ChatBotPage(AppPage):
             initial_bot_greetings = (
                 f"Hi! I'm {self.chat_obj.assistant_name}. How can I help you today?"
             )
-            with st.chat_message("assistant"):
+
+            with st.chat_message("assistant", avatar=self.avatars["assistant"]):
                 st.markdown(initial_bot_greetings)
                 self.chat_history.append(
                     {
@@ -133,7 +144,7 @@ class ChatBotPage(AppPage):
         )
         if prompt := st.chat_input(placeholder=placeholder):
             # Display user message in chat message container
-            with st.chat_message("user"):
+            with st.chat_message("user", avatar=self.avatars["user"]):
                 st.markdown(prompt)
 
             self.chat_history.append(
@@ -141,7 +152,7 @@ class ChatBotPage(AppPage):
             )
 
             # Display (stream) assistant response in chat message container
-            with st.chat_message("assistant"):
+            with st.chat_message("assistant", avatar=self.avatars["assistant"]):
                 with st.empty():
                     st.markdown("▌")
                     full_response = ""

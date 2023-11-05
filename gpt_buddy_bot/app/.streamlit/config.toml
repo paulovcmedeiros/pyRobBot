@@ -10,6 +10,6 @@
   runOnSave = true
 
 [theme]
-  base = "light"
+  base = "dark"
   # Colors
   primaryColor = "#2BB5E8"
