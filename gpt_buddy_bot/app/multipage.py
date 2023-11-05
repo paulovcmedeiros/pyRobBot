@@ -4,6 +4,7 @@ import contextlib
 import streamlit as st
 from app_page_templates import AppPage, ChatBotPage
 
+from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
 
@@ -83,8 +84,8 @@ class MultiPageApp:
                         help="Delete this chat.",
                     )
         with sidebar_tabs["settings"]:
-            current_chat_configs = self.selected_page.chat_configs
-            new_chat_configs = {}
+            current_chat_configs = self.selected_page.chat_obj.configs
+            updates_to_chat_configs = {}
             for field_name, field in ChatOptions.model_fields.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
@@ -124,17 +125,17 @@ class MultiPageApp:
                         step=step,
                         key=element_key,
                     )
+                else:
+                    continue
 
                 new_field_value = st.session_state.get(element_key)
                 if new_field_value != last_field_value:
-                    new_chat_configs[field_name] = new_field_value
+                    updates_to_chat_configs[field_name] = new_field_value
 
-        if new_chat_configs:
-            # Update chat configs. Make sure not to lose the conversation context.
-            new_chat_configs["context_file_path"] = current_chat_configs.context_file_path
-            self.selected_page.chat_configs = current_chat_configs.model_copy(
-                update=new_chat_configs
-            )
+        if updates_to_chat_configs:
+            new_chat_configs = current_chat_configs.model_dump()
+            new_chat_configs.update(updates_to_chat_configs)
+            self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
 
     def render(self, sidebar_tabs: dict):
         """Render the multipage app with focus on the selected page."""

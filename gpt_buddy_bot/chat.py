@@ -13,12 +13,10 @@ from .tokens import TokenUsageDatabase, get_n_tokens
 class Chat:
     def __init__(self, configs: ChatOptions):
         self.id = uuid.uuid4()
-        self.configs = configs
-        for field in self.configs.model_fields:
-            setattr(self, field, self.configs[field])
 
-        if self.assistant_name is None:
-            self.assistant_name = self.model
+        self._passed_configs = configs
+        for field in self._passed_configs.model_fields:
+            setattr(self, field, self._passed_configs[field])
 
         self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
         self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
@@ -34,6 +32,14 @@ class Chat:
             self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
         else:
             raise NotImplementedError(f"Unknown context model: {self.context_model}")
+
+    @property
+    def configs(self):
+        """Return the chat's configs after initialisation."""
+        configs_dict = {}
+        for field_name in ChatOptions.model_fields:
+            configs_dict[field_name] = getattr(self, field_name)
+        return ChatOptions.model_validate(configs_dict)
 
     @property
     def base_directive(self):
@@ -67,14 +73,17 @@ class Chat:
             self.report_token_usage()
 
     @classmethod
+    def from_dict(cls, configs: dict):
+        return cls(configs=ChatOptions.model_validate(configs))
+
+    @classmethod
     def from_cli_args(cls, cli_args):
         chat_opts = {
             k: v
             for k, v in vars(cli_args).items()
             if k in ChatOptions.model_fields and v is not None
         }
-        configs = ChatOptions.model_validate(chat_opts)
-        return cls(configs)
+        return cls.from_dict(chat_opts)
 
     def respond_user_prompt(self, prompt: str):
         yield from self._respond_prompt(prompt=prompt, role="user")

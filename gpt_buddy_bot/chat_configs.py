@@ -112,9 +112,12 @@ class ChatOptions(OpenAiApiCallOptions):
     """Model for the chat's configuration options."""
 
     username: str = Field(default=getuser(), description="Name of the chat's user")
-    assistant_name: str = Field(default=None, description="Name of the chat's assistant")
+    assistant_name: str = Field(
+        default=GeneralConstants.APP_NAME, description="Name of the chat's assistant"
+    )
     system_name: str = Field(
-        default=GeneralConstants.PACKAGE_NAME, description="Name of the chat's system"
+        default=f"{GeneralConstants.PACKAGE_NAME}_system",
+        description="Name of the chat's system",
     )
     context_model: Literal["text-embedding-ada-002", None] = Field(
         default="text-embedding-ada-002",

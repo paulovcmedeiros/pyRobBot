@@ -18,15 +18,11 @@ class AppPage(ABC):
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         self.page_id = str(uuid.uuid4())
         self.page_number = st.session_state.get("n_created_pages", 0) + 1
-        self._initial_sidebar_title = (
+
+        self._sidebar_title = (
             sidebar_title if sidebar_title else f"Page {self.page_number}"
         )
-        self._init_page_title = page_title if page_title else self.default_page_title
-
-    @property
-    def default_page_title(self):
-        """Return the default page title."""
-        return self.sidebar_title
+        self._page_title = page_title if page_title else self.sidebar_title
 
     @property
     def state(self):
@@ -36,21 +32,25 @@ class AppPage(ABC):
         return st.session_state[self.page_id]
 
     @property
+    def sidebar_title(self):
+        """Get the title of the page in the sidebar."""
+        return self.state.get("sidebar_title", self._sidebar_title)
+
+    @sidebar_title.setter
+    def sidebar_title(self, value):
+        """Set the sidebar title for the page."""
+        self.state["sidebar_title"] = value
+
+    @property
     def title(self):
         """Get the title of the page."""
-        return self.state.get("page_title", self._init_page_title)
+        return self.state.get("page_title", self._page_title)
 
     @title.setter
     def title(self, value):
         """Set the title of the page."""
-        st.title(value)
         self.state["page_title"] = value
-        self.state["sidebar_title"] = value
-
-    @property
-    def sidebar_title(self):
-        """Get the title of the page in the sidebar."""
-        return self.state.get("sidebar_title", self._initial_sidebar_title)
+        st.title(value)
 
     @abstractmethod
     def render(self):
@@ -58,12 +58,12 @@ class AppPage(ABC):
 
 
 class ChatBotPage(AppPage):
-    @property
-    def default_page_title(self):
-        """Return the default page title."""
-        page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
-        page_title += f"## {self.chat_obj.model}\n### {self.sidebar_title}"
-        return page_title
+    def __init__(self, sidebar_title: str = "", page_title: str = ""):
+        super().__init__(sidebar_title, page_title)
+        self._page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
+        self._sidebar_title = (
+            sidebar_title if sidebar_title else f"Chat {self.page_number}"
+        )
 
     @property
     def chat_configs(self) -> ChatOptions:
@@ -74,18 +74,17 @@ class ChatBotPage(AppPage):
                 self.state["chat_configs"] = pickle.load(chat_configs_file)
         return self.state["chat_configs"]
 
-    @chat_configs.setter
-    def chat_configs(self, value: ChatOptions):
-        self.state["chat_configs"] = ChatOptions.model_validate(value)
-        with contextlib.suppress(KeyError):
-            del self.state["chat_obj"]
-
     @property
     def chat_obj(self) -> Chat:
         """Return the chat object responsible for the queries in this page."""
         if "chat_obj" not in self.state:
-            self.state["chat_obj"] = Chat(self.chat_configs)
+            self.chat_obj = Chat(self.chat_configs)
         return self.state["chat_obj"]
+
+    @chat_obj.setter
+    def chat_obj(self, value: Chat):
+        self.state["chat_obj"] = value
+        self.state["chat_configs"] = value.configs
 
     @property
     def chat_history(self) -> list[dict[str, str]]:
@@ -108,11 +107,13 @@ class ChatBotPage(AppPage):
 
         """
         st.title(self.title)
-
         self.render_chat_history()
 
         # Accept user input
-        if prompt := st.chat_input("Send a message"):
+        placeholder = (
+            f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
+        )
+        if prompt := st.chat_input(placeholder=placeholder):
             self.chat_history.append(
                 {"role": "user", "name": self.chat_obj.username, "content": prompt}
             )
@@ -147,3 +148,4 @@ class ChatBotPage(AppPage):
                         message["content"] for message in self.chat_history
                     )
                     self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
+                    self.sidebar_title = self.title
