@@ -1,5 +1,6 @@
 "Code for the creation streamlit apps with dynamically created pages."
 import contextlib
+from abc import ABC, abstractmethod
 
 import streamlit as st
 from app_page_templates import AppPage, ChatBotPage
@@ -8,7 +9,7 @@ from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
 
-class MultiPageApp:
+class AbstractMultipageApp(ABC):
     """Framework for creating streamlite multipage apps.
 
     Adapted from:
@@ -37,7 +38,7 @@ class MultiPageApp:
             st.session_state["available_pages"] = {}
         return st.session_state["available_pages"]
 
-    def add_page(self, page: AppPage, selected: bool = False) -> None:
+    def add_page(self, page: AppPage, selected: bool = True):
         """Add a page to the app."""
         self.pages[page.page_id] = page
         self.n_created_pages += 1
@@ -59,6 +60,21 @@ class MultiPageApp:
         if "selected_page" not in st.session_state:
             return next(iter(self.pages.values()))
         return st.session_state["selected_page"]
+
+    @abstractmethod
+    def handle_ui_page_selection(self, **kwargs):
+        """Control page selection in the UI sidebar."""
+
+    def render(self, **kwargs):
+        """Render the multipage app with focus on the selected page."""
+        self.handle_ui_page_selection(**kwargs)
+        self.selected_page.render()
+        st.session_state["last_rendered_page"] = self.selected_page.page_id
+
+
+class MultipageChatbotApp(AbstractMultipageApp):
+    def add_page(self, selected: bool = True):
+        return super().add_page(page=ChatBotPage(), selected=selected)
 
     def handle_ui_page_selection(self, sidebar_tabs: dict):
         """Control page selection in the UI sidebar."""
@@ -83,8 +99,9 @@ class MultiPageApp:
                         kwargs={"page": page},
                         help="Delete this chat.",
                     )
+
         with sidebar_tabs["settings"]:
-            caption = f"\u2699\uFE0F Settings for Chat {self.selected_page.page_number}"
+            caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
             if self.selected_page.title != self.selected_page._page_title:
                 caption += f": {self.selected_page.title}"
             st.caption(caption)
@@ -140,9 +157,3 @@ class MultiPageApp:
             new_chat_configs = current_chat_configs.model_dump()
             new_chat_configs.update(updates_to_chat_configs)
             self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
-
-    def render(self, sidebar_tabs: dict):
-        """Render the multipage app with focus on the selected page."""
-        self.handle_ui_page_selection(sidebar_tabs=sidebar_tabs)
-        self.selected_page.render()
-        st.session_state["last_rendered_page"] = self.selected_page.page_id

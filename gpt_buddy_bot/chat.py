@@ -47,9 +47,8 @@ class Chat:
             [
                 instruction.strip()
                 for instruction in [
-                    f"Your name is {self.assistant_name}.",
+                    f"You are {self.assistant_name} (model {self.model}).",
                     f"You are a helpful assistant to {self.username}.",
-                    "You answer correctly. You do not lie.",
                     " ".join(
                         [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
                     ),
@@ -58,7 +57,6 @@ class Chat:
                 if instruction.strip()
             ]
         )
-
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
     def __del__(self):

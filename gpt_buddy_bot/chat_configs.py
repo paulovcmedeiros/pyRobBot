@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
 import argparse
+import types
 import typing
 from functools import reduce
 from getpass import getuser
 from pathlib import Path
-from typing import Literal, Optional, get_args
+from typing import Literal, Optional, get_args, get_origin
 
 from pydantic import BaseModel, Field
 
@@ -128,7 +129,11 @@ class ChatOptions(OpenAiApiCallOptions):
         description="Path to the file to read/write the chat context from/to.",
     )
     ai_instructions: tuple[str, ...] = Field(
-        default=("Answer with the fewest tokens possible.",),
+        default=(
+            "You answer correctly.",
+            "You do not lie.",
+            "You answer with the fewest tokens possible.",
+        ),
         description="Initial instructions for the AI",
     )
     token_usage_db_path: Path = Field(

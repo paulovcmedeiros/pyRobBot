@@ -58,11 +58,14 @@ class AppPage(ABC):
 
 class ChatBotPage(AppPage):
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
-        super().__init__(sidebar_title, page_title)
-        self._page_title = f"{GeneralConstants.APP_NAME}    :speech_balloon:"
-        self._sidebar_title = (
-            sidebar_title if sidebar_title else f"Chat {self.page_number}"
+        super().__init__(sidebar_title=sidebar_title, page_title=page_title)
+        chat_title = f"Chat #{self.page_number}"
+        self._page_title = (
+            page_title
+            if page_title
+            else f"{GeneralConstants.APP_NAME} :speech_balloon:\n{chat_title}"
         )
+        self._sidebar_title = sidebar_title if sidebar_title else chat_title
 
     @property
     def chat_configs(self) -> ChatOptions:
@@ -113,24 +116,24 @@ class ChatBotPage(AppPage):
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
         )
         if prompt := st.chat_input(placeholder=placeholder):
-            self.chat_history.append(
-                {"role": "user", "name": self.chat_obj.username, "content": prompt}
-            )
             # Display user message in chat message container
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Display assistant response in chat message container
+            self.chat_history.append(
+                {"role": "user", "name": self.chat_obj.username, "content": prompt}
+            )
+
+            # Display (stream) assistant response in chat message container
             with st.chat_message("assistant"):
-                # Use blinking cursor to indicate activity
-                message_placeholder = st.empty()
-                message_placeholder.markdown("▌")
-                full_response = ""
-                # Stream assistant response
-                for chunk in self.chat_obj.respond_user_prompt(prompt):
-                    full_response += chunk
-                    message_placeholder.markdown(full_response + "▌")
-                message_placeholder.markdown(full_response)
+                with st.empty():
+                    st.markdown("▌")
+                    full_response = ""
+                    for chunk in self.chat_obj.respond_user_prompt(prompt):
+                        full_response += chunk
+                        st.markdown(full_response + "▌")
+                    st.markdown(full_response)
+
             self.chat_history.append(
                 {
                     "role": "assistant",
