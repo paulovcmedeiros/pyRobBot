@@ -29,13 +29,6 @@ def run_on_ui(args):
                 "streamlit",
                 "run",
                 app_path.as_posix(),
-                "--theme.base=dark",
-                "--runner.fastReruns",
-                "True",
-                "--server.runOnSave",
-                "True",
-                "--browser.gatherUsageStats",
-                "False",
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ]

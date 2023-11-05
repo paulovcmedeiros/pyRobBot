@@ -59,7 +59,7 @@ class AppPage(ABC):
 class ChatBotPage(AppPage):
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         super().__init__(sidebar_title=sidebar_title, page_title=page_title)
-        chat_title = f"Chat #{self.page_number}"
+        chat_title = f"### Chat #{self.page_number}"
         self._page_title = (
             page_title
             if page_title
@@ -109,7 +109,23 @@ class ChatBotPage(AppPage):
 
         """
         st.title(self.title)
-        self.render_chat_history()
+        st.divider()
+
+        if self.chat_history:
+            self.render_chat_history()
+        else:
+            initial_bot_greetings = (
+                f"Hi! I'm {self.chat_obj.assistant_name}. How can I help you today?"
+            )
+            with st.chat_message("assistant"):
+                st.markdown(initial_bot_greetings)
+                self.chat_history.append(
+                    {
+                        "role": "assistant",
+                        "name": self.chat_obj.assistant_name,
+                        "content": initial_bot_greetings,
+                    }
+                )
 
         # Accept user input
         placeholder = (

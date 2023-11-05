@@ -1,0 +1,15 @@
+# Stremlit configs.
+# See <https://docs.streamlit.io/library/advanced-features/configuration>.
+[browser]
+  gatherUsageStats = false
+
+[runner]
+  fastReruns = true
+
+[server]
+  runOnSave = true
+
+[theme]
+  base = "light"
+  # Colors
+  primaryColor = "#2BB5E8"
