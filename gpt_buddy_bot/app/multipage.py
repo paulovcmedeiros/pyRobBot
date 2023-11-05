@@ -84,6 +84,10 @@ class MultiPageApp:
                         help="Delete this chat.",
                     )
         with sidebar_tabs["settings"]:
+            caption = f"\u2699\uFE0F Settings for Chat {self.selected_page.page_number}"
+            if self.selected_page.title != self.selected_page._page_title:
+                caption += f": {self.selected_page.title}"
+            st.caption(caption)
             current_chat_configs = self.selected_page.chat_obj.configs
             updates_to_chat_configs = {}
             for field_name, field in ChatOptions.model_fields.items():

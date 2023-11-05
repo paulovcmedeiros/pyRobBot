@@ -1,5 +1,4 @@
 """Utilities for creating pages in a streamlit app."""
-import contextlib
 import pickle
 import sys
 import uuid
@@ -60,7 +59,7 @@ class AppPage(ABC):
 class ChatBotPage(AppPage):
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         super().__init__(sidebar_title, page_title)
-        self._page_title = f":speech_balloon:  {GeneralConstants.APP_NAME}\n"
+        self._page_title = f"{GeneralConstants.APP_NAME}    :speech_balloon:"
         self._sidebar_title = (
             sidebar_title if sidebar_title else f"Chat {self.page_number}"
         )

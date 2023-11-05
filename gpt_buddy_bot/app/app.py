@@ -14,7 +14,7 @@ def run_app():
         sidebar_tabs = {"chats": tab1, "settings": tab2}
         with tab1:
             # Create a new chat upon init or button press
-            if st.button(label=":speech_balloon: New Chat") or not app.pages:
+            if st.button(label=":heavy_plus_sign:  New Chat") or not app.pages:
                 app.add_page(ChatBotPage(), selected=True)
     app.render(sidebar_tabs=sidebar_tabs)
 
