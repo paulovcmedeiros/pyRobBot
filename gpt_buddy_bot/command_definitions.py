@@ -4,11 +4,12 @@ from subprocess import run
 
 from . import GeneralConstants
 from .chat import Chat
+from .chat_configs import ChatOptions
 
 
 def accounting(args):
     """Show the accumulated costs of the chat and exit."""
-    Chat().report_token_usage(current_chat=False)
+    Chat.from_cli_args(cli_args=args).report_token_usage(current_chat=False)
 
 
 def run_on_terminal(args):
@@ -18,8 +19,9 @@ def run_on_terminal(args):
 
 def run_on_ui(args):
     """Run the chat on the browser."""
-    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as parsed_args_file:
-        pickle.dump(args, parsed_args_file)
+    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
+        pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
+
     app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
     try:
         run(
@@ -27,16 +29,10 @@ def run_on_ui(args):
                 "streamlit",
                 "run",
                 app_path.as_posix(),
-                "--theme.base=dark",
-                "--runner.fastReruns",
-                "True",
-                "--server.runOnSave",
-                "True",
-                "--browser.gatherUsageStats",
-                "False",
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
-            ]
+            ],
+            cwd=app_path.parent.as_posix(),
         )
     except (KeyboardInterrupt, EOFError):
         print("Exiting.")

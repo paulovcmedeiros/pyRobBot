@@ -1,66 +1,63 @@
 #!/usr/bin/env python3
+import uuid
 from collections import defaultdict
 
 import openai
 
 from . import GeneralConstants
+from .chat_configs import ChatOptions, OpenAiApiCallOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
 from .tokens import TokenUsageDatabase, get_n_tokens
 
 
 class Chat:
-    def __init__(
-        self,
-        model: str = "gpt-3.5-turbo",
-        base_instructions: str = "",
-        context_model: str = "text-embedding-ada-002",
-        report_accounting_when_done: bool = False,
-    ):
-        self.model = model.lower()
+    def __init__(self, configs: ChatOptions):
+        self.id = uuid.uuid4()
 
-        if context_model is not None:
-            context_model = context_model.lower()
-        self.context_model = context_model
+        self._passed_configs = configs
+        for field in self._passed_configs.model_fields:
+            setattr(self, field, self._passed_configs[field])
 
-        self.username = "chat_user"
-        self.assistant_name = f"chat_{model.replace('.', '_')}"
-        self.system_name = "chat_manager"
+        self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
+        self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
 
-        self.ground_ai_instructions = " ".join(
+        if self.context_file_path is None:
+            self.context_file_path = (
+                GeneralConstants.PACKAGE_TMPDIR / f"embeddings_for_chat_{self.id}.csv"
+            )
+
+        if self.context_model is None:
+            self.context_handler = BaseChatContext(parent_chat=self)
+        elif self.context_model == "text-embedding-ada-002":
+            self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
+        else:
+            raise NotImplementedError(f"Unknown context model: {self.context_model}")
+
+    @property
+    def configs(self):
+        """Return the chat's configs after initialisation."""
+        configs_dict = {}
+        for field_name in ChatOptions.model_fields:
+            configs_dict[field_name] = getattr(self, field_name)
+        return ChatOptions.model_validate(configs_dict)
+
+    @property
+    def base_directive(self):
+        msg_content = " ".join(
             [
                 instruction.strip()
                 for instruction in [
-                    f"Your name is {self.assistant_name}.",
+                    f"You are {self.assistant_name} (model {self.model}).",
                     f"You are a helpful assistant to {self.username}.",
-                    "You answer correctly. You do not lie.",
-                    f"{base_instructions.strip(' .')}.",
+                    " ".join(
+                        [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
+                    ),
                     f"You must remember and follow all directives by {self.system_name}.",
                 ]
                 if instruction.strip()
             ]
         )
-
-        self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
-        self.token_usage_db = TokenUsageDatabase(
-            fpath=GeneralConstants.TOKEN_USAGE_DATABASE
-        )
-
-        if self.context_model is None:
-            self.context_handler = BaseChatContext(parent_chat=self)
-        elif self.context_model == "text-embedding-ada-002":
-            self.context_handler = EmbeddingBasedChatContext(
-                embedding_model=self.context_model, parent_chat=self
-            )
-        else:
-            raise NotImplementedError(f"Unknown context model: {self.context_model}")
-
-        self.report_accounting_when_done = report_accounting_when_done
-
-        self.base_directive = {
-            "role": "system",
-            "name": self.system_name,
-            "content": self.ground_ai_instructions,
-        }
+        return {"role": "system", "name": self.system_name, "content": msg_content}
 
     def __del__(self):
         # Store token usage to database
@@ -74,13 +71,21 @@ class Chat:
             self.report_token_usage()
 
     @classmethod
+    def from_dict(cls, configs: dict):
+        return cls(configs=ChatOptions.model_validate(configs))
+
+    @classmethod
     def from_cli_args(cls, cli_args):
-        return cls(
-            model=cli_args.model,
-            context_model=cli_args.context_model,
-            base_instructions=cli_args.initial_ai_instructions,
-            report_accounting_when_done=not cli_args.skip_reporting_costs,
-        )
+        chat_opts = {
+            k: v
+            for k, v in vars(cli_args).items()
+            if k in ChatOptions.model_fields and v is not None
+        }
+        return cls.from_dict(chat_opts)
+
+    @property
+    def initial_greeting(self):
+        return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
 
     def respond_user_prompt(self, prompt: str):
         yield from self._respond_prompt(prompt=prompt, role="user")
@@ -89,6 +94,15 @@ class Chat:
         yield from self._respond_prompt(prompt=prompt, role="system")
 
     def yield_response_from_msg(self, prompt_as_msg: dict):
+        """Yield response from a prompt."""
+        try:
+            yield from self._yield_response_from_msg(prompt_as_msg=prompt_as_msg)
+        except openai.error.AuthenticationError:
+            yield "Sorry, I'm having trouble authenticating with OpenAI. "
+            yield "Please check the validity of your API key and try again."
+
+    def _yield_response_from_msg(self, prompt_as_msg: dict):
+        """Yield response from a prompt. Assumes that OpenAI authentication works."""
         role = prompt_as_msg["role"]
         prompt = prompt_as_msg["content"]
 
@@ -110,7 +124,9 @@ class Chat:
 
         # Make API request and yield response chunks
         full_reply_content = ""
-        for chunk in _make_api_call(conversation=contextualised_prompt, model=self.model):
+        for chunk in _make_api_chat_completion_call(
+            conversation=contextualised_prompt, chat_obj=self
+        ):
             full_reply_content += chunk
             yield chunk
 
@@ -130,12 +146,14 @@ class Chat:
         )
 
     def start(self):
+        """Start the chat."""
+        print(f"{self.assistant_name}> {self.initial_greeting}\n")
         try:
             while True:
-                question = input(f"{self.username}: ").strip()
+                question = input(f"{self.username}> ").strip()
                 if not question:
                     continue
-                print(f"{self.assistant_name}: ", end="", flush=True)
+                print(f"{self.assistant_name}> ", end="", flush=True)
                 for chunk in self.respond_user_prompt(prompt=question):
                     print(chunk, end="", flush=True)
                 print()
@@ -154,16 +172,20 @@ class Chat:
         yield from self.yield_response_from_msg(prompt_as_msg)
 
 
-def _make_api_call(conversation: list, model: str):
+def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
     success = False
+
+    api_call_args = {}
+    for field in OpenAiApiCallOptions.model_fields:
+        if getattr(chat_obj, field) is not None:
+            api_call_args[field] = getattr(chat_obj, field)
+
     while not success:
         try:
             for line in openai.ChatCompletion.create(
-                model=model,
                 messages=conversation,
-                request_timeout=10,
                 stream=True,
-                temperature=0.8,
+                **api_call_args,
             ):
                 reply_chunk = getattr(line.choices[0].delta, "content", "")
                 yield reply_chunk
@@ -171,6 +193,6 @@ def _make_api_call(conversation: list, model: str):
             openai.error.ServiceUnavailableError,
             openai.error.Timeout,
         ) as error:
-            print(f"    > {error}. Retrying...")
+            print(f"\n    > {error}. Retrying...")
         else:
             success = True

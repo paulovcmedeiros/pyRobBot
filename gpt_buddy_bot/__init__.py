@@ -22,7 +22,8 @@ class GeneralConstants:
 
     PACKAGE_TMPDIR.mkdir(parents=True, exist_ok=True)
     PACKAGE_CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 # Initialize the OpenAI API client
-openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.api_key = GeneralConstants.OPENAI_API_KEY

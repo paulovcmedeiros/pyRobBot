@@ -2,7 +2,6 @@ import ast
 import csv
 import json
 import time
-import uuid
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,8 +10,6 @@ import numpy as np
 import openai
 import pandas as pd
 from openai.embeddings_utils import cosine_similarity
-
-from . import GeneralConstants
 
 if TYPE_CHECKING:
     from .chat import Chat
@@ -38,16 +35,22 @@ class BaseChatContext:
 class EmbeddingBasedChatContext(BaseChatContext):
     """Chat context."""
 
-    def __init__(self, embedding_model: str, parent_chat: "Chat"):
+    def __init__(self, parent_chat: "Chat"):
         self.parent_chat = parent_chat
-        self.embedding_model = embedding_model
-        embd_file = GeneralConstants.PACKAGE_TMPDIR / f"embeddings_{uuid.uuid4()}.csv"
-        self.context_file_path = embd_file
+
+    @property
+    def embedding_model(self):
+        return self.parent_chat.context_model
+
+    @property
+    def context_file_path(self):
+        return self.parent_chat.context_file_path
 
     def add_to_history(self, text: str):
         embedding_request = self.calculate_embedding(text=text)
-        _store_object_and_embedding(
+        _store_message_embedding_data(
             obj=text,
+            embedding_model=self.embedding_model,
             embedding=embedding_request["embedding"],
             file_path=self.context_file_path,
         )
@@ -83,14 +86,17 @@ def request_embedding_from_openai(text: str, model: str):
     return {"embedding": embedding, "tokens_usage": tokens_usage}
 
 
-def _store_object_and_embedding(obj, embedding, file_path: Path):
+def _store_message_embedding_data(
+    obj, embedding_model: str, embedding: np.ndarray, file_path: Path
+):
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
     #  use-embeddings-to-retrieve-relevant-context-for-ai-assistant/268538>
     # See also <https://platform.openai.com/docs/guides/embeddings>.
 
-    emb_mess_pair = {
+    embedding_file_entry_data = {
         "timestamp": int(time.time()),
+        "embedding_model": f"{embedding_model}",
         "message": json.dumps(obj),
         "embedding": json.dumps(embedding),
     }
@@ -99,10 +105,10 @@ def _store_object_and_embedding(obj, embedding, file_path: Path):
     write_mode = "w" if init_file else "a"
 
     with open(file_path, write_mode, newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=emb_mess_pair.keys())
+        writer = csv.DictWriter(file, fieldnames=embedding_file_entry_data.keys())
         if init_file:
             writer.writeheader()
-        writer.writerow(emb_mess_pair)
+        writer.writerow(embedding_file_entry_data)
 
 
 def _compose_context_msg(history: list[str], system_name: str):
@@ -124,6 +130,7 @@ def _find_context(
     except FileNotFoundError:
         return []
 
+    df = df.loc[df["embedding_model"] == parent_chat.context_model]
     df["embedding"] = df.embedding.apply(ast.literal_eval).apply(np.array)
 
     df["similarity"] = df["embedding"].apply(lambda x: cosine_similarity(x, embedding))
