@@ -2,9 +2,11 @@
 import contextlib
 from abc import ABC, abstractmethod
 
+import openai
 import streamlit as st
 from app_page_templates import AppPage, ChatBotPage
 
+from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
@@ -73,12 +75,32 @@ class AbstractMultipageApp(ABC):
 
 
 class MultipageChatbotApp(AbstractMultipageApp):
+    def init_openai_client(self):
+        # Initialize the OpenAI API client
+        placeholher = (
+            "OPENAI_API_KEY detected"
+            if GeneralConstants.OPENAI_API_KEY
+            else "You need this to use the chat"
+        )
+        openai_api_key = st.text_input(
+            label="OpenAI API Key (required)",
+            placeholder=placeholher,
+            key="openai_api_key",
+            type="password",
+            help="[OpenAI API authentication key](https://openai.com/pricing)",
+        )
+        openai.api_key = (
+            openai_api_key if openai_api_key else GeneralConstants.OPENAI_API_KEY
+        )
+        if not openai.api_key:
+            st.write(":red[You need to provide a key to use the chat]")
+
     def add_page(self, selected: bool = True):
         return super().add_page(page=ChatBotPage(), selected=selected)
 
-    def handle_ui_page_selection(self, sidebar_tabs: dict):
+    def handle_ui_page_selection(self):
         """Control page selection in the UI sidebar."""
-        with sidebar_tabs["chats"]:
+        with self.sidebar_tabs["chats"]:
             for page in self.pages.values():
                 col1, col2 = st.columns([0.8, 0.2])
                 with col1:
@@ -100,7 +122,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         help="Delete this chat.",
                     )
 
-        with sidebar_tabs["settings"]:
+        with self.sidebar_tabs["settings"]:
             caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
             if self.selected_page.title != self.selected_page._page_title:
                 caption += f": {self.selected_page.title}"
@@ -117,6 +139,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             for field_name, field in model_fiedls.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
+                description = ChatOptions.get_description(field=field_name)
                 field_type = ChatOptions.get_type(field=field_name)
 
                 element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
@@ -129,11 +152,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         else choices.index(last_field_value)
                     )
                     new_field_value = st.selectbox(
-                        title, choices, key=element_key, index=index
+                        title, choices, key=element_key, index=index, help=description
                     )
                 elif field_type == str:
                     new_field_value = st.text_input(
-                        title, value=last_field_value, key=element_key
+                        title, value=last_field_value, key=element_key, help=description
                     )
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
@@ -156,13 +179,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         max_value=bounds[1],
                         step=step,
                         key=element_key,
+                        help=description,
                     )
                 elif field_type in (list, tuple):
                     new_field_value = st.text_area(
                         title,
                         value="\n".join(last_field_value),
                         key=element_key,
-                        help="Directives that the AI should follow.",
+                        help=description,
                     )
                     new_field_value = tuple(new_field_value.split("\n"))
                 else:
@@ -175,3 +199,15 @@ class MultipageChatbotApp(AbstractMultipageApp):
             new_chat_configs = current_chat_configs.model_dump()
             new_chat_configs.update(updates_to_chat_configs)
             self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
+
+    def render(self, **kwargs):
+        with st.sidebar:
+            self.init_openai_client()
+            # Create a sidebar with tabs for chats and settings
+            tab1, tab2 = st.tabs(["Chats", "Settings"])
+            self.sidebar_tabs = {"chats": tab1, "settings": tab2}
+            with tab1:
+                # Create a new chat upon init or button press
+                if st.button(label=":heavy_plus_sign:  New Chat") or not self.pages:
+                    self.add_page()
+        return super().render(**kwargs)

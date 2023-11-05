@@ -83,6 +83,10 @@ class Chat:
         }
         return cls.from_dict(chat_opts)
 
+    @property
+    def initial_greeting(self):
+        return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
+
     def respond_user_prompt(self, prompt: str):
         yield from self._respond_prompt(prompt=prompt, role="user")
 
@@ -90,6 +94,15 @@ class Chat:
         yield from self._respond_prompt(prompt=prompt, role="system")
 
     def yield_response_from_msg(self, prompt_as_msg: dict):
+        """Yield response from a prompt."""
+        try:
+            yield from self._yield_response_from_msg(prompt_as_msg=prompt_as_msg)
+        except openai.error.AuthenticationError:
+            yield "Sorry, I'm having trouble authenticating with OpenAI. "
+            yield "Please check the validity of your API key and try again."
+
+    def _yield_response_from_msg(self, prompt_as_msg: dict):
+        """Yield response from a prompt. Assumes that OpenAI authentication works."""
         role = prompt_as_msg["role"]
         prompt = prompt_as_msg["content"]
 
@@ -111,7 +124,9 @@ class Chat:
 
         # Make API request and yield response chunks
         full_reply_content = ""
-        for chunk in _make_api_call(conversation=contextualised_prompt, model=self.model):
+        for chunk in _make_api_chat_completion_call(
+            conversation=contextualised_prompt, model=self.model
+        ):
             full_reply_content += chunk
             yield chunk
 
@@ -131,12 +146,14 @@ class Chat:
         )
 
     def start(self):
+        """Start the chat."""
+        print(f"{self.assistant_name}> {self.initial_greeting}\n")
         try:
             while True:
-                question = input(f"{self.username}: ").strip()
+                question = input(f"{self.username}> ").strip()
                 if not question:
                     continue
-                print(f"{self.assistant_name}: ", end="", flush=True)
+                print(f"{self.assistant_name}> ", end="", flush=True)
                 for chunk in self.respond_user_prompt(prompt=question):
                     print(chunk, end="", flush=True)
                 print()
@@ -155,7 +172,7 @@ class Chat:
         yield from self.yield_response_from_msg(prompt_as_msg)
 
 
-def _make_api_call(conversation: list, model: str):
+def _make_api_chat_completion_call(conversation: list, model: str):
     success = False
     while not success:
         try:

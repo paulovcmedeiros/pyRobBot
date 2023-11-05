@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
 import argparse
+import os
 import types
 import typing
 from functools import reduce
@@ -8,7 +9,8 @@ from getpass import getuser
 from pathlib import Path
 from typing import Literal, Optional, get_args, get_origin
 
-from pydantic import BaseModel, Field
+import openai
+from pydantic import BaseModel, Field, SecretStr
 
 from gpt_buddy_bot import GeneralConstants
 
@@ -126,7 +128,7 @@ class ChatOptions(OpenAiApiCallOptions):
         default="text-embedding-ada-002",
         description="OpenAI API model to use for embedding",
     )
-    context_file_path: Path = Field(
+    context_file_path: Optional[Path] = Field(
         default=None,
         description="Path to the file to read/write the chat context from/to.",
     )
@@ -138,10 +140,10 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         description="Initial instructions for the AI",
     )
-    token_usage_db_path: Path = Field(
+    token_usage_db_path: Optional[Path] = Field(
         default=GeneralConstants.TOKEN_USAGE_DATABASE,
         description="Path to the token usage database",
     )
-    report_accounting_when_done: bool = Field(
+    report_accounting_when_done: Optional[bool] = Field(
         default=False, description="Report estimated costs when done with the chat."
     )
