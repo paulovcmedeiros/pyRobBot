@@ -51,6 +51,7 @@ class EmbeddingBasedChatContext(BaseChatContext):
         _store_message_embedding_data(
             obj=text,
             embedding_model=self.embedding_model,
+            chat_model=self.parent_chat.model,
             embedding=embedding_request["embedding"],
             file_path=self.context_file_path,
         )
@@ -87,7 +88,7 @@ def request_embedding_from_openai(text: str, model: str):
 
 
 def _store_message_embedding_data(
-    obj, embedding_model: str, embedding: list[float], file_path: Path
+    obj, embedding_model: str, chat_model: str, embedding: list[float], file_path: Path
 ):
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
@@ -97,6 +98,7 @@ def _store_message_embedding_data(
     embedding_file_entry_data = {
         "timestamp": int(time.time()),
         "embedding_model": f"{embedding_model}",
+        "chat_model": f"{chat_model}",
         "message": json.dumps(obj),
         "embedding": json.dumps(embedding),
     }

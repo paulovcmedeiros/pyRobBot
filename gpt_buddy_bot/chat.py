@@ -27,7 +27,8 @@ class Chat:
 
         if self.context_file_path is None:
             self.context_file_path = (
-                GeneralConstants.PACKAGE_TMPDIR / f"embeddings_for_chat_{self.id}.csv"
+                GeneralConstants.PACKAGE_CHAT_CONTEXTS_DIRECTORY
+                / f"embeddings_for_chat_{self.id}.csv"
             )
 
         if self.context_model is None:
