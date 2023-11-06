@@ -131,6 +131,3 @@ class ChatOptions(OpenAiApiCallOptions):
         gt=0,
         description="Maximum number of attempts to connect to the OpenAI API",
     )
-    report_accounting_when_done: Optional[bool] = Field(
-        default=False, description="Report estimated costs when done with the chat."
-    )

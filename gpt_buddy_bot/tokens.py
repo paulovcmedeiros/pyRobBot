@@ -1,6 +1,5 @@
 import datetime
 import sqlite3
-from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd

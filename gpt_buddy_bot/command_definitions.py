@@ -14,7 +14,10 @@ def accounting(args):
 
 def run_on_terminal(args):
     """Run the chat on the terminal."""
-    Chat.from_cli_args(cli_args=args).start()
+    chat = Chat.from_cli_args(cli_args=args)
+    chat.start()
+    if args.report_accounting_when_done:
+        chat.report_token_usage(current_chat=True)
 
 
 def run_on_ui(args):

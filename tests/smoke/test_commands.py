@@ -6,7 +6,7 @@ from gpt_buddy_bot.argparse_wrapper import get_parsed_args
 
 @pytest.mark.parametrize("user_input", ("Hi!", ""), ids=("regular-input", "empty-input"))
 def test_terminal_command(input_builtin_mocker):
-    args = ["terminal"]
+    args = ["terminal", "--report-accounting-when-done"]
     main(args)
 
 

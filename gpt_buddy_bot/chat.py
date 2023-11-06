@@ -71,8 +71,6 @@ class Chat:
                 n_input_tokens=self.token_usage[model]["input"],
                 n_output_tokens=self.token_usage[model]["output"],
             )
-        if self.report_accounting_when_done:
-            self.report_token_usage()
 
     @classmethod
     def from_dict(cls, configs: dict):

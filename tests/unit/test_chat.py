@@ -44,5 +44,6 @@ def test_request_timeout_retry(mocker, default_chat, input_builtin_mocker):
 def test_chat_context_handlers(default_chat_configs, input_builtin_mocker, context_model):
     chat_configs_dict = default_chat_configs.model_dump()
     chat_configs_dict.update({"context_model": context_model})
+
     chat = Chat.from_dict(chat_configs_dict)
     chat.start()
