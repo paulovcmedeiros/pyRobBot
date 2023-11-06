@@ -3,7 +3,6 @@
 import argparse
 import types
 import typing
-from functools import reduce
 from getpass import getuser
 from pathlib import Path
 from typing import Literal, Optional, get_args, get_origin
@@ -59,29 +58,11 @@ class BaseConfigModel(BaseModel):
         return getattr(cls.model_fields[field], param, None)
 
     def __getitem__(self, item):
-        """Get items from container.
-
-        The behaviour is similar to a `dict`, except for the fact that
-        `self["A.B.C.D. ..."]` will behave like `self["A"]["B"]["C"]["D"][...]`.
-
-        Args:
-            item (str): Item to be retrieved. Use dot-separated keys to retrieve a nested
-                item in one go.
-
-        Raises:
-            KeyError: If the item is not found.
-
-        Returns:
-            Any: Value of the item.
-        """
+        """Make possible to retrieve values as in a dict."""
         try:
-            # Try regular getitem first in case "A.B. ... C" is actually a single key
             return getattr(self, item)
-        except AttributeError:
-            try:
-                return reduce(getattr, item.split("."), self)
-            except AttributeError as error:
-                raise KeyError(item) from error
+        except AttributeError as error:
+            raise KeyError(item) from error
 
 
 class OpenAiApiCallOptions(BaseConfigModel):
