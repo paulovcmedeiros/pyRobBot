@@ -195,10 +195,10 @@ def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
     while not success:
         n_attempts += 1
         try:
-            for line in openai.ChatCompletion.create(
+            for completion_chunk in openai.ChatCompletion.create(
                 messages=conversation, stream=True, **api_call_args
             ):
-                reply_chunk = getattr(line.choices[0].delta, "content", "")
+                reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
                 yield reply_chunk
         except (
             openai.error.ServiceUnavailableError,

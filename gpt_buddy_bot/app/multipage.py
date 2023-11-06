@@ -87,7 +87,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             placeholder=placeholher,
             key="openai_api_key",
             type="password",
-            help="[OpenAI API authentication key](https://openai.com/pricing)",
+            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys)",
         )
         openai.api_key = (
             openai_api_key if openai_api_key else GeneralConstants.OPENAI_API_KEY
