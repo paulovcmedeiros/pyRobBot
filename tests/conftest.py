@@ -1,6 +1,7 @@
 import os
 
 import lorem
+import numpy as np
 import openai
 import pytest
 
@@ -45,7 +46,7 @@ def openai_api_request_mockers(request, mocker):
     def _mock_openai_Embedding_create(*args, **kwargs):
         """Mock `openai.Embedding.create`. Yield from lorem ipsum instead."""
         embedding_request = {
-            "data": [{"embedding": [0.0] * 512}],
+            "data": [{"embedding": np.random.rand(512).tolist()}],
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         }
         return embedding_request

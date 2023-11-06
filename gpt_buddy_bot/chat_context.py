@@ -87,7 +87,7 @@ def request_embedding_from_openai(text: str, model: str):
 
 
 def _store_message_embedding_data(
-    obj, embedding_model: str, embedding: np.ndarray, file_path: Path
+    obj, embedding_model: str, embedding: list[float], file_path: Path
 ):
     """Store message and embeddings to file."""
     # Adapted from <https://community.openai.com/t/
