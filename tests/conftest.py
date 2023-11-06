@@ -13,7 +13,7 @@ from gpt_buddy_bot.chat_configs import ChatOptions
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "no_chat_completion_create_mocking: mark test to not mock openai.ChatCompletion.create",
+        "no_chat_completion_create_mocking: do not mock openai.ChatCompletion.create",
     )
     config.addinivalue_line(
         "markers",
@@ -61,14 +61,15 @@ def openai_api_request_mockers(request, mocker):
 
 @pytest.fixture()
 def input_builtin_mocker(mocker, user_input):
-    """Mock the `input` builtin. Raise `KeyboardInterrupt` after the first call."""
+    """Mock the `input` builtin. Raise `KeyboardInterrupt` after the second call."""
 
+    # We allow two calls in order to allow for the chat context handler to kick in
     def _mock_input(*args, **kwargs):
         try:
             _mock_input.execution_counter += 1
         except AttributeError:
             _mock_input.execution_counter = 0
-        if _mock_input.execution_counter > 0:
+        if _mock_input.execution_counter > 1:
             raise KeyboardInterrupt
         return user_input
 
@@ -80,6 +81,7 @@ def default_chat_configs(tmp_path):
     return ChatOptions(
         token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
         context_file_path=tmp_path / "context.json",  # Don't use our context files
+        report_accounting_when_done=True,  # Just to activate testing of this feature
     )
 
 

@@ -1,7 +1,8 @@
 import openai
 import pytest
 
-from gpt_buddy_bot.chat import CannotConnectToApiError
+from gpt_buddy_bot.chat import CannotConnectToApiError, Chat
+from gpt_buddy_bot.chat_configs import ChatOptions
 
 
 @pytest.mark.order(1)
@@ -36,3 +37,12 @@ def test_request_timeout_retry(mocker, default_chat, input_builtin_mocker):
     mocker.patch("openai.ChatCompletion.create", new=_mock_openai_ChatCompletion_create)
     with pytest.raises(CannotConnectToApiError, match=default_chat._auth_error_msg):
         default_chat.start()
+
+
+@pytest.mark.parametrize("context_model", ChatOptions.get_allowed_values("context_model"))
+@pytest.mark.parametrize("user_input", ("regular-input",))
+def test_chat_context_handlers(default_chat_configs, input_builtin_mocker, context_model):
+    chat_configs_dict = default_chat_configs.model_dump()
+    chat_configs_dict.update({"context_model": context_model})
+    chat = Chat.from_dict(chat_configs_dict)
+    chat.start()
