@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import pickle
-from subprocess import run
+import subprocess
 
 from . import GeneralConstants
 from .chat import Chat
@@ -24,7 +24,7 @@ def run_on_ui(args):
 
     app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
     try:
-        run(
+        subprocess.run(
             [
                 "streamlit",
                 "run",

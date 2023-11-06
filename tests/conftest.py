@@ -8,6 +8,18 @@ from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
 
+# Register markers
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "no_chat_completion_create_mocking: mark test to not mock openai.ChatCompletion.create",
+    )
+    config.addinivalue_line(
+        "markers",
+        "no_embedding_create_mocking: mark test to not mock openai.Embedding.create",
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def set_env():
     # Make sure we don't consume our tokens in tests
@@ -16,7 +28,7 @@ def set_env():
 
 
 @pytest.fixture(autouse=True)
-def openai_api_request_mockers(mocker):
+def openai_api_request_mockers(request, mocker):
     """Mockers for OpenAI API requests. We don't want to consume our tokens in tests."""
 
     def _mock_openai_ChatCompletion_create(*args, **kwargs):
@@ -38,11 +50,15 @@ def openai_api_request_mockers(mocker):
         }
         return embedding_request
 
-    mocker.patch("openai.ChatCompletion.create", new=_mock_openai_ChatCompletion_create)
-    mocker.patch("openai.Embedding.create", new=_mock_openai_Embedding_create)
+    if "no_chat_completion_create_mocking" not in request.keywords:
+        mocker.patch(
+            "openai.ChatCompletion.create", new=_mock_openai_ChatCompletion_create
+        )
+    if "no_embedding_create_mocking" not in request.keywords:
+        mocker.patch("openai.Embedding.create", new=_mock_openai_Embedding_create)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def input_builtin_mocker(mocker, user_input):
     """Mock the `input` builtin. Raise `KeyboardInterrupt` after the first call."""
 
@@ -59,8 +75,11 @@ def input_builtin_mocker(mocker, user_input):
 
 
 @pytest.fixture
-def default_chat_configs():
-    return ChatOptions()
+def default_chat_configs(tmp_path):
+    return ChatOptions(
+        token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
+        context_file_path=tmp_path / "context.json",  # Don't use our context files
+    )
 
 
 @pytest.fixture()
