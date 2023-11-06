@@ -10,6 +10,10 @@ from .chat_context import BaseChatContext, EmbeddingBasedChatContext
 from .tokens import TokenUsageDatabase, get_n_tokens
 
 
+class CannotConnectToApiError(Exception):
+    """Error raised when the package cannot connect to the OpenAI API."""
+
+
 class Chat:
     def __init__(self, configs: ChatOptions):
         self.id = uuid.uuid4()
@@ -97,9 +101,8 @@ class Chat:
         """Yield response from a prompt."""
         try:
             yield from self._yield_response_from_msg(prompt_as_msg=prompt_as_msg)
-        except openai.error.AuthenticationError:
-            yield "Sorry, I'm having trouble authenticating with OpenAI. "
-            yield "Please check the validity of your API key and try again."
+        except openai.error.AuthenticationError as error:
+            raise CannotConnectToApiError(self._auth_error_msg) from error
 
     def _yield_response_from_msg(self, prompt_as_msg: dict):
         """Yield response from a prompt. Assumes that OpenAI authentication works."""
@@ -171,6 +174,13 @@ class Chat:
         prompt_as_msg = {"role": role, "name": role2name[role], "content": prompt}
         yield from self.yield_response_from_msg(prompt_as_msg)
 
+    @property
+    def _auth_error_msg(self):
+        return (
+            "Sorry, I'm having trouble authenticating with OpenAI. "
+            + "Please check the validity of your API key and try again."
+        )
+
 
 def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
     success = False
@@ -180,12 +190,13 @@ def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
         if getattr(chat_obj, field) is not None:
             api_call_args[field] = getattr(chat_obj, field)
 
+    n_attempts = 0
+    max_n_att = chat_obj.api_connection_max_n_attempts
     while not success:
+        n_attempts += 1
         try:
             for line in openai.ChatCompletion.create(
-                messages=conversation,
-                stream=True,
-                **api_call_args,
+                messages=conversation, stream=True, **api_call_args
             ):
                 reply_chunk = getattr(line.choices[0].delta, "content", "")
                 yield reply_chunk
@@ -193,6 +204,11 @@ def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
             openai.error.ServiceUnavailableError,
             openai.error.Timeout,
         ) as error:
-            print(f"\n    > {error}. Retrying...")
+            if n_attempts < max_n_att:
+                print(
+                    f"\n    > {error}. Making new attempt ({n_attempts+1}/{max_n_att})..."
+                )
+            else:
+                raise CannotConnectToApiError(chat_obj._auth_error_msg) from error
         else:
             success = True

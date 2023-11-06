@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
 import argparse
-import os
 import types
 import typing
 from functools import reduce
@@ -9,8 +8,7 @@ from getpass import getuser
 from pathlib import Path
 from typing import Literal, Optional, get_args, get_origin
 
-import openai
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from gpt_buddy_bot import GeneralConstants
 
@@ -146,6 +144,11 @@ class ChatOptions(OpenAiApiCallOptions):
     token_usage_db_path: Optional[Path] = Field(
         default=GeneralConstants.TOKEN_USAGE_DATABASE,
         description="Path to the token usage database",
+    )
+    api_connection_max_n_attempts: int = Field(
+        default=5,
+        gt=0,
+        description="Maximum number of attempts to connect to the OpenAI API",
     )
     report_accounting_when_done: Optional[bool] = Field(
         default=False, description="Report estimated costs when done with the chat."
