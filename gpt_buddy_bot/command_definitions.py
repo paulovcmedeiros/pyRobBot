@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import pickle
-from subprocess import run
+import subprocess
 
 from . import GeneralConstants
 from .chat import Chat
@@ -14,7 +14,10 @@ def accounting(args):
 
 def run_on_terminal(args):
     """Run the chat on the terminal."""
-    Chat.from_cli_args(cli_args=args).start()
+    chat = Chat.from_cli_args(cli_args=args)
+    chat.start()
+    if args.report_accounting_when_done:
+        chat.report_token_usage(current_chat=True)
 
 
 def run_on_ui(args):
@@ -22,17 +25,16 @@ def run_on_ui(args):
     with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
         pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
 
-    app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
     try:
-        run(
+        subprocess.run(
             [
                 "streamlit",
                 "run",
-                app_path.as_posix(),
+                GeneralConstants.APP_PATH.as_posix(),
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ],
-            cwd=app_path.parent.as_posix(),
+            cwd=GeneralConstants.APP_DIR.as_posix(),
         )
     except (KeyboardInterrupt, EOFError):
         print("Exiting.")

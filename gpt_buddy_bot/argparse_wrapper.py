@@ -85,6 +85,11 @@ def get_parsed_args(argv=None, default_command="ui"):
         parents=[chat_options_parser],
         help="Run the chat on the terminal.",
     )
+    parser_terminal.add_argument(
+        "--report-accounting-when-done",
+        action="store_true",
+        help="Report estimated costs when done with the chat.",
+    )
     parser_terminal.set_defaults(run_command=run_on_terminal)
 
     parser_accounting = subparsers.add_parser(

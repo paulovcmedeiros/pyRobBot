@@ -4,9 +4,9 @@ from abc import ABC, abstractmethod
 
 import openai
 import streamlit as st
-from app_page_templates import AppPage, ChatBotPage
 
 from gpt_buddy_bot import GeneralConstants
+from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
@@ -87,7 +87,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             placeholder=placeholher,
             key="openai_api_key",
             type="password",
-            help="[OpenAI API authentication key](https://openai.com/pricing)",
+            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys)",
         )
         openai.api_key = (
             openai_api_key if openai_api_key else GeneralConstants.OPENAI_API_KEY

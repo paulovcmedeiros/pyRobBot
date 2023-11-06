@@ -3,17 +3,17 @@ import pickle
 import sys
 import uuid
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 import streamlit as st
 from PIL import Image
 
 from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.chat import Chat
+from gpt_buddy_bot.chat import CannotConnectToApiError, Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
-_ASSISTANT_AVATAR_FILE_PATH = Path("data/assistant_avatar.png")
-_USER_AVATAR_FILE_PATH = Path("data/user_avatar.png")
+_AVATAR_FILES_DIR = GeneralConstants.APP_DIR / "data"
+_ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"
+_USER_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "user_avatar.png"
 _ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
 _USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
 
@@ -142,7 +142,6 @@ class ChatBotPage(AppPage):
             # Display user message in chat message container
             with st.chat_message("user", avatar=self.avatars["user"]):
                 st.markdown(prompt)
-
             self.chat_history.append(
                 {"role": "user", "name": self.chat_obj.username, "content": prompt}
             )
@@ -152,10 +151,14 @@ class ChatBotPage(AppPage):
                 with st.empty():
                     st.markdown("▌")
                     full_response = ""
-                    for chunk in self.chat_obj.respond_user_prompt(prompt):
-                        full_response += chunk
-                        st.markdown(full_response + "▌")
-                    st.markdown(full_response)
+                    try:
+                        for chunk in self.chat_obj.respond_user_prompt(prompt):
+                            full_response += chunk
+                            st.markdown(full_response + "▌")
+                    except CannotConnectToApiError:
+                        full_response = self.chat_obj._auth_error_msg
+                    finally:
+                        st.markdown(full_response)
 
             self.chat_history.append(
                 {

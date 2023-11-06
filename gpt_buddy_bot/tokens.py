@@ -1,6 +1,5 @@
 import datetime
 import sqlite3
-from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -116,13 +115,6 @@ class TokenUsageDatabase:
             sums_by_model[model_name] = sums
 
         return sums_by_model
-
-    def retrieve_sums(self):
-        sums = defaultdict(int)
-        for sums_by_model in self.retrieve_sums_by_model().values():
-            for k, v in sums_by_model.items():
-                sums[k] += v
-        return sums
 
     def get_usage_balance_dataframe(self):
         sums_by_model = self.retrieve_sums_by_model()
