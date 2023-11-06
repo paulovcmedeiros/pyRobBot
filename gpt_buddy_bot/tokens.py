@@ -117,13 +117,6 @@ class TokenUsageDatabase:
 
         return sums_by_model
 
-    def retrieve_sums(self):
-        sums = defaultdict(int)
-        for sums_by_model in self.retrieve_sums_by_model().values():
-            for k, v in sums_by_model.items():
-                sums[k] += v
-        return sums
-
     def get_usage_balance_dataframe(self):
         sums_by_model = self.retrieve_sums_by_model()
         df_rows = []
