@@ -4,9 +4,9 @@ from abc import ABC, abstractmethod
 
 import openai
 import streamlit as st
-from app_page_templates import AppPage, ChatBotPage
 
 from gpt_buddy_bot import GeneralConstants
+from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 

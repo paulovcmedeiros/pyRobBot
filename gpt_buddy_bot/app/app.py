@@ -1,7 +1,6 @@
 """Entrypoint for the package's UI."""
-from multipage import MultipageChatbotApp
-
 from gpt_buddy_bot import GeneralConstants
+from gpt_buddy_bot.app.multipage import MultipageChatbotApp
 
 
 def run_app():

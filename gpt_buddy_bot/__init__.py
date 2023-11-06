@@ -13,6 +13,8 @@ class GeneralConstants:
     VERSION = version(__name__)
     APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
     PACKAGE_DIRECTORY = Path(__file__).parent
+    APP_DIR = PACKAGE_DIRECTORY / "app"
+    APP_PATH = APP_DIR / "app.py"
     RUN_ID = uuid.uuid4().hex
     PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME
     _PACKAGE_TMPDIR = tempfile.TemporaryDirectory()

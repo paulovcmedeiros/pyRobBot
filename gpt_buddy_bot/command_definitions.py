@@ -25,17 +25,16 @@ def run_on_ui(args):
     with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
         pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
 
-    app_path = GeneralConstants.PACKAGE_DIRECTORY / "app" / "app.py"
     try:
         subprocess.run(
             [
                 "streamlit",
                 "run",
-                app_path.as_posix(),
+                GeneralConstants.APP_PATH.as_posix(),
                 "--",
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ],
-            cwd=app_path.parent.as_posix(),
+            cwd=GeneralConstants.APP_DIR.as_posix(),
         )
     except (KeyboardInterrupt, EOFError):
         print("Exiting.")
