@@ -1,6 +1,7 @@
 import openai
 import pytest
 
+from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.chat import CannotConnectToApiError, Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
@@ -18,6 +19,21 @@ def test_testbed_doesnt_actually_connect_to_openai(default_chat, input_builtin_m
             pytest.exit("Refuse to continue: Testbed is trying to connect to OpenAI API!")
 
 
+@pytest.mark.order(2)
+def test_we_are_using_tmp_cachedir():
+    try:
+        assert (
+            GeneralConstants.PACKAGE_CACHE_DIRECTORY
+            != pytest.ORIGINAL_PACKAGE_CACHE_DIRECTORY
+        )
+
+    except AssertionError:
+        pytest.exit(
+            "Refuse to continue: Tests attempted to use the package's real cache dir "
+            + f"({GeneralConstants.PACKAGE_CACHE_DIRECTORY})!"
+        )
+
+
 @pytest.mark.parametrize("user_input", ("Hi!", ""), ids=("regular-input", "empty-input"))
 def test_terminal_chat(default_chat, input_builtin_mocker):
     default_chat.start()
@@ -25,7 +41,7 @@ def test_terminal_chat(default_chat, input_builtin_mocker):
 
 
 def test_chat_configs(default_chat, default_chat_configs):
-    assert default_chat.configs == default_chat_configs
+    assert default_chat._passed_configs == default_chat_configs
 
 
 @pytest.mark.no_chat_completion_create_mocking

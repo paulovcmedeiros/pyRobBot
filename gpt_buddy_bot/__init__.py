@@ -19,7 +19,7 @@ class GeneralConstants:
     PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME
     _PACKAGE_TMPDIR = tempfile.TemporaryDirectory()
     PACKAGE_TMPDIR = Path(_PACKAGE_TMPDIR.name)
-    PACKAGE_CHAT_CONTEXTS_DIRECTORY = PACKAGE_CACHE_DIRECTORY / "chat_contexts"
+    CHAT_CACHE_DIR = PACKAGE_CACHE_DIRECTORY / "chats"
 
     # Constants related to the app
     APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
@@ -34,7 +34,7 @@ class GeneralConstants:
     # Initialise the package's directories
     PACKAGE_TMPDIR.mkdir(parents=True, exist_ok=True)
     PACKAGE_CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    PACKAGE_CHAT_CONTEXTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    CHAT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Initialize the OpenAI API client
