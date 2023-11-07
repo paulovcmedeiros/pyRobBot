@@ -1,4 +1,5 @@
 """Utilities for creating pages in a streamlit app."""
+import json
 import pickle
 import sys
 import uuid
@@ -84,6 +85,12 @@ class ChatBotPage(AppPage):
             with open(chat_options_file_path, "rb") as chat_configs_file:
                 self.state["chat_configs"] = pickle.load(chat_configs_file)
         return self.state["chat_configs"]
+
+    @chat_configs.setter
+    def chat_configs(self, value: ChatOptions):
+        self.state["chat_configs"] = ChatOptions.model_validate(value)
+        if "chat_obj" in self.state:
+            del self.state["chat_obj"]
 
     @property
     def chat_obj(self) -> Chat:
@@ -178,3 +185,13 @@ class ChatBotPage(AppPage):
                     )
                     self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
                     self.sidebar_title = self.title
+
+                    metadata = {
+                        "page_title": self.title,
+                        "sidebar_title": self.sidebar_title,
+                    }
+                    metadata_file = (
+                        self.chat_obj.context_file_path.parent / "metadata.json"
+                    )
+                    with open(metadata_file, "w") as metadata_f:
+                        json.dump(metadata, metadata_f, indent=2)

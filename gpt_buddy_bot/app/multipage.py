@@ -99,8 +99,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
         if not openai.api_key:
             st.write(":red[You need to provide a key to use the chat]")
 
-    def add_page(self, selected: bool = True):
-        return super().add_page(page=ChatBotPage(), selected=selected)
+    def add_page(self, page: ChatBotPage = None, selected: bool = True, **kwargs):
+        if page is None:
+            page = ChatBotPage(**kwargs)
+        return super().add_page(page=page, selected=selected)
 
     def handle_ui_page_selection(self):
         """Control page selection in the UI sidebar."""
@@ -204,6 +206,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
             new_chat_configs.update(updates_to_chat_configs)
             self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
 
+    def get_saved_chat_context_fpaths(self):
+        """Get the filepaths of saved chat contexts, sorted by last modified."""
+        return sorted(
+            GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/embeddings.csv"),
+            key=lambda fpath: fpath.stat().st_mtime,
+            reverse=True,
+        )
+
     def render(self, **kwargs):
         with st.sidebar:
             self.init_openai_client()
@@ -211,7 +221,29 @@ class MultipageChatbotApp(AbstractMultipageApp):
             tab1, tab2 = st.tabs(["Chats", "Settings"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
-                # Create a new chat upon init or button press
-                if st.button(label=":heavy_plus_sign:  New Chat") or not self.pages:
+                # Add button to create a new chat
+                new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
+
+                # Reopen chats from cache (if any)
+                if not st.session_state.get("saved_chats_reloaded", False):
+                    for fpath in self.get_saved_chat_context_fpaths():
+                        metadata_file = fpath.parent / "metadata.json"
+                        with open(metadata_file, "r") as metadata_file:
+                            metadata = json.load(metadata_file)
+
+                        new_page = ChatBotPage(
+                            page_title=metadata["page_title"],
+                            sidebar_title=metadata["sidebar_title"],
+                        )
+                        new_page.chat_configs = new_page.chat_configs.model_copy(
+                            update={"context_file_path": fpath}
+                        )
+
+                        self.add_page(page=new_page)
+                        st.session_state["saved_chats_reloaded"] = True
+
+                # Create a new chat upon request or if there is none yet
+                if new_chat_button or not self.pages:
                     self.add_page()
+
         return super().render(**kwargs)
