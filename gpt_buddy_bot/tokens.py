@@ -146,8 +146,9 @@ class TokenUsageDatabase:
             }
             df_rows.append(df_row)
 
-        df = _group_columns_by_prefix(pd.DataFrame(df_rows))
-        df = _add_totals_row(df)
+        df = pd.DataFrame(df_rows)
+        if not df.empty:
+            df = _add_totals_row(_group_columns_by_prefix(df))
 
         return df
 

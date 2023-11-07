@@ -98,17 +98,14 @@ class Chat:
     def yield_response_from_msg(self, prompt_as_msg: dict):
         """Yield response from a prompt."""
         try:
-            yield from self._yield_response_from_msg(prompt_as_msg=prompt_as_msg)
+            yield from self._yield_response_from_msg(prompt_msg=prompt_as_msg)
         except openai.error.AuthenticationError as error:
             raise CannotConnectToApiError(self._auth_error_msg) from error
 
-    def _yield_response_from_msg(self, prompt_as_msg: dict):
+    def _yield_response_from_msg(self, prompt_msg: dict):
         """Yield response from a prompt. Assumes that OpenAI authentication works."""
-        role = prompt_as_msg["role"]
-        prompt = prompt_as_msg["content"]
-
         # Get appropriate context for prompt from the context handler
-        prompt_context_request = self.context_handler.get_context(text=prompt)
+        prompt_context_request = self.context_handler.get_context(msg=prompt_msg)
         context = prompt_context_request["context_messages"]
 
         # Update token_usage with tokens used in context handler for prompt
@@ -116,7 +113,7 @@ class Chat:
             prompt_context_request["tokens_usage"].values()
         )
 
-        contextualised_prompt = [self.base_directive, *context, prompt_as_msg]
+        contextualised_prompt = [self.base_directive, *context, prompt_msg]
         # Update token_usage with tokens used in chat input
         self.token_usage[self.model]["input"] += sum(
             get_n_tokens(string=msg["content"], model=self.model)
@@ -138,7 +135,7 @@ class Chat:
 
         # Put current chat exchange in context handler's history
         history_entry_registration_tokens_usage = self.context_handler.add_to_history(
-            text=f"{role}: {prompt}. {self.assistant_name}: {full_reply_content}"
+            msg_list=[prompt_msg, {"role": "assistant", "content": full_reply_content}]
         )
 
         # Update token_usage with tokens used in context handler for reply
@@ -169,7 +166,7 @@ class Chat:
         prompt = prompt.strip()
         role = role.lower().strip()
         role2name = {"user": self.username, "system": self.system_name}
-        prompt_as_msg = {"role": role, "name": role2name[role], "content": prompt}
+        prompt_as_msg = {"role": role, "content": prompt}
         yield from self.yield_response_from_msg(prompt_as_msg)
 
     @property

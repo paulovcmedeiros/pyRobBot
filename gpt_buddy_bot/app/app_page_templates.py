@@ -172,8 +172,9 @@ class ChatBotPage(AppPage):
             if "page_title" not in self.state and len(self.chat_history) > 3:
                 with st.spinner("Working out conversation topic..."):
                     prompt = "Summarize the following msg exchange in max 4 words:\n"
-                    prompt += "\n\x1f".join(
-                        message["content"] for message in self.chat_history
+                    prompt += "\n".join(
+                        f"{message['role'].strip()}: {message['content'].strip()}"
+                        for message in self.chat_history
                     )
                     self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
                     self.sidebar_title = self.title
