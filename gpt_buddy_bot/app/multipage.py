@@ -1,5 +1,6 @@
 "Code for the creation streamlit apps with dynamically created pages."
 import contextlib
+import json
 from abc import ABC, abstractmethod
 
 import openai
@@ -50,7 +51,10 @@ class AbstractMultipageApp(ABC):
     def remove_page(self, page: AppPage):
         """Remove a page from the app."""
         del self.pages[page.page_id]
-        self.register_selected_page(next(iter(self.pages.values())))
+        try:
+            self.register_selected_page(next(iter(self.pages.values())))
+        except StopIteration:
+            self.add_page()
 
     def register_selected_page(self, page: AppPage):
         """Register a page as selected."""
