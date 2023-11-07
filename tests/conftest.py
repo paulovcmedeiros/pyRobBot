@@ -90,7 +90,7 @@ def input_builtin_mocker(mocker, user_input):
 def default_chat_configs(tmp_path):
     return ChatOptions(
         token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
-        context_file_path=tmp_path / "context.json",  # Don't use our context files
+        cache_dir=tmp_path,  # Don't use our cache files
     )
 
 

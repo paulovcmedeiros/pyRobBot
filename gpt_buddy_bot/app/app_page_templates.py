@@ -65,8 +65,14 @@ class AppPage(ABC):
 
 
 class ChatBotPage(AppPage):
-    def __init__(self, sidebar_title: str = "", page_title: str = ""):
+    def __init__(
+        self, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
+    ):
         super().__init__(sidebar_title=sidebar_title, page_title=page_title)
+
+        if chat_obj:
+            self.chat_obj = chat_obj
+
         chat_title = f"### Chat #{self.page_number}"
         self._page_title = (
             page_title
@@ -186,12 +192,5 @@ class ChatBotPage(AppPage):
                     self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
                     self.sidebar_title = self.title
 
-                    metadata = {
-                        "page_title": self.title,
-                        "sidebar_title": self.sidebar_title,
-                    }
-                    metadata_file = (
-                        self.chat_obj.context_file_path.parent / "metadata.json"
-                    )
-                    with open(metadata_file, "w") as metadata_f:
-                        json.dump(metadata, metadata_f, indent=2)
+                    self.chat_obj.metadata["page_title"] = self.title
+                    self.chat_obj.metadata["sidebar_title"] = self.sidebar_title

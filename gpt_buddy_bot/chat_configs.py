@@ -110,9 +110,9 @@ class ChatOptions(OpenAiApiCallOptions):
         default="text-embedding-ada-002",
         description="OpenAI API model to use for embedding",
     )
-    context_file_path: Optional[Path] = Field(
+    cache_dir: Optional[Path] = Field(
         default=None,
-        description="Path to the file to read/write the chat context from/to.",
+        description="Directory where to store/save info about the chat.",
     )
     ai_instructions: tuple[str, ...] = Field(
         default=(
@@ -130,4 +130,9 @@ class ChatOptions(OpenAiApiCallOptions):
         default=5,
         gt=0,
         description="Maximum number of attempts to connect to the OpenAI API",
+    )
+    private_mode: Optional[bool] = Field(
+        default=None,
+        description="Toggle private mode. If set to `True`, the chat will not "
+        + "be logged and the chat history will not be saved.",
     )

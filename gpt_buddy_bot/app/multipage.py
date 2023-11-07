@@ -1,6 +1,5 @@
 "Code for the creation streamlit apps with dynamically created pages."
 import contextlib
-import json
 from abc import ABC, abstractmethod
 
 import openai
@@ -50,11 +49,13 @@ class AbstractMultipageApp(ABC):
 
     def remove_page(self, page: AppPage):
         """Remove a page from the app."""
-        del self.pages[page.page_id]
         try:
             self.register_selected_page(next(iter(self.pages.values())))
         except StopIteration:
             self.add_page()
+        self.pages[page.page_id].chat_obj.private_mode = True
+        self.pages[page.page_id].chat_obj.clear_cache()
+        del self.pages[page.page_id]
 
     def register_selected_page(self, page: AppPage):
         """Register a page as selected."""
@@ -206,10 +207,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
             new_chat_configs.update(updates_to_chat_configs)
             self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
 
-    def get_saved_chat_context_fpaths(self):
+    def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
         return sorted(
-            GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/embeddings.csv"),
+            GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/"),
             key=lambda fpath: fpath.stat().st_mtime,
             reverse=True,
         )
@@ -226,21 +227,15 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
                 # Reopen chats from cache (if any)
                 if not st.session_state.get("saved_chats_reloaded", False):
-                    for fpath in self.get_saved_chat_context_fpaths():
-                        metadata_file = fpath.parent / "metadata.json"
-                        with open(metadata_file, "r") as metadata_file:
-                            metadata = json.load(metadata_file)
-
+                    st.session_state["saved_chats_reloaded"] = True
+                    for cache_dir_path in self.get_saved_chat_cache_dir_paths():
+                        chat = Chat.from_cache(cache_dir=cache_dir_path)
                         new_page = ChatBotPage(
-                            page_title=metadata["page_title"],
-                            sidebar_title=metadata["sidebar_title"],
+                            chat_obj=chat,
+                            page_title=chat.metadata.get("page_title", "Recovered Chat"),
+                            sidebar_title=chat.metadata.get("sidebar_title"),
                         )
-                        new_page.chat_configs = new_page.chat_configs.model_copy(
-                            update={"context_file_path": fpath}
-                        )
-
                         self.add_page(page=new_page)
-                        st.session_state["saved_chats_reloaded"] = True
 
                 # Create a new chat upon request or if there is none yet
                 if new_chat_button or not self.pages:

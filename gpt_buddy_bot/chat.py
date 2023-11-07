@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+import json
+import shutil
 import uuid
 from collections import defaultdict
+from filecmp import clear_cache
+from pathlib import Path
 
 import openai
 
@@ -15,20 +19,20 @@ class CannotConnectToApiError(Exception):
 
 
 class Chat:
-    def __init__(self, configs: ChatOptions):
+    def __init__(self, configs: ChatOptions = None):
         self.id = uuid.uuid4()
+
+        if configs is None:
+            configs = ChatOptions()
 
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
             setattr(self, field, self._passed_configs[field])
 
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
         self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
         self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
-
-        if self.context_file_path is None:
-            self.context_file_path = (
-                GeneralConstants.CHAT_CACHE_DIR / f"chat_{self.id}" / f"embeddings.csv"
-            )
 
         if self.context_model is None:
             self.context_handler = BaseChatContext(parent_chat=self)
@@ -36,6 +40,47 @@ class Chat:
             self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
         else:
             raise NotImplementedError(f"Unknown context model: {self.context_model}")
+
+    @property
+    def cache_dir(self):
+        return self._cache_dir
+
+    @cache_dir.setter
+    def cache_dir(self, value):
+        if value is None:
+            value = GeneralConstants.CHAT_CACHE_DIR / f"chat_{self.id}"
+        self._cache_dir = Path(value)
+
+    def clear_cache(self):
+        """Remove the cache directory."""
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
+
+    @property
+    def configs_file(self):
+        """File to store the chat's configs."""
+        return self.cache_dir / "configs.json"
+
+    @property
+    def context_file_path(self):
+        return self.cache_dir / f"embeddings.csv"
+
+    @property
+    def metadata_file(self):
+        """File to store the chat metadata."""
+        return self.cache_dir / "metadata.json"
+
+    @property
+    def metadata(self):
+        """Keep metadata associated with the chat."""
+        try:
+            _ = self._metadata
+        except AttributeError:
+            try:
+                with open(self.metadata_file, "r") as f:
+                    self._metadata = json.load(f)
+            except FileNotFoundError:
+                self._metadata = {}
+        return self._metadata
 
     @property
     def configs(self):
@@ -72,6 +117,16 @@ class Chat:
                 n_output_tokens=self.token_usage[model]["output"],
             )
 
+        if self.private_mode:
+            self.clear_cache()
+        else:
+            # Store configs
+            with open(self.configs_file, "w") as configs_f:
+                configs_f.write(self.configs.model_dump_json(indent=2))
+            # Store metadata
+            with open(self.metadata_file, "w") as metadata_f:
+                json.dump(self.metadata, metadata_f, indent=2)
+
     @classmethod
     def from_dict(cls, configs: dict):
         return cls(configs=ChatOptions.model_validate(configs))
@@ -84,6 +139,15 @@ class Chat:
             if k in ChatOptions.model_fields and v is not None
         }
         return cls.from_dict(chat_opts)
+
+    @classmethod
+    def from_cache(cls, cache_dir: Path):
+        """Return a chat object from a cached chat."""
+        try:
+            with open(cache_dir / "configs.json", "r") as configs_f:
+                return cls.from_dict(json.load(configs_f))
+        except FileNotFoundError:
+            return cls()
 
     @property
     def initial_greeting(self):
