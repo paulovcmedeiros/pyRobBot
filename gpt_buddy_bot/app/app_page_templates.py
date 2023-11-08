@@ -1,6 +1,7 @@
 """Utilities for creating pages in a streamlit app."""
 import pickle
 import sys
+import time
 import uuid
 from abc import ABC, abstractmethod
 
@@ -143,7 +144,15 @@ class ChatBotPage(AppPage):
             self.render_chat_history()
         else:
             with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                st.markdown(self.chat_obj.initial_greeting)
+                with st.empty():
+                    st.markdown("▌")
+                    greeting = ""
+                    for word in self.chat_obj.initial_greeting.split():
+                        greeting += f"{word} "
+                        st.markdown(greeting + "▌")
+                        time.sleep(0.1)
+                    st.markdown(greeting)
+
                 self.chat_history.append(
                     {
                         "role": "assistant",
