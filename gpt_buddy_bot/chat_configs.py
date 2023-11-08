@@ -67,10 +67,18 @@ class BaseConfigModel(BaseModel):
 
 class OpenAiApiCallOptions(BaseConfigModel):
     _openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
+    _models_url = "https://platform.openai.com/docs/models"
 
-    model: Literal["gpt-3.5-turbo", "gpt-4"] = Field(
-        default="gpt-3.5-turbo",
-        description=f"OpenAI LLM model to use. See {_openai_url}-model",
+    model: Literal[
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-16k",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
+        "gpt-3.5-turbo",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
+        "gpt-4-1106-preview",
+        "gpt-4",
+        "gpt-4-32k",
+    ] = Field(
+        default="gpt-3.5-turbo-1106",
+        description=f"OpenAI LLM model to use. See {_openai_url}-model and {_models_url}",
     )
     max_tokens: Optional[int] = Field(
         default=None, gt=0, description=f"See <{_openai_url}-max_tokens>"

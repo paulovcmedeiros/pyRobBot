@@ -5,9 +5,14 @@ from pathlib import Path
 import pandas as pd
 import tiktoken
 
-PRICE_PER_THOUSAND_TOKENS = {
+# See <https://openai.com/pricing> for the latest prices.
+PRICE_PER_K_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
+    "gpt-3.5-turbo-16k": {"input": 0.001, "output": 0.002},
+    "gpt-3.5-turbo-1106": {"input": 0.001, "output": 0.002},
+    "gpt-4-1106-preview": {"input": 0.03, "output": 0.06},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
     None: {"input": 0.0, "output": 0.0},
 }
@@ -17,7 +22,7 @@ class TokenUsageDatabase:
     def __init__(self, fpath: Path):
         self.fpath = fpath
         self.token_price = {}
-        for model, price_per_k_tokens in PRICE_PER_THOUSAND_TOKENS.items():
+        for model, price_per_k_tokens in PRICE_PER_K_TOKENS.items():
             self.token_price[model] = {
                 k: v / 1000.0 for k, v in price_per_k_tokens.items()
             }
