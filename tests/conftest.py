@@ -86,9 +86,21 @@ def input_builtin_mocker(mocker, user_input):
     mocker.patch("builtins.input", new=lambda _: _mock_input(user_input=user_input))
 
 
+@pytest.fixture(params=ChatOptions.get_allowed_values("model"))
+def llm_model(request):
+    return request.param
+
+
+@pytest.fixture(params=ChatOptions.get_allowed_values("context_model"))
+def context_model(request):
+    return request.param
+
+
 @pytest.fixture()
-def default_chat_configs(tmp_path):
+def default_chat_configs(llm_model, context_model, tmp_path):
     return ChatOptions(
+        model=llm_model,
+        context_model=context_model,
         token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
         cache_dir=tmp_path,  # Don't use our cache files
     )
