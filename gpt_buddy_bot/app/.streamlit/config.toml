@@ -13,6 +13,6 @@
   showErrorDetails = true
 
 [theme]
-  base = "dark"
+  base = "light"
   # Colors
   primaryColor = "#2BB5E8"
