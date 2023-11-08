@@ -10,7 +10,7 @@ import openai
 from . import GeneralConstants
 from .chat_configs import ChatOptions, OpenAiApiCallOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
-from .tokens import TokenUsageDatabase, get_n_tokens
+from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
 
 
 class CannotConnectToApiError(Exception):
@@ -183,9 +183,8 @@ class Chat:
 
         contextualised_prompt = [self.base_directive, *context, prompt_msg]
         # Update token_usage with tokens used in chat input
-        self.token_usage[self.model]["input"] += sum(
-            get_n_tokens(string=msg["content"], model=self.model)
-            for msg in contextualised_prompt
+        self.token_usage[self.model]["input"] += get_n_tokens_from_msgs(
+            messages=contextualised_prompt, model=self.model
         )
 
         # Make API request and yield response chunks
@@ -197,8 +196,9 @@ class Chat:
             yield chunk
 
         # Update token_usage ith tokens used in chat output
-        self.token_usage[self.model]["output"] += get_n_tokens(
-            string=full_reply_content, model=self.model
+        reply_as_msg = {"role": "assistant", "content": full_reply_content}
+        self.token_usage[self.model]["output"] += get_n_tokens_from_msgs(
+            messages=[reply_as_msg], model=self.model
         )
 
         if add_to_history:
