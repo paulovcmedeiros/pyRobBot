@@ -58,7 +58,7 @@ class Chat:
 
     @property
     def context_file_path(self):
-        return self.cache_dir / f"embeddings.csv"
+        return self.cache_dir / "embeddings.csv"
 
     @property
     def metadata_file(self):

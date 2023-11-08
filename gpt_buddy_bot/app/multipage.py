@@ -49,13 +49,13 @@ class AbstractMultipageApp(ABC):
 
     def remove_page(self, page: AppPage):
         """Remove a page from the app."""
+        self.pages[page.page_id].chat_obj.private_mode = True
+        self.pages[page.page_id].chat_obj.clear_cache()
+        del self.pages[page.page_id]
         try:
             self.register_selected_page(next(iter(self.pages.values())))
         except StopIteration:
             self.add_page()
-        self.pages[page.page_id].chat_obj.private_mode = True
-        self.pages[page.page_id].chat_obj.clear_cache()
-        del self.pages[page.page_id]
 
     def register_selected_page(self, page: AppPage):
         """Register a page as selected."""

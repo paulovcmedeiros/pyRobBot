@@ -1,7 +1,6 @@
 import inspect
 import time
 from functools import wraps
-from re import I
 
 import openai
 
@@ -12,7 +11,6 @@ class CannotConnectToApiError(Exception):
 
 def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to OpenAI API."):
     """Retry connecting to the API up to a maximum number of times."""
-
     handled_exceptions = (
         openai.error.ServiceUnavailableError,
         openai.error.Timeout,
