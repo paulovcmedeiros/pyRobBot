@@ -29,20 +29,16 @@ class AppPage(ABC):
         self.page_id = str(uuid.uuid4())
         self.page_number = st.session_state.get("n_created_pages", 0) + 1
 
-        chat_number_for_title = f"### Chat #{self.page_number}"
+        chat_number_for_title = f"Chat #{self.page_number}"
         if page_title is _RecoveredChat:
             self._fallback_page_title = f"{chat_number_for_title.strip('#')} (Recovered)"
             page_title = None
         else:
-            self._fallback_page_title = (
-                f"{GeneralConstants.APP_NAME} :speech_balloon:\n{chat_number_for_title}"
-            )
+            self._fallback_page_title = chat_number_for_title
             if page_title:
                 self.title = page_title
 
-        self._fallback_sidebar_title = (
-            page_title if page_title else self._fallback_page_title
-        )
+        self._fallback_sidebar_title = page_title if page_title else chat_number_for_title
         if sidebar_title:
             self.sidebar_title = sidebar_title
 

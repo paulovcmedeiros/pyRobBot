@@ -3,7 +3,6 @@ import json
 import shutil
 import uuid
 from collections import defaultdict
-from filecmp import clear_cache
 from pathlib import Path
 
 import openai
@@ -124,8 +123,9 @@ class Chat:
             with open(self.configs_file, "w") as configs_f:
                 configs_f.write(self.configs.model_dump_json(indent=2))
             # Store metadata
+            metadata = self.metadata  # Trigger loading metadata if not yet done
             with open(self.metadata_file, "w") as metadata_f:
-                json.dump(self.metadata, metadata_f, indent=2)
+                json.dump(metadata, metadata_f, indent=2)
 
     @classmethod
     def from_dict(cls, configs: dict):

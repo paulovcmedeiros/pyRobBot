@@ -221,9 +221,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
     def render(self, **kwargs):
         with st.sidebar:
+            st.title(GeneralConstants.APP_NAME)
             self.init_openai_client()
             # Create a sidebar with tabs for chats and settings
-            tab1, tab2 = st.tabs(["Chats", "Settings"])
+            tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
                 # Add button to create a new chat
@@ -241,7 +242,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         )
                         new_page.state["messages"] = chat.load_history()
                         self.add_page(page=new_page)
-                    self.register_selected_page(next(iter(self.pages.values())))
+                    self.register_selected_page(next(iter(self.pages.values()), None))
 
                 # Create a new chat upon request or if there is none yet
                 if new_chat_button or not self.pages:
