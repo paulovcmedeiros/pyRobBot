@@ -10,11 +10,8 @@ import openai
 from . import GeneralConstants
 from .chat_configs import ChatOptions, OpenAiApiCallOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
+from .general_utils import retry_api_call
 from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
-
-
-class CannotConnectToApiError(Exception):
-    """Error raised when the package cannot connect to the OpenAI API."""
 
 
 class Chat:
@@ -249,32 +246,17 @@ class Chat:
 
 
 def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
-    success = False
-
     api_call_args = {}
     for field in OpenAiApiCallOptions.model_fields:
         if getattr(chat_obj, field) is not None:
             api_call_args[field] = getattr(chat_obj, field)
 
-    n_attempts = 0
-    max_n_att = chat_obj.api_connection_max_n_attempts
-    while not success:
-        n_attempts += 1
-        try:
-            for completion_chunk in openai.ChatCompletion.create(
-                messages=conversation, stream=True, **api_call_args
-            ):
-                reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
-                yield reply_chunk
-        except (
-            openai.error.ServiceUnavailableError,
-            openai.error.Timeout,
-        ) as error:
-            if n_attempts < max_n_att:
-                print(
-                    f"\n    > {error}. Making new attempt ({n_attempts+1}/{max_n_att})..."
-                )
-            else:
-                raise CannotConnectToApiError(chat_obj._auth_error_msg) from error
-        else:
-            success = True
+    @retry_api_call(auth_error_msg=chat_obj._auth_error_msg)
+    def stream_reply(conversation, **api_call_args):
+        for completion_chunk in openai.ChatCompletion.create(
+            messages=conversation, stream=True, **api_call_args
+        ):
+            reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
+            yield reply_chunk
+
+    yield from stream_reply(conversation, **api_call_args)
