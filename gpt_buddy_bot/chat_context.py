@@ -96,7 +96,7 @@ class EmbeddingBasedChatContext(BaseChatContext):
 
 
 def request_embedding_from_openai(text: str, model: str):
-    text = text.lower().strip()
+    text = text.strip()
     embedding_request = openai.Embedding.create(input=[text], model=model)
 
     embedding = embedding_request["data"][0]["embedding"]
