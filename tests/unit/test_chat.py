@@ -2,7 +2,7 @@ import openai
 import pytest
 
 from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.chat import CannotConnectToApiError
+from gpt_buddy_bot.general_utils import CannotConnectToApiError
 
 
 @pytest.mark.order(1)
@@ -47,8 +47,9 @@ def test_chat_configs(default_chat, default_chat_configs):
 @pytest.mark.parametrize("user_input", ("regular-input",))
 def test_request_timeout_retry(mocker, default_chat, input_builtin_mocker):
     def _mock_openai_ChatCompletion_create(*args, **kwargs):
-        raise openai.error.Timeout("Mocked timeout error")
+        raise openai.error.Timeout("Mocked timeout error was not caught!")
 
     mocker.patch("openai.ChatCompletion.create", new=_mock_openai_ChatCompletion_create)
+    mocker.patch("time.sleep")  # Don't waste time sleeping in tests
     with pytest.raises(CannotConnectToApiError, match=default_chat._auth_error_msg):
         default_chat.start()

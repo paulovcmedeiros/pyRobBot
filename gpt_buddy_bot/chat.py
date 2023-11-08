@@ -10,7 +10,7 @@ import openai
 from . import GeneralConstants
 from .chat_configs import ChatOptions, OpenAiApiCallOptions
 from .chat_context import BaseChatContext, EmbeddingBasedChatContext
-from .general_utils import retry_api_call
+from .general_utils import CannotConnectToApiError, retry_api_call
 from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
 
 

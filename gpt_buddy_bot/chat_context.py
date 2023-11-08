@@ -3,6 +3,7 @@ import csv
 import itertools
 import json
 import time
+from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,19 +13,38 @@ import openai
 import pandas as pd
 from openai.embeddings_utils import cosine_similarity
 
+from .general_utils import retry_api_call
+
 if TYPE_CHECKING:
     from .chat import Chat
 
 
-class BaseChatContext:
+class ChatContext(ABC):
     def __init__(self, parent_chat: "Chat"):
         self.parent_chat = parent_chat
+
+    @abstractmethod
+    def add_to_history(self, msg_list: list[dict]):
+        """Add message exchange to history."""
+
+    @abstractmethod
+    def load_history(self):
+        """Load the chat history."""
+
+    @abstractmethod
+    def get_context(self, msg: dict):
+        """Return context messages."""
+
+
+class BaseChatContext(ChatContext):
+    def __init__(self, parent_chat: "Chat"):
+        super().__init__(parent_chat=parent_chat)
         self.history = deque(maxlen=50)
-        self._tokens_usage = {"input": 0, "output": 0}
+        self._placeholder_tokens_usage = {"input": 0, "output": 0}
 
     def add_to_history(self, msg_list: list[dict]):
         self.history += msg_list
-        return self._tokens_usage
+        return self._placeholder_tokens_usage
 
     def load_history(self):
         """Load the chat history."""
@@ -34,14 +54,14 @@ class BaseChatContext:
         context_msgs = _make_list_of_context_msgs(
             history=self.history, system_name=self.parent_chat.system_name
         )
-        return {"context_messages": context_msgs, "tokens_usage": self._tokens_usage}
+        return {
+            "context_messages": context_msgs,
+            "tokens_usage": self._placeholder_tokens_usage,
+        }
 
 
-class EmbeddingBasedChatContext(BaseChatContext):
+class EmbeddingBasedChatContext(ChatContext):
     """Chat context."""
-
-    def __init__(self, parent_chat: "Chat"):
-        self.parent_chat = parent_chat
 
     @property
     def embedding_model(self):
