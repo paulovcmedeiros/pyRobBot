@@ -78,7 +78,7 @@ class Chat:
             try:
                 with open(self.metadata_file, "r") as f:
                     self._metadata = json.load(f)
-            except FileNotFoundError:
+            except (FileNotFoundError, json.decoder.JSONDecodeError):
                 self._metadata = {}
         return self._metadata
 
@@ -117,7 +117,7 @@ class Chat:
                 n_output_tokens=self.token_usage[model]["output"],
             )
 
-        if self.private_mode:
+        if self.private_mode or not next(self.cache_dir.iterdir(), False):
             self.clear_cache()
         else:
             # Store configs
@@ -145,28 +145,32 @@ class Chat:
         """Return a chat object from a cached chat."""
         try:
             with open(cache_dir / "configs.json", "r") as configs_f:
-                return cls.from_dict(json.load(configs_f))
+                new = cls.from_dict(json.load(configs_f))
         except FileNotFoundError:
-            return cls()
+            new = cls()
+        return new
+
+    def load_history(self):
+        return self.context_handler.load_history()
 
     @property
     def initial_greeting(self):
         return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
 
-    def respond_user_prompt(self, prompt: str):
-        yield from self._respond_prompt(prompt=prompt, role="user")
+    def respond_user_prompt(self, prompt: str, **kwargs):
+        yield from self._respond_prompt(prompt=prompt, role="user", **kwargs)
 
-    def respond_system_prompt(self, prompt: str):
-        yield from self._respond_prompt(prompt=prompt, role="system")
+    def respond_system_prompt(self, prompt: str, **kwargs):
+        yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
 
-    def yield_response_from_msg(self, prompt_as_msg: dict):
+    def yield_response_from_msg(self, prompt_as_msg: dict, **kwargs):
         """Yield response from a prompt."""
         try:
-            yield from self._yield_response_from_msg(prompt_msg=prompt_as_msg)
+            yield from self._yield_response_from_msg(prompt_msg=prompt_as_msg, **kwargs)
         except openai.error.AuthenticationError as error:
             raise CannotConnectToApiError(self._auth_error_msg) from error
 
-    def _yield_response_from_msg(self, prompt_msg: dict):
+    def _yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
         """Yield response from a prompt. Assumes that OpenAI authentication works."""
         # Get appropriate context for prompt from the context handler
         prompt_context_request = self.context_handler.get_context(msg=prompt_msg)
@@ -197,15 +201,19 @@ class Chat:
             string=full_reply_content, model=self.model
         )
 
-        # Put current chat exchange in context handler's history
-        history_entry_registration_tokens_usage = self.context_handler.add_to_history(
-            msg_list=[prompt_msg, {"role": "assistant", "content": full_reply_content}]
-        )
+        if add_to_history:
+            # Put current chat exchange in context handler's history
+            history_entry_reg_tokens_usage = self.context_handler.add_to_history(
+                msg_list=[
+                    prompt_msg,
+                    {"role": "assistant", "content": full_reply_content},
+                ]
+            )
 
-        # Update token_usage with tokens used in context handler for reply
-        self.token_usage[self.context_model]["output"] += sum(
-            history_entry_registration_tokens_usage.values()
-        )
+            # Update token_usage with tokens used in context handler for reply
+            self.token_usage[self.context_model]["output"] += sum(
+                history_entry_reg_tokens_usage.values()
+            )
 
     def start(self):
         """Start the chat."""
@@ -226,12 +234,11 @@ class Chat:
     def report_token_usage(self, current_chat: bool = True):
         self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
 
-    def _respond_prompt(self, prompt: str, role: str):
+    def _respond_prompt(self, prompt: str, role: str, **kwargs):
         prompt = prompt.strip()
         role = role.lower().strip()
-        role2name = {"user": self.username, "system": self.system_name}
         prompt_as_msg = {"role": role, "content": prompt}
-        yield from self.yield_response_from_msg(prompt_as_msg)
+        yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
 
     @property
     def _auth_error_msg(self):

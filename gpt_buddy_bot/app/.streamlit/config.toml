@@ -9,6 +9,9 @@
 [server]
   runOnSave = true
 
+[client]
+  showErrorDetails = true
+
 [theme]
   base = "dark"
   # Colors

@@ -26,8 +26,12 @@ class BaseChatContext:
         self.history += msg_list
         return self._tokens_usage
 
+    def load_history(self):
+        """Load the chat history."""
+        return self.history
+
     def get_context(self, msg: dict):
-        context_msgs = _gather_context_msgs(
+        context_msgs = _make_list_of_context_msgs(
             history=self.history, system_name=self.parent_chat.system_name
         )
         return {"context_messages": context_msgs, "tokens_usage": self._tokens_usage}
@@ -49,7 +53,7 @@ class EmbeddingBasedChatContext(BaseChatContext):
 
     def add_to_history(self, msg_list: list[dict]):
         embedding_request = self._calculate_embedding_for_msgs(msg_list=msg_list)
-        _store_message_exchance_and_corresponding_embedding(
+        _store_message_exchange_and_corresponding_embedding(
             msg_list=msg_list,
             embedding_model=self.embedding_model,
             chat_model=self.parent_chat.model,
@@ -57,6 +61,16 @@ class EmbeddingBasedChatContext(BaseChatContext):
             file_path=self.context_file_path,
         )
         return embedding_request["tokens_usage"]
+
+    def load_history(self):
+        """Load the chat history from file."""
+        try:
+            df = pd.read_csv(self.context_file_path)
+        except FileNotFoundError:
+            return []
+        selected_history = (df["message_exchange"].apply(ast.literal_eval)).tolist()
+        selected_history = list(itertools.chain.from_iterable(selected_history))
+        return selected_history
 
     def get_context(self, msg: dict):
         embedding_request = self._calculate_embedding_for_text(text=msg["content"])
@@ -94,7 +108,7 @@ def request_embedding_from_openai(text: str, model: str):
     return {"embedding": embedding, "tokens_usage": tokens_usage}
 
 
-def _store_message_exchance_and_corresponding_embedding(
+def _store_message_exchange_and_corresponding_embedding(
     msg_list: list[dict],
     embedding_model: str,
     chat_model: str,
@@ -123,8 +137,8 @@ def _store_message_exchance_and_corresponding_embedding(
         writer.writerow(embedding_file_entry_data)
 
 
-def _gather_context_msgs(history: list[dict], system_name: str):
-    sys_directives = "Considering the previous messages, answer the next message."
+def _make_list_of_context_msgs(history: list[dict], system_name: str):
+    sys_directives = "Considering the previous messages, answer the next message:"
     sys_msg = {"role": "system", "name": system_name, "content": sys_directives}
     return [*history, sys_msg]
 
@@ -133,8 +147,8 @@ def _find_context(
     file_path: Path,
     embedding: list[float],
     parent_chat: "Chat",
-    n_related_entries: int = 4,
-    n_directly_preceeding_exchanges: int = 2,
+    n_related_msg_exchanges: int = 3,
+    n_tailing_history_exchanges: int = 2,
 ):
     try:
         df = pd.read_csv(file_path)
@@ -146,14 +160,16 @@ def _find_context(
 
     df["similarity"] = df["embedding"].apply(lambda x: cosine_similarity(x, embedding))
 
-    # Get the last n messages added to the history
-    df_last_n_chats = df.tail(n_directly_preceeding_exchanges)
+    # Get the last messages added to the history
+    df_last_n_chats = df.tail(n_tailing_history_exchanges)
 
+    # Get the most similar messages
     df_similar_chats = (
         df.sort_values("similarity", ascending=False)
-        .head(n_related_entries)
+        .head(n_related_msg_exchanges)
         .sort_values("timestamp")
     )
+
     df_context = pd.concat([df_similar_chats, df_last_n_chats])
     selected_history = (
         df_context["message_exchange"].apply(ast.literal_eval).drop_duplicates()
@@ -161,6 +177,6 @@ def _find_context(
 
     selected_history = list(itertools.chain.from_iterable(selected_history))
 
-    return _gather_context_msgs(
+    return _make_list_of_context_msgs(
         history=selected_history, system_name=parent_chat.system_name
     )

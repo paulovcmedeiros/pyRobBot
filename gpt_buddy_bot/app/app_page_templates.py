@@ -1,5 +1,4 @@
 """Utilities for creating pages in a streamlit app."""
-import json
 import pickle
 import sys
 import uuid
@@ -19,6 +18,10 @@ _ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
 _USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
 
 
+# Sentinel object for when a chat is recovered from cache
+_RecoveredChat = object()
+
+
 class AppPage(ABC):
     """Abstract base class for pages in a streamlit app."""
 
@@ -26,10 +29,22 @@ class AppPage(ABC):
         self.page_id = str(uuid.uuid4())
         self.page_number = st.session_state.get("n_created_pages", 0) + 1
 
-        self._sidebar_title = (
-            sidebar_title if sidebar_title else f"Page {self.page_number}"
+        chat_number_for_title = f"### Chat #{self.page_number}"
+        if page_title is _RecoveredChat:
+            self._fallback_page_title = f"{chat_number_for_title.strip('#')} (Recovered)"
+            page_title = None
+        else:
+            self._fallback_page_title = (
+                f"{GeneralConstants.APP_NAME} :speech_balloon:\n{chat_number_for_title}"
+            )
+            if page_title:
+                self.title = page_title
+
+        self._fallback_sidebar_title = (
+            page_title if page_title else self._fallback_page_title
         )
-        self._page_title = page_title if page_title else self.sidebar_title
+        if sidebar_title:
+            self.sidebar_title = sidebar_title
 
     @property
     def state(self):
@@ -41,23 +56,22 @@ class AppPage(ABC):
     @property
     def sidebar_title(self):
         """Get the title of the page in the sidebar."""
-        return self.state.get("sidebar_title", self._sidebar_title)
+        return self.state.get("sidebar_title", self._fallback_sidebar_title)
 
     @sidebar_title.setter
-    def sidebar_title(self, value):
+    def sidebar_title(self, value: str):
         """Set the sidebar title for the page."""
         self.state["sidebar_title"] = value
 
     @property
     def title(self):
         """Get the title of the page."""
-        return self.state.get("page_title", self._page_title)
+        return self.state.get("page_title", self._fallback_page_title)
 
     @title.setter
-    def title(self, value):
+    def title(self, value: str):
         """Set the title of the page."""
         self.state["page_title"] = value
-        st.title(value)
 
     @abstractmethod
     def render(self):
@@ -72,14 +86,6 @@ class ChatBotPage(AppPage):
 
         if chat_obj:
             self.chat_obj = chat_obj
-
-        chat_title = f"### Chat #{self.page_number}"
-        self._page_title = (
-            page_title
-            if page_title
-            else f"{GeneralConstants.APP_NAME} :speech_balloon:\n{chat_title}"
-        )
-        self._sidebar_title = sidebar_title if sidebar_title else chat_title
 
         self.avatars = {"assistant": _ASSISTANT_AVATAR_IMAGE, "user": _USER_AVATAR_IMAGE}
 
@@ -118,10 +124,12 @@ class ChatBotPage(AppPage):
         return self.state["messages"]
 
     def render_chat_history(self):
-        """Render the chat history of the page."""
+        """Render the chat history of the page. Do not include system messages."""
         for message in self.chat_history:
             role = message["role"]
-            with st.chat_message(role, avatar=self.avatars[role]):
+            if role == "system":
+                continue
+            with st.chat_message(role, avatar=self.avatars.get(role)):
                 st.markdown(message["content"])
 
     def render(self):
@@ -184,13 +192,12 @@ class ChatBotPage(AppPage):
             # Reset title according to conversation initial contents
             if "page_title" not in self.state and len(self.chat_history) > 3:
                 with st.spinner("Working out conversation topic..."):
-                    prompt = "Summarize the following msg exchange in max 4 words:\n"
-                    prompt += "\n".join(
-                        f"{message['role'].strip()}: {message['content'].strip()}"
-                        for message in self.chat_history
+                    prompt = "Summarize the messages in max 4 words.\n"
+                    self.title = "".join(
+                        self.chat_obj.respond_system_prompt(prompt, add_to_history=False)
                     )
-                    self.title = "".join(self.chat_obj.respond_system_prompt(prompt))
                     self.sidebar_title = self.title
+                    st.title(self.title)
 
                     self.chat_obj.metadata["page_title"] = self.title
                     self.chat_obj.metadata["sidebar_title"] = self.sidebar_title

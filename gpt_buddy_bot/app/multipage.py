@@ -6,7 +6,7 @@ import openai
 import streamlit as st
 
 from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage
+from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage, _RecoveredChat
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
@@ -34,7 +34,7 @@ class AbstractMultipageApp(ABC):
         st.session_state["n_created_pages"] = value
 
     @property
-    def pages(self) -> AppPage:
+    def pages(self) -> dict[AppPage]:
         """Return the pages of the app."""
         if "available_pages" not in st.session_state:
             st.session_state["available_pages"] = {}
@@ -131,7 +131,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
         with self.sidebar_tabs["settings"]:
             caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
-            if self.selected_page.title != self.selected_page._page_title:
+            if self.selected_page.title != self.selected_page._fallback_page_title:
                 caption += f": {self.selected_page.title}"
             st.caption(caption)
             current_chat_configs = self.selected_page.chat_obj.configs
@@ -210,7 +210,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
         return sorted(
-            GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/"),
+            (
+                directory
+                for directory in GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/")
+                if next(directory.iterdir(), False)
+            ),
             key=lambda fpath: fpath.stat().st_mtime,
             reverse=True,
         )
@@ -232,10 +236,12 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         chat = Chat.from_cache(cache_dir=cache_dir_path)
                         new_page = ChatBotPage(
                             chat_obj=chat,
-                            page_title=chat.metadata.get("page_title", "Recovered Chat"),
+                            page_title=chat.metadata.get("page_title", _RecoveredChat),
                             sidebar_title=chat.metadata.get("sidebar_title"),
                         )
+                        new_page.state["messages"] = chat.load_history()
                         self.add_page(page=new_page)
+                    self.register_selected_page(next(iter(self.pages.values())))
 
                 # Create a new chat upon request or if there is none yet
                 if new_chat_button or not self.pages:
