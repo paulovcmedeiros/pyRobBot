@@ -144,15 +144,7 @@ class ChatBotPage(AppPage):
             self.render_chat_history()
         else:
             with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                with st.empty():
-                    st.markdown("▌")
-                    greeting = ""
-                    for word in self.chat_obj.initial_greeting.split():
-                        greeting += f"{word} "
-                        st.markdown(greeting + "▌")
-                        time.sleep(0.1)
-                    st.markdown(greeting)
-
+                st.markdown(self.chat_obj.initial_greeting)
             self.chat_history.append(
                 {
                     "role": "assistant",

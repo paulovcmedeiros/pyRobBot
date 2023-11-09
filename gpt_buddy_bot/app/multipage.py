@@ -224,11 +224,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         args=[element_key],
                     )
                 elif field_type in (list, tuple):
+                    prev_value = (
+                        widget_previous_value
+                        if isinstance(widget_previous_value, str)
+                        else "\n".join(widget_previous_value)
+                    )
                     new_field_value = st.text_area(
                         title,
-                        value=widget_previous_value
-                        if isinstance(widget_previous_value, str)
-                        else "\n".join(widget_previous_value),
+                        value=prev_value.strip(),
                         key=element_key,
                         help=description,
                         disabled=disable_ui_element,
@@ -240,7 +243,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
                 if new_field_value != current_config_value:
                     if field_type in (list, tuple):
-                        new_field_value = tuple(new_field_value.split("\n"))
+                        new_field_value = tuple(new_field_value.strip().split("\n"))
                     updates_to_chat_configs[field_name] = new_field_value
 
         if updates_to_chat_configs:
