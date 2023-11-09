@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Unnoficial OpenAI API UI and CLI tool."""
 import os
 import tempfile
 import uuid
@@ -9,6 +10,8 @@ import openai
 
 
 class GeneralConstants:
+    """General constants for the package."""
+
     # Main package info
     RUN_ID = uuid.uuid4().hex
     PACKAGE_NAME = __name__

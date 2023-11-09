@@ -1,4 +1,4 @@
-"Code for the creation streamlit apps with dynamically created pages."
+"""Code for the creation streamlit apps with dynamically created pages."""
 import contextlib
 from abc import ABC, abstractmethod
 
@@ -81,7 +81,14 @@ class AbstractMultipageApp(ABC):
 
 
 class MultipageChatbotApp(AbstractMultipageApp):
+    """A Streamlit multipage app specifically for chatbot interactions.
+
+    Inherits from AbstractMultipageApp and adds chatbot-specific functionalities.
+
+    """
+
     def init_openai_client(self):
+        """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
         # Initialize the OpenAI API client
         placeholher = (
             "OPENAI_API_KEY detected"
@@ -102,13 +109,25 @@ class MultipageChatbotApp(AbstractMultipageApp):
             st.write(":red[You need to provide a key to use the chat]")
 
     def add_page(self, page: ChatBotPage = None, selected: bool = True, **kwargs):
+        """Adds a new ChatBotPage to the app.
+
+        If no page is specified, a new instance of ChatBotPage is created and added.
+
+        Args:
+            page: The ChatBotPage to be added. If None, a new page is created.
+            selected: Whether the added page should be selected immediately.
+            **kwargs: Additional keyword arguments for ChatBotPage creation.
+
+        Returns:
+            The result of the superclass's add_page method.
+
+        """
         if page is None:
             page = ChatBotPage(**kwargs)
         return super().add_page(page=page, selected=selected)
 
     def handle_ui_page_selection(self):
-        """Control page selection in the UI sidebar."""
-
+        """Control page selection and removal in the UI sidebar."""
         st.markdown(
             """
             <style>
@@ -157,7 +176,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
         with self.sidebar_tabs["settings"]:
             caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
-            if self.selected_page.title != self.selected_page._fallback_page_title:
+            if self.selected_page.title != self.selected_page.fallback_page_title:
                 caption += f": {self.selected_page.title}"
             st.caption(caption)
             current_chat_configs = self.selected_page.chat_obj.configs
@@ -165,7 +184,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
             # Present the user with the model and instructions fields first
             field_names = ["model", "ai_instructions", "context_model"]
-            field_names += [field_name for field_name in ChatOptions.model_fields]
+            field_names += list(ChatOptions.model_fields)
             field_names = list(dict.fromkeys(field_names))
             model_fields = {k: ChatOptions.model_fields[k] for k in field_names}
 
@@ -292,6 +311,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         )
 
     def render(self, **kwargs):
+        """Renders the multipage chatbot app in the  UI according to the selected page."""
         with st.sidebar:
             st.title(GeneralConstants.APP_NAME)
             self.init_openai_client()

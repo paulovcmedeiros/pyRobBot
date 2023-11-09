@@ -103,9 +103,9 @@ class EmbeddingsDatabase:
     def get_messages_dataframe(self):
         conn = sqlite3.connect(self.db_path)
         query = "SELECT * FROM messages;"
-        df = pd.read_sql_query(query, conn)
+        messages_df = pd.read_sql_query(query, conn)
         conn.close()
-        return df
+        return messages_df
 
     def _init_database(self):
         conn = sqlite3.connect(self.db_path)

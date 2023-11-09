@@ -13,6 +13,7 @@ def get_parsed_args(argv=None, default_command="ui"):
 
     Args:
         argv (list): A list of passed command line args.
+        default_command (str, optional): The default command to run.
 
     Returns:
         argparse.Namespace: Parsed command line arguments.
@@ -41,10 +42,9 @@ def get_parsed_args(argv=None, default_command="ui"):
         args_opts["required"] = field.is_required()
         if "help" in args_opts:
             args_opts["help"] = f"{args_opts['help']} (default: %(default)s)"
-        if "default" in args_opts:
-            if isinstance(args_opts["default"], (list, tuple)):
-                args_opts.pop("type", None)
-                args_opts["nargs"] = "*"
+        if "default" in args_opts and isinstance(args_opts["default"], (list, tuple)):
+            args_opts.pop("type", None)
+            args_opts["nargs"] = "*"
 
         chat_options_parser.add_argument(f"--{field_name.replace('_', '-')}", **args_opts)
 

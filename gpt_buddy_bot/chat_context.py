@@ -42,8 +42,8 @@ class ChatContext(ABC):
 
     def load_history(self) -> list[dict]:
         """Load the chat history."""
-        df = self.database.get_messages_dataframe()
-        msg_exchanges = df["message_exchange"].apply(ast.literal_eval).tolist()
+        messages_df = self.database.get_messages_dataframe()
+        msg_exchanges = messages_df["message_exchange"].apply(ast.literal_eval).tolist()
         return list(itertools.chain.from_iterable(msg_exchanges))
 
     @abstractmethod
@@ -61,7 +61,7 @@ class FullHistoryChatContext(ChatContext):
         self._placeholder_tokens_usage = {"input": 0, "output": 0}
 
     # Implement abstract methods
-    def request_embedding(self, msg_list: list[dict]):
+    def request_embedding(self, msg_list: list[dict]):  # noqa: ARG002
         """Return a placeholder embedding request."""
         return {"embedding": None, "tokens_usage": self._placeholder_tokens_usage}
 

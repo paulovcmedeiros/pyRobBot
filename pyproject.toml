@@ -58,6 +58,60 @@
   line_length = 90
   profile = "black"
 
+[tool.ruff]
+  # C901: Function is too complex. Ignoring this for now but will be removed later.
+  ignore = ["C901", "D105", "EXE001", "RET504", "RUF012"]
+  line-length = 90
+  select = [
+    "A",
+    "ARG",
+    "B",
+    "BLE",
+    "C4",
+    "C90",
+    "D",
+    "E",
+    "ERA",
+    "EXE",
+    "F",
+    "G",
+    "I",
+    "N",
+    "PD",
+    "PERF",
+    "PIE",
+    "PL",
+    "PT",
+    "Q",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "T20",
+    "W",
+  ]
+
+[tool.ruff.per-file-ignores]
+  # S101: Use of `assert` detected
+  "tests/**/*.py" = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+    "E501",
+    "S101",
+    "SLF001",
+  ]
+
+[tool.ruff.pydocstyle]
+  convention = "google"
+
   ##################
   # pytest configs #
   ##################

@@ -74,7 +74,7 @@ def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
         if getattr(chat_obj, field) is not None:
             api_call_args[field] = getattr(chat_obj, field)
 
-    @retry_api_call(auth_error_msg=chat_obj._api_connection_error_msg)
+    @retry_api_call(auth_error_msg=chat_obj.api_connection_error_msg)
     def stream_reply(conversation, **api_call_args):
         for completion_chunk in openai.ChatCompletion.create(
             messages=conversation, stream=True, **api_call_args

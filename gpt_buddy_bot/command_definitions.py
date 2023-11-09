@@ -27,7 +27,7 @@ def run_on_ui(args):
 
     try:
         subprocess.run(
-            [
+            [  # noqa: S603, S607
                 "streamlit",
                 "run",
                 GeneralConstants.APP_PATH.as_posix(),
@@ -35,6 +35,7 @@ def run_on_ui(args):
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ],
             cwd=GeneralConstants.APP_DIR.as_posix(),
+            check=True,
         )
     except (KeyboardInterrupt, EOFError):
         print("Exiting.")
