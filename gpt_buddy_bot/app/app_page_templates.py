@@ -11,7 +11,7 @@ from PIL import Image
 from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
-from gpt_buddy_bot.general_utils import CannotConnectToApiError
+from gpt_buddy_bot.openai_utils import CannotConnectToApiError
 
 _AVATAR_FILES_DIR = GeneralConstants.APP_DIR / "data"
 _ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"

@@ -5,12 +5,10 @@ import uuid
 from collections import defaultdict
 from pathlib import Path
 
-import openai
-
 from . import GeneralConstants
-from .chat_configs import ChatOptions, OpenAiApiCallOptions
+from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
-from .general_utils import CannotConnectToApiError, retry_api_call
+from .openai_utils import make_api_chat_completion_call
 from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
 
 
@@ -160,15 +158,8 @@ class Chat:
     def respond_system_prompt(self, prompt: str, **kwargs):
         yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
 
-    def yield_response_from_msg(self, prompt_as_msg: dict, **kwargs):
-        """Yield response from a prompt."""
-        try:
-            yield from self._yield_response_from_msg(prompt_msg=prompt_as_msg, **kwargs)
-        except openai.error.AuthenticationError as error:
-            raise CannotConnectToApiError(self._api_connection_error_msg) from error
-
-    def _yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
-        """Yield response from a prompt. Assumes that OpenAI authentication works."""
+    def yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
+        """Yield response from a prompt message."""
         # Get appropriate context for prompt from the context handler
         prompt_context_request = self.context_handler.get_context(msg=prompt_msg)
         context = prompt_context_request["context_messages"]
@@ -186,7 +177,7 @@ class Chat:
 
         # Make API request and yield response chunks
         full_reply_content = ""
-        for chunk in _make_api_chat_completion_call(
+        for chunk in make_api_chat_completion_call(
             conversation=contextualised_prompt, chat_obj=self
         ):
             full_reply_content += chunk
@@ -232,9 +223,7 @@ class Chat:
         self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
-        prompt = prompt.strip()
-        role = role.lower().strip()
-        prompt_as_msg = {"role": role, "content": prompt}
+        prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}
         yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
 
     @property
@@ -245,20 +234,3 @@ class Chat:
             + "If the problem persists, please also take a look at the "
             + "OpenAI status page: https://status.openai.com."
         )
-
-
-def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
-    api_call_args = {}
-    for field in OpenAiApiCallOptions.model_fields:
-        if getattr(chat_obj, field) is not None:
-            api_call_args[field] = getattr(chat_obj, field)
-
-    @retry_api_call(auth_error_msg=chat_obj._api_connection_error_msg)
-    def stream_reply(conversation, **api_call_args):
-        for completion_chunk in openai.ChatCompletion.create(
-            messages=conversation, stream=True, **api_call_args
-        ):
-            reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
-            yield reply_chunk
-
-    yield from stream_reply(conversation, **api_call_args)

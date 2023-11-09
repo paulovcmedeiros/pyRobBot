@@ -9,7 +9,7 @@ import pandas as pd
 from openai.embeddings_utils import cosine_similarity
 
 from .embeddings_database import EmbeddingsDatabase
-from .general_utils import retry_api_call
+from .openai_utils import retry_api_call
 
 if TYPE_CHECKING:
     from .chat import Chat

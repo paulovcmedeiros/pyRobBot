@@ -2,7 +2,7 @@ import openai
 import pytest
 
 from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.general_utils import CannotConnectToApiError
+from gpt_buddy_bot.openai_utils import CannotConnectToApiError
 
 
 @pytest.mark.order(1)
