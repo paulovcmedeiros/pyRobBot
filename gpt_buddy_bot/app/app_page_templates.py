@@ -153,13 +153,13 @@ class ChatBotPage(AppPage):
                         time.sleep(0.1)
                     st.markdown(greeting)
 
-                self.chat_history.append(
-                    {
-                        "role": "assistant",
-                        "name": self.chat_obj.assistant_name,
-                        "content": self.chat_obj.initial_greeting,
-                    }
-                )
+            self.chat_history.append(
+                {
+                    "role": "assistant",
+                    "name": self.chat_obj.assistant_name,
+                    "content": self.chat_obj.initial_greeting,
+                }
+            )
 
         # Accept user input
         placeholder = (

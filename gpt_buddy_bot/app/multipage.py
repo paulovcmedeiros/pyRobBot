@@ -226,7 +226,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 elif field_type in (list, tuple):
                     new_field_value = st.text_area(
                         title,
-                        value="\n".join(widget_previous_value),
+                        value=widget_previous_value
+                        if isinstance(widget_previous_value, str)
+                        else "\n".join(widget_previous_value),
                         key=element_key,
                         help=description,
                         disabled=disable_ui_element,

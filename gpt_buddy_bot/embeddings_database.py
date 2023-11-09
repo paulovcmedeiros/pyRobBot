@@ -8,21 +8,12 @@ import pandas as pd
 
 class EmbeddingsDatabase:
     def __init__(self, db_path: Path, embedding_model: str):
-        self.embedding_model = embedding_model
         self.db_path = db_path
+        self.embedding_model = embedding_model
         self.create()
 
-        stored_embedding_model = self.get_embedding_model()
-        if stored_embedding_model is None:
-            self._init_embedding_model_table()
-        elif stored_embedding_model != self.embedding_model:
-            raise ValueError(
-                "Database already contains a different embedding model: "
-                f"{self.get_embedding_model()}.\n"
-                "Cannot continue."
-            )
-
     def create(self):
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
 
         # SQL to create 'embedding_model' table with 'embedding_model' as primary key
@@ -88,16 +79,17 @@ class EmbeddingsDatabase:
 
         return embedding_model
 
-    def _init_embedding_model_table(self):
-        conn = sqlite3.connect(self.db_path)
-        create_time = int(datetime.datetime.utcnow().timestamp())
-        sql = "INSERT INTO embedding_model "
-        sql += "(created_timestamp, embedding_model) VALUES (?, ?);"
-        with conn:
-            conn.execute(sql, (create_time, self.embedding_model))
-        conn.close()
-
     def insert_message_exchange(self, chat_model, message_exchange, embedding):
+        stored_embedding_model = self.get_embedding_model()
+        if stored_embedding_model is None:
+            self._init_database()
+        elif stored_embedding_model != self.embedding_model:
+            raise ValueError(
+                "Database already contains a different embedding model: "
+                f"{self.get_embedding_model()}.\n"
+                "Cannot continue."
+            )
+
         timestamp = int(datetime.datetime.utcnow().timestamp())
         message_exchange = json.dumps(message_exchange)
         embedding = json.dumps(embedding)
@@ -114,3 +106,12 @@ class EmbeddingsDatabase:
         df = pd.read_sql_query(query, conn)
         conn.close()
         return df
+
+    def _init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        create_time = int(datetime.datetime.utcnow().timestamp())
+        sql = "INSERT INTO embedding_model "
+        sql += "(created_timestamp, embedding_model) VALUES (?, ?);"
+        with conn:
+            conn.execute(sql, (create_time, self.embedding_model))
+        conn.close()

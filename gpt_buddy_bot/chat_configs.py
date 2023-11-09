@@ -116,7 +116,11 @@ class ChatOptions(OpenAiApiCallOptions):
     )
     context_model: Literal["text-embedding-ada-002", "full-history"] = Field(
         default="text-embedding-ada-002",
-        description="OpenAI API model to use for embedding",
+        description=(
+            "Model to use for chat context (~memory). "
+            + "Once picked, it cannot be changed."
+        ),
+        json_schema_extra={"frozen": True},
     )
     cache_dir: Optional[Path] = Field(
         default=None,

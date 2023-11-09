@@ -45,6 +45,15 @@ class Chat:
             value = GeneralConstants.CHAT_CACHE_DIR / f"chat_{self.id}"
         self._cache_dir = Path(value)
 
+    def save_cache(self):
+        """Store the chat's configs and metadata to the cache directory."""
+        with open(self.configs_file, "w") as configs_f:
+            configs_f.write(self.configs.model_dump_json(indent=2))
+
+        metadata = self.metadata  # Trigger loading metadata if not yet done
+        with open(self.metadata_file, "w") as metadata_f:
+            json.dump(metadata, metadata_f, indent=2)
+
     def clear_cache(self):
         """Remove the cache directory."""
         shutil.rmtree(self.cache_dir, ignore_errors=True)
@@ -111,16 +120,13 @@ class Chat:
                 n_output_tokens=self.token_usage[model]["output"],
             )
 
-        if self.private_mode or not next(self.cache_dir.iterdir(), False):
+        cache_empty = self.cache_dir.exists() and not next(
+            self.cache_dir.iterdir(), False
+        )
+        if self.private_mode or cache_empty:
             self.clear_cache()
         else:
-            # Store configs
-            with open(self.configs_file, "w") as configs_f:
-                configs_f.write(self.configs.model_dump_json(indent=2))
-            # Store metadata
-            metadata = self.metadata  # Trigger loading metadata if not yet done
-            with open(self.metadata_file, "w") as metadata_f:
-                json.dump(metadata, metadata_f, indent=2)
+            self.save_cache()
 
     @classmethod
     def from_dict(cls, configs: dict):
