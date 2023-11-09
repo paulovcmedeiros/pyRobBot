@@ -1,7 +1,6 @@
 """Utilities for creating pages in a streamlit app."""
 import pickle
 import sys
-import time
 import uuid
 from abc import ABC, abstractmethod
 

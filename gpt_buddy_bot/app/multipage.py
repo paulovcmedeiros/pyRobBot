@@ -108,9 +108,33 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
     def handle_ui_page_selection(self):
         """Control page selection in the UI sidebar."""
+
+        st.markdown(
+            """
+            <style>
+            .stButton button[kind="primary"] {
+                background-color: white;
+                border-color: #f63366;
+                border-width: 2px;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+            .stButton button[kind="primary"]:hover {
+                opacity: 1;
+            }
+            .stButton button[kind="secondary"]:disabled {
+                border-color: #2BB5E8;
+                border-width: 2px;
+                color: black;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         with self.sidebar_tabs["chats"]:
             for page in self.pages.values():
-                col1, col2 = st.columns([0.8, 0.2])
+                col1, col2 = st.columns([0.9, 0.1])
                 with col1:
                     st.button(
                         label=page.sidebar_title,
@@ -118,6 +142,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         on_click=self.register_selected_page,
                         kwargs={"page": page},
                         use_container_width=True,
+                        disabled=page.page_id == self.selected_page.page_id,
                     )
                 with col2:
                     st.button(
