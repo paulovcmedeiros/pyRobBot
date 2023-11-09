@@ -5,11 +5,12 @@ import numpy as np
 import openai
 import pytest
 
+import gpt_buddy_bot
 from gpt_buddy_bot.chat import Chat
 from gpt_buddy_bot.chat_configs import ChatOptions
 
 
-# Register markers
+# Register markers and constants
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
@@ -20,12 +21,21 @@ def pytest_configure(config):
         "no_embedding_create_mocking: mark test to not mock openai.Embedding.create",
     )
 
+    pytest.ORIGINAL_PACKAGE_CACHE_DIRECTORY = (
+        gpt_buddy_bot.GeneralConstants.PACKAGE_CACHE_DIRECTORY
+    )
 
-@pytest.fixture(scope="session", autouse=True)
+
+@pytest.fixture(autouse=True)
 def set_env():
     # Make sure we don't consume our tokens in tests
     os.environ["OPENAI_API_KEY"] = "INVALID_API_KEY"
     openai.api_key = os.environ["OPENAI_API_KEY"]
+
+
+@pytest.fixture(autouse=True)
+def mocked_general_constants(tmp_path):
+    gpt_buddy_bot.GeneralConstants.PACKAGE_CACHE_DIRECTORY = tmp_path / "cache"
 
 
 @pytest.fixture(autouse=True)
@@ -76,12 +86,33 @@ def input_builtin_mocker(mocker, user_input):
     mocker.patch("builtins.input", new=lambda _: _mock_input(user_input=user_input))
 
 
-@pytest.fixture
-def default_chat_configs(tmp_path):
+@pytest.fixture(params=ChatOptions.get_allowed_values("model"))
+def llm_model(request):
+    return request.param
+
+
+@pytest.fixture(params=ChatOptions.get_allowed_values("context_model"))
+def context_model(request):
+    return request.param
+
+
+@pytest.fixture()
+def default_chat_configs(llm_model, context_model, tmp_path):
     return ChatOptions(
+        model=llm_model,
+        context_model=context_model,
         token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
-        context_file_path=tmp_path / "context.json",  # Don't use our context files
+        cache_dir=tmp_path,  # Don't use our cache files
     )
+
+
+@pytest.fixture()
+def cli_args_overrides(default_chat_configs):
+    args = []
+    for field, value in default_chat_configs.model_dump().items():
+        if value is not None:
+            args = [*args, *[f"--{field.replace('_', '-')}", str(value)]]
+    return args
 
 
 @pytest.fixture()

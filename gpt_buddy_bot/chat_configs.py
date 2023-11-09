@@ -67,10 +67,17 @@ class BaseConfigModel(BaseModel):
 
 class OpenAiApiCallOptions(BaseConfigModel):
     _openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
+    _models_url = "https://platform.openai.com/docs/models"
 
-    model: Literal["gpt-3.5-turbo", "gpt-4"] = Field(
-        default="gpt-3.5-turbo",
-        description=f"OpenAI LLM model to use. See {_openai_url}-model",
+    model: Literal[
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-16k",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
+        "gpt-3.5-turbo",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
+        "gpt-4-1106-preview",
+        "gpt-4",
+    ] = Field(
+        default="gpt-3.5-turbo-1106",
+        description=f"OpenAI LLM model to use. See {_openai_url}-model and {_models_url}",
     )
     max_tokens: Optional[int] = Field(
         default=None, gt=0, description=f"See <{_openai_url}-max_tokens>"
@@ -106,13 +113,17 @@ class ChatOptions(OpenAiApiCallOptions):
         default=f"{GeneralConstants.PACKAGE_NAME}_system",
         description="Name of the chat's system",
     )
-    context_model: Literal["text-embedding-ada-002", None] = Field(
+    context_model: Literal["text-embedding-ada-002", "full-history"] = Field(
         default="text-embedding-ada-002",
-        description="OpenAI API model to use for embedding",
+        description=(
+            "Model to use for chat context (~memory). "
+            + "Once picked, it cannot be changed."
+        ),
+        json_schema_extra={"frozen": True},
     )
-    context_file_path: Optional[Path] = Field(
+    cache_dir: Optional[Path] = Field(
         default=None,
-        description="Path to the file to read/write the chat context from/to.",
+        description="Directory where to store/save info about the chat.",
     )
     ai_instructions: tuple[str, ...] = Field(
         default=(
@@ -130,4 +141,9 @@ class ChatOptions(OpenAiApiCallOptions):
         default=5,
         gt=0,
         description="Maximum number of attempts to connect to the OpenAI API",
+    )
+    private_mode: Optional[bool] = Field(
+        default=None,
+        description="Toggle private mode. If set to `True`, the chat will not "
+        + "be logged and the chat history will not be saved.",
     )

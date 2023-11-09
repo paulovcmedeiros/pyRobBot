@@ -9,7 +9,10 @@
 [server]
   runOnSave = true
 
+[client]
+  showErrorDetails = true
+
 [theme]
-  base = "dark"
+  base = "light"
   # Colors
   primaryColor = "#2BB5E8"

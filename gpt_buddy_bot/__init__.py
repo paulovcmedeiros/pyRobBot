@@ -9,22 +9,32 @@ import openai
 
 
 class GeneralConstants:
+    # Main package info
+    RUN_ID = uuid.uuid4().hex
     PACKAGE_NAME = __name__
     VERSION = version(__name__)
-    APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
+
+    # Main package directories
     PACKAGE_DIRECTORY = Path(__file__).parent
-    APP_DIR = PACKAGE_DIRECTORY / "app"
-    APP_PATH = APP_DIR / "app.py"
-    RUN_ID = uuid.uuid4().hex
     PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME
     _PACKAGE_TMPDIR = tempfile.TemporaryDirectory()
     PACKAGE_TMPDIR = Path(_PACKAGE_TMPDIR.name)
+    CHAT_CACHE_DIR = PACKAGE_CACHE_DIRECTORY / "chats"
+
+    # Constants related to the app
+    APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
+    APP_DIR = PACKAGE_DIRECTORY / "app"
+    APP_PATH = APP_DIR / "app.py"
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
+
+    # Constants related to using the OpenAI API
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
     TOKEN_USAGE_DATABASE = PACKAGE_CACHE_DIRECTORY / "token_usage.db"
 
+    # Initialise the package's directories
     PACKAGE_TMPDIR.mkdir(parents=True, exist_ok=True)
     PACKAGE_CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+    CHAT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Initialize the OpenAI API client

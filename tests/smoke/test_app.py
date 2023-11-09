@@ -1,8 +1,7 @@
 from gpt_buddy_bot.app import app
-from gpt_buddy_bot.chat_configs import ChatOptions
 
 
-def test_app(mocker):
+def test_app(mocker, default_chat_configs):
     mocker.patch("streamlit.session_state", {})
-    mocker.patch("pickle.load", return_value=ChatOptions())
+    mocker.patch("pickle.load", return_value=default_chat_configs)
     app.run_app()
