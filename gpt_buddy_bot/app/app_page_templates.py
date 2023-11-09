@@ -183,7 +183,7 @@ class ChatBotPage(AppPage):
                             full_response += chunk
                             st.markdown(full_response + "▌")
                     except CannotConnectToApiError:
-                        full_response = self.chat_obj._auth_error_msg
+                        full_response = self.chat_obj._api_connection_error_msg
                     finally:
                         st.markdown(full_response)
 

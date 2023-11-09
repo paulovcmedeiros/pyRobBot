@@ -58,7 +58,7 @@ class Chat:
 
     @property
     def context_file_path(self):
-        return self.cache_dir / "embeddings.csv"
+        return self.cache_dir / "embeddings.db"
 
     @property
     def metadata_file(self):
@@ -165,7 +165,7 @@ class Chat:
         try:
             yield from self._yield_response_from_msg(prompt_msg=prompt_as_msg, **kwargs)
         except openai.error.AuthenticationError as error:
-            raise CannotConnectToApiError(self._auth_error_msg) from error
+            raise CannotConnectToApiError(self._api_connection_error_msg) from error
 
     def _yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
         """Yield response from a prompt. Assumes that OpenAI authentication works."""
@@ -238,10 +238,12 @@ class Chat:
         yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
 
     @property
-    def _auth_error_msg(self):
+    def _api_connection_error_msg(self):
         return (
-            "Sorry, I'm having trouble authenticating with OpenAI. "
+            "Sorry, I'm having trouble communicating with OpenAI. "
             + "Please check the validity of your API key and try again."
+            + "If the problem persists, please also take a look at the "
+            + "OpenAI status page: https://status.openai.com."
         )
 
 
@@ -251,7 +253,7 @@ def _make_api_chat_completion_call(conversation: list, chat_obj: Chat):
         if getattr(chat_obj, field) is not None:
             api_call_args[field] = getattr(chat_obj, field)
 
-    @retry_api_call(auth_error_msg=chat_obj._auth_error_msg)
+    @retry_api_call(auth_error_msg=chat_obj._api_connection_error_msg)
     def stream_reply(conversation, **api_call_args):
         for completion_chunk in openai.ChatCompletion.create(
             messages=conversation, stream=True, **api_call_args
