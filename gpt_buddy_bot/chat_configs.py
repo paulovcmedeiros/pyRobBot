@@ -75,7 +75,6 @@ class OpenAiApiCallOptions(BaseConfigModel):
         "gpt-3.5-turbo",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
         "gpt-4-1106-preview",
         "gpt-4",
-        "gpt-4-32k",
     ] = Field(
         default="gpt-3.5-turbo-1106",
         description=f"OpenAI LLM model to use. See {_openai_url}-model and {_models_url}",
