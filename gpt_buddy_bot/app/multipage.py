@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import openai
 import streamlit as st
+from pydantic import ValidationError
 
 from gpt_buddy_bot import GeneralConstants
 from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage, _RecoveredChat
@@ -280,7 +281,16 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 if not st.session_state.get("saved_chats_reloaded", False):
                     st.session_state["saved_chats_reloaded"] = True
                     for cache_dir_path in self.get_saved_chat_cache_dir_paths():
-                        chat = Chat.from_cache(cache_dir=cache_dir_path)
+                        try:
+                            chat = Chat.from_cache(cache_dir=cache_dir_path)
+                        except ValidationError:
+                            st.warning(
+                                f"Failed to load cached chat {cache_dir_path}: "
+                                + "Non-supported configs.",
+                                icon="⚠️",
+                            )
+                            continue
+
                         new_page = ChatBotPage(
                             chat_obj=chat,
                             page_title=chat.metadata.get("page_title", _RecoveredChat),
