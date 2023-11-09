@@ -110,9 +110,9 @@ class ChatBotPage(AppPage):
         return self.state["chat_obj"]
 
     @chat_obj.setter
-    def chat_obj(self, value: Chat):
-        self.state["chat_obj"] = value
-        self.state["chat_configs"] = value.configs
+    def chat_obj(self, new_chat_obj: Chat):
+        self.state["chat_obj"] = new_chat_obj
+        self.state["chat_configs"] = new_chat_obj.configs
 
     @property
     def chat_history(self) -> list[dict[str, str]]:
@@ -165,7 +165,10 @@ class ChatBotPage(AppPage):
         placeholder = (
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
         )
-        if prompt := st.chat_input(placeholder=placeholder):
+        if prompt := st.chat_input(
+            placeholder=placeholder,
+            on_submit=lambda: self.state.update({"chat_started": True}),
+        ):
             # Display user message in chat message container
             with st.chat_message("user", avatar=self.avatars["user"]):
                 st.markdown(prompt)
@@ -199,11 +202,13 @@ class ChatBotPage(AppPage):
             if "page_title" not in self.state and len(self.chat_history) > 3:
                 with st.spinner("Working out conversation topic..."):
                     prompt = "Summarize the messages in max 4 words.\n"
-                    self.title = "".join(
+                    title = "".join(
                         self.chat_obj.respond_system_prompt(prompt, add_to_history=False)
                     )
-                    self.sidebar_title = self.title
-                    st.title(self.title)
+                    self.chat_obj.metadata["page_title"] = title
+                    self.chat_obj.metadata["sidebar_title"] = title
+                    self.chat_obj.save_cache()
 
-                    self.chat_obj.metadata["page_title"] = self.title
-                    self.chat_obj.metadata["sidebar_title"] = self.sidebar_title
+                    self.title = title
+                    self.sidebar_title = title
+                    st.title(title)

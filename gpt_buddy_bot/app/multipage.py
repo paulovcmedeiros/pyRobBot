@@ -138,32 +138,64 @@ class MultipageChatbotApp(AbstractMultipageApp):
             updates_to_chat_configs = {}
 
             # Present the user with the model and instructions fields first
-            field_names = ["model", "ai_instructions"]
+            field_names = ["model", "ai_instructions", "context_model"]
             field_names += [field_name for field_name in ChatOptions.model_fields]
             field_names = list(dict.fromkeys(field_names))
-            model_fiedls = {k: ChatOptions.model_fields[k] for k in field_names}
+            model_fields = {k: ChatOptions.model_fields[k] for k in field_names}
 
-            for field_name, field in model_fiedls.items():
+            # Keep track of selected values so that selectbox doesn't reset
+            if "widget_previous_value" not in self.selected_page.state:
+                self.selected_page.state["widget_previous_value"] = {}
+
+            def save_widget_previous_values(element_key):
+                self.selected_page.state["widget_previous_value"][
+                    element_key
+                ] = st.session_state.get(element_key)
+
+            for field_name, field in model_fields.items():
                 title = field_name.replace("_", " ").title()
                 choices = ChatOptions.get_allowed_values(field=field_name)
                 description = ChatOptions.get_description(field=field_name)
                 field_type = ChatOptions.get_type(field=field_name)
 
-                element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
-                last_field_value = getattr(current_chat_configs, field_name)
-                if choices:
-                    index = (
-                        0
-                        if st.session_state.get("last_rendered_page")
-                        == self.selected_page.page_id
-                        else choices.index(last_field_value)
+                # Check if the field is frozen and disable corresponding UI element if so
+                chat_started = self.selected_page.state.get("chat_started", False)
+                extra_info = field.json_schema_extra
+                if extra_info is None:
+                    extra_info = {}
+                disable_ui_element = extra_info.get("frozen", False) and (
+                    chat_started
+                    or any(
+                        msg["role"] == "user" for msg in self.selected_page.chat_history
                     )
+                )
+
+                # Keep track of selected values so that selectbox doesn't reset
+                current_config_value = getattr(current_chat_configs, field_name)
+                element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
+                widget_previous_value = self.selected_page.state[
+                    "widget_previous_value"
+                ].get(element_key, current_config_value)
+                if choices:
                     new_field_value = st.selectbox(
-                        title, choices, key=element_key, index=index, help=description
+                        title,
+                        key=element_key,
+                        options=choices,
+                        index=choices.index(widget_previous_value),
+                        help=description,
+                        disabled=disable_ui_element,
+                        on_change=save_widget_previous_values,
+                        args=[element_key],
                     )
                 elif field_type == str:
                     new_field_value = st.text_input(
-                        title, value=last_field_value, key=element_key, help=description
+                        title,
+                        key=element_key,
+                        value=widget_previous_value,
+                        help=description,
+                        disabled=disable_ui_element,
+                        on_change=save_widget_previous_values,
+                        args=[element_key],
                     )
                 elif field_type in [int, float]:
                     step = 1 if field_type == int else 0.01
@@ -180,32 +212,41 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
                     new_field_value = st.number_input(
                         title,
-                        value=last_field_value,
+                        key=element_key,
+                        value=widget_previous_value,
                         placeholder="OpenAI Default",
                         min_value=bounds[0],
                         max_value=bounds[1],
                         step=step,
-                        key=element_key,
                         help=description,
+                        disabled=disable_ui_element,
+                        on_change=save_widget_previous_values,
+                        args=[element_key],
                     )
                 elif field_type in (list, tuple):
                     new_field_value = st.text_area(
                         title,
-                        value="\n".join(last_field_value),
+                        value="\n".join(widget_previous_value),
                         key=element_key,
                         help=description,
+                        disabled=disable_ui_element,
+                        on_change=save_widget_previous_values,
+                        args=[element_key],
                     )
-                    new_field_value = tuple(new_field_value.split("\n"))
                 else:
                     continue
 
-                if new_field_value != last_field_value:
+                if new_field_value != current_config_value:
+                    if field_type in (list, tuple):
+                        new_field_value = tuple(new_field_value.split("\n"))
                     updates_to_chat_configs[field_name] = new_field_value
 
         if updates_to_chat_configs:
             new_chat_configs = current_chat_configs.model_dump()
             new_chat_configs.update(updates_to_chat_configs)
-            self.selected_page.chat_obj = Chat.from_dict(new_chat_configs)
+            new_chat = Chat.from_dict(new_chat_configs)
+            self.selected_page.chat_obj = new_chat
+            new_chat.save_cache()
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
