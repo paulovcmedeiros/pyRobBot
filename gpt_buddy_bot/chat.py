@@ -9,7 +9,7 @@ import openai
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions, OpenAiApiCallOptions
-from .chat_context import BaseChatContext, EmbeddingBasedChatContext
+from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import CannotConnectToApiError, retry_api_call
 from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
 
@@ -30,8 +30,8 @@ class Chat:
         self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
         self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
 
-        if self.context_model is None:
-            self.context_handler = BaseChatContext(parent_chat=self)
+        if self.context_model == "full-history":
+            self.context_handler = FullHistoryChatContext(parent_chat=self)
         elif self.context_model == "text-embedding-ada-002":
             self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
         else:

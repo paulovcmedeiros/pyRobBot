@@ -14,7 +14,7 @@ PRICE_PER_K_TOKENS = {
     "gpt-4": {"input": 0.03, "output": 0.06},
     "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
-    None: {"input": 0.0, "output": 0.0},
+    "full-history": {"input": 0.0, "output": 0.0},
 }
 
 

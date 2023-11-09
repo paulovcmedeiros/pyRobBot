@@ -55,7 +55,7 @@ class ChatContext(ABC):
         """Return context messages."""
 
 
-class BaseChatContext(ChatContext):
+class FullHistoryChatContext(ChatContext):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._placeholder_tokens_usage = {"input": 0, "output": 0}
@@ -127,8 +127,8 @@ def _make_list_of_context_msgs(history: list[dict], system_name: str):
 def _select_relevant_history(
     history_df: pd.DataFrame,
     embedding: list[float],
-    n_related_msg_exchanges: int = 3,
-    n_tailing_history_exchanges: int = 2,
+    max_n_prompt_reply_pairs: int = 5,
+    max_n_tailing_prompt_reply_pairs: int = 2,
 ):
     history_df["embedding"] = (
         history_df["embedding"].apply(ast.literal_eval).apply(np.array)
@@ -138,12 +138,12 @@ def _select_relevant_history(
     )
 
     # Get the last messages added to the history
-    df_last_n_chats = history_df.tail(n_tailing_history_exchanges)
+    df_last_n_chats = history_df.tail(max_n_tailing_prompt_reply_pairs)
 
     # Get the most similar messages
     df_similar_chats = (
         history_df.sort_values("similarity", ascending=False)
-        .head(n_related_msg_exchanges)
+        .head(max_n_prompt_reply_pairs)
         .sort_values("timestamp")
     )
 
@@ -152,6 +152,4 @@ def _select_relevant_history(
         df_context["message_exchange"].apply(ast.literal_eval).drop_duplicates()
     ).tolist()
 
-    selected_history = list(itertools.chain.from_iterable(selected_history))
-
-    return selected_history
+    return list(itertools.chain.from_iterable(selected_history))

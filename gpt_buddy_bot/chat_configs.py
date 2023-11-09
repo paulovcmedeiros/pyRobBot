@@ -114,7 +114,7 @@ class ChatOptions(OpenAiApiCallOptions):
         default=f"{GeneralConstants.PACKAGE_NAME}_system",
         description="Name of the chat's system",
     )
-    context_model: Literal["text-embedding-ada-002", None] = Field(
+    context_model: Literal["text-embedding-ada-002", "full-history"] = Field(
         default="text-embedding-ada-002",
         description="OpenAI API model to use for embedding",
     )

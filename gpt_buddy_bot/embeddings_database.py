@@ -11,8 +11,16 @@ class EmbeddingsDatabase:
         self.embedding_model = embedding_model
         self.db_path = db_path
         self.create()
-        if self.get_embedding_model() is None:
+
+        stored_embedding_model = self.get_embedding_model()
+        if stored_embedding_model is None:
             self._init_embedding_model_table()
+        elif stored_embedding_model != self.embedding_model:
+            raise ValueError(
+                "Database already contains a different embedding model: "
+                f"{self.get_embedding_model()}.\n"
+                "Cannot continue."
+            )
 
     def create(self):
         conn = sqlite3.connect(self.db_path)
@@ -21,7 +29,7 @@ class EmbeddingsDatabase:
         create_embedding_model_table = """
         CREATE TABLE IF NOT EXISTS embedding_model (
             created_timestamp INTEGER NOT NULL,
-            embedding_model TEXT,
+            embedding_model TEXT NOT NULL,
             PRIMARY KEY (embedding_model)
         )
         """
