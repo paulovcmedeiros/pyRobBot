@@ -1,8 +1,8 @@
 [tool.poetry]
   authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
-  description = "A simple UI & terminal ChatGPT chatbot that uses OpenAI API."
+  description = "A simple UI & terminal chatbot that uses the OpenAI API."
   license = "MIT"
-  name = "gpt-buddy-bot"
+  name = "pyrobbot"
   readme = "README.md"
   version = "0.1.0"
 
@@ -11,7 +11,7 @@
   requires = ["poetry-core"]
 
 [tool.poetry.scripts]
-  gbb = "gpt_buddy_bot.__main__:main"
+  rob = "pyrobbot.__main__:main"
 
 [tool.poetry.dependencies]
   # Python version

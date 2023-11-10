@@ -1,7 +1,7 @@
 import pytest
 
-from gpt_buddy_bot.__main__ import main
-from gpt_buddy_bot.argparse_wrapper import get_parsed_args
+from pyrobbot.__main__ import main
+from pyrobbot.argparse_wrapper import get_parsed_args
 
 
 @pytest.mark.usefixtures("_input_builtin_mocker")

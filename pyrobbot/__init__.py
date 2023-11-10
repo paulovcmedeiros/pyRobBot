@@ -25,7 +25,7 @@ class GeneralConstants:
     CHAT_CACHE_DIR = PACKAGE_CACHE_DIRECTORY / "chats"
 
     # Constants related to the app
-    APP_NAME = PACKAGE_NAME.title().replace("Gpt", "GPT").replace("_", " ")
+    APP_NAME = "pyRobBot"
     APP_DIR = PACKAGE_DIRECTORY / "app"
     APP_PATH = APP_DIR / "app.py"
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"

@@ -6,10 +6,10 @@ from abc import ABC, abstractmethod
 import streamlit as st
 from PIL import Image
 
-from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.chat import Chat
-from gpt_buddy_bot.chat_configs import ChatOptions
-from gpt_buddy_bot.openai_utils import CannotConnectToApiError
+from pyrobbot import GeneralConstants
+from pyrobbot.chat import Chat
+from pyrobbot.chat_configs import ChatOptions
+from pyrobbot.openai_utils import CannotConnectToApiError
 
 _AVATAR_FILES_DIR = GeneralConstants.APP_DIR / "data"
 _ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"

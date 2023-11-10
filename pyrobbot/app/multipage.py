@@ -6,10 +6,10 @@ import openai
 import streamlit as st
 from pydantic import ValidationError
 
-from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.app.app_page_templates import AppPage, ChatBotPage, _RecoveredChat
-from gpt_buddy_bot.chat import Chat
-from gpt_buddy_bot.chat_configs import ChatOptions
+from pyrobbot import GeneralConstants
+from pyrobbot.app.app_page_templates import AppPage, ChatBotPage, _RecoveredChat
+from pyrobbot.chat import Chat
+from pyrobbot.chat_configs import ChatOptions
 
 
 class AbstractMultipageApp(ABC):

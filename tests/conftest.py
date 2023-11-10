@@ -5,9 +5,9 @@ import numpy as np
 import openai
 import pytest
 
-import gpt_buddy_bot
-from gpt_buddy_bot.chat import Chat
-from gpt_buddy_bot.chat_configs import ChatOptions
+import pyrobbot
+from pyrobbot.chat import Chat
+from pyrobbot.chat_configs import ChatOptions
 
 
 # Register markers and constants
@@ -22,7 +22,7 @@ def pytest_configure(config):
     )
 
     pytest.ORIGINAL_PACKAGE_CACHE_DIRECTORY = (
-        gpt_buddy_bot.GeneralConstants.PACKAGE_CACHE_DIRECTORY
+        pyrobbot.GeneralConstants.PACKAGE_CACHE_DIRECTORY
     )
 
 
@@ -35,7 +35,7 @@ def _set_env():
 
 @pytest.fixture(autouse=True)
 def _mocked_general_constants(tmp_path):
-    gpt_buddy_bot.GeneralConstants.PACKAGE_CACHE_DIRECTORY = tmp_path / "cache"
+    pyrobbot.GeneralConstants.PACKAGE_CACHE_DIRECTORY = tmp_path / "cache"
 
 
 @pytest.fixture(autouse=True)

@@ -1,8 +1,8 @@
 import openai
 import pytest
 
-from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.openai_utils import CannotConnectToApiError
+from pyrobbot import GeneralConstants
+from pyrobbot.openai_utils import CannotConnectToApiError
 
 
 @pytest.mark.order(1)
