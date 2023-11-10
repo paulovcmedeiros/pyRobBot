@@ -28,10 +28,7 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
     def on_error(error, n_attempts):
         if n_attempts < max_n_attempts:
             logger.warning(
-                "    > {}. Making new attempt ({}/{})...",
-                error,
-                n_attempts + 1,
-                max_n_attempts,
+                "{}. Making new attempt ({}/{})...", error, n_attempts + 1, max_n_attempts
             )
             time.sleep(1)
         else:
