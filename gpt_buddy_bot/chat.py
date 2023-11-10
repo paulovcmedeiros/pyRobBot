@@ -64,8 +64,7 @@ class Chat:
 
     def save_cache(self):
         """Store the chat's configs and metadata to the cache directory."""
-        with open(self.configs_file, "w") as configs_f:
-            configs_f.write(self.configs.model_dump_json(indent=2))
+        self.configs.export(self.configs_file)
 
         metadata = self.metadata  # Trigger loading metadata if not yet done
         with open(self.metadata_file, "w") as metadata_f:

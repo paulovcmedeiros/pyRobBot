@@ -1,5 +1,4 @@
 """Utilities for creating pages in a streamlit app."""
-import pickle
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -127,8 +126,7 @@ class ChatBotPage(AppPage):
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
             chat_options_file_path = sys.argv[-1]
-            with open(chat_options_file_path, "rb") as chat_configs_file:
-                self.state["chat_configs"] = pickle.load(chat_configs_file)
+            self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
         return self.state["chat_configs"]
 
     @chat_configs.setter

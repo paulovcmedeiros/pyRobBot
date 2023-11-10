@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
 import argparse
+import json
 import types
 import typing
 from getpass import getuser
@@ -67,6 +68,17 @@ class BaseConfigModel(BaseModel):
             return getattr(self, item)
         except AttributeError as error:
             raise KeyError(item) from error
+
+    def export(self, fpath: Path):
+        """Export the model's data to a file."""
+        with open(fpath, "w") as configs_file:
+            configs_file.write(self.model_dump_json(indent=2, exclude_unset=True))
+
+    @classmethod
+    def from_file(cls, fpath: Path):
+        """Return an instance of the class given configs stored in a json file."""
+        with open(fpath, "r") as configs_file:
+            return cls.model_validate(json.load(configs_file))
 
 
 class OpenAiApiCallOptions(BaseConfigModel):

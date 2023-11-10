@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Commands supported by the package's script."""
-import pickle
 import subprocess
 
 from . import GeneralConstants
@@ -23,9 +22,7 @@ def run_on_terminal(args):
 
 def run_on_ui(args):
     """Run the chat on the browser."""
-    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
-        pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
-
+    ChatOptions.from_cli_args(args).export(fpath=GeneralConstants.PARSED_ARGS_FILE)
     try:
         subprocess.run(
             [  # noqa: S603, S607
