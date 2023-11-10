@@ -227,7 +227,11 @@ class ChatBotPage(AppPage):
             )
 
             # Reset title according to conversation initial contents
-            if "page_title" not in self.state and len(self.chat_history) > 3:
+            min_history_len_for_summary = 3
+            if (
+                "page_title" not in self.state
+                and len(self.chat_history) > min_history_len_for_summary
+            ):
                 with st.spinner("Working out conversation topic..."):
                     prompt = "Summarize the messages in max 4 words.\n"
                     title = "".join(

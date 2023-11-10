@@ -1,3 +1,4 @@
+"""Chat context/history management."""
 import ast
 import itertools
 from abc import ABC, abstractmethod
@@ -16,7 +17,10 @@ if TYPE_CHECKING:
 
 
 class ChatContext(ABC):
+    """Abstract base class for representing the context of a chat."""
+
     def __init__(self, parent_chat: "Chat"):
+        """Initialise the instance given a parent `Chat` object."""
         self.parent_chat = parent_chat
         self.database = EmbeddingsDatabase(
             db_path=self.context_file_path, embedding_model=self.embedding_model
@@ -24,10 +28,12 @@ class ChatContext(ABC):
 
     @property
     def embedding_model(self):
+        """Return the embedding model used for context management."""
         return self.parent_chat.context_model
 
     @property
     def context_file_path(self):
+        """Return the path to the context file."""
         return self.parent_chat.context_file_path
 
     def add_to_history(self, msg_list: list[dict]):
@@ -56,7 +62,10 @@ class ChatContext(ABC):
 
 
 class FullHistoryChatContext(ChatContext):
+    """Context class using full chat history."""
+
     def __init__(self, *args, **kwargs):
+        """Initialise instance. Args and kwargs are passed to the parent class' `init`."""
         super().__init__(*args, **kwargs)
         self._placeholder_tokens_usage = {"input": 0, "output": 0}
 
@@ -65,7 +74,8 @@ class FullHistoryChatContext(ChatContext):
         """Return a placeholder embedding request."""
         return {"embedding": None, "tokens_usage": self._placeholder_tokens_usage}
 
-    def get_context(self, msg: dict):
+    def get_context(self, msg: dict):  # noqa: ARG002
+        """Return context messages."""
         context_msgs = _make_list_of_context_msgs(
             history=self.load_history(), system_name=self.parent_chat.system_name
         )
@@ -76,7 +86,7 @@ class FullHistoryChatContext(ChatContext):
 
 
 class EmbeddingBasedChatContext(ChatContext):
-    """Chat context."""
+    """Chat context using embedding models."""
 
     def _request_embedding_for_text(self, text: str):
         return request_embedding_from_openai(text=text, model=self.embedding_model)
@@ -90,6 +100,7 @@ class EmbeddingBasedChatContext(ChatContext):
         return self._request_embedding_for_text(text=text)
 
     def get_context(self, msg: dict):
+        """Return context messages."""
         embedding_request = self._request_embedding_for_text(text=msg["content"])
         selected_history = _select_relevant_history(
             history_df=self.database.get_messages_dataframe(),
@@ -106,6 +117,7 @@ class EmbeddingBasedChatContext(ChatContext):
 
 @retry_api_call()
 def request_embedding_from_openai(text: str, model: str):
+    """Request embedding for `text` according to context model `model` from OpenAI."""
     text = text.strip()
     embedding_request = openai.Embedding.create(input=[text], model=model)
 

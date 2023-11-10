@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Commands supported by the package's script."""
 import pickle
 import subprocess
 

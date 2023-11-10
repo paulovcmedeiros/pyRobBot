@@ -1,3 +1,4 @@
+"""Management of token usage and costs for OpenAI API."""
 import datetime
 import sqlite3
 from pathlib import Path
@@ -18,7 +19,10 @@ PRICE_PER_K_TOKENS = {
 
 
 class TokenUsageDatabase:
+    """Manages a database to store estimated token usage and costs for OpenAI API."""
+
     def __init__(self, fpath: Path):
+        """Initialize a TokenUsageDatabase instance."""
         self.fpath = fpath
         self.token_price = {}
         for model, price_per_k_tokens in PRICE_PER_K_TOKENS.items():
@@ -29,6 +33,7 @@ class TokenUsageDatabase:
         self.create()
 
     def create(self):
+        """Create the database if it doesn't exist."""
         self.fpath.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.fpath)
         cursor = conn.cursor()
@@ -50,8 +55,8 @@ class TokenUsageDatabase:
         conn.commit()
         conn.close()
 
-    # Function to insert data into the database
     def insert_data(self, model, n_input_tokens, n_output_tokens):
+        """Insert the data into the token_costs table."""
         if model is None:
             return
 
@@ -85,6 +90,7 @@ class TokenUsageDatabase:
         conn.close()
 
     def retrieve_sums_by_model(self):
+        """Retrieve the sums of tokens and costs by each model."""
         conn = sqlite3.connect(self.fpath)
         cursor = conn.cursor()
 
@@ -121,6 +127,7 @@ class TokenUsageDatabase:
         return sums_by_model
 
     def get_usage_balance_dataframe(self):
+        """Get a dataframe with the accumulated token usage and costs."""
         sums_by_model = self.retrieve_sums_by_model()
         df_rows = []
         for model, accumulated_usage in sums_by_model.items():
@@ -157,6 +164,7 @@ class TokenUsageDatabase:
         return usage_df
 
     def get_current_chat_usage_dataframe(self, token_usage_per_model: dict):
+        """Get a dataframe with the current chat's token usage and costs."""
         df_rows = []
         for model, token_usage in token_usage_per_model.items():
             if model is None:
@@ -180,6 +188,7 @@ class TokenUsageDatabase:
         return chat_usage_df
 
     def print_usage_costs(self, token_usage: dict, current_chat: bool = True):
+        """Print the estimated token usage and costs."""
         header_start = "Estimated token usage and associated costs"
         header2dataframe = {
             f"{header_start}: Accumulated": self.get_usage_balance_dataframe(),
@@ -226,7 +235,7 @@ def _group_columns_by_prefix(dataframe: pd.DataFrame):
     dataframe = dataframe.copy()
     col_tuples_for_multiindex = dataframe.columns.str.split(": ", expand=True).to_numpy()
     dataframe.columns = pd.MultiIndex.from_tuples(
-        [("", x[0]) if pd.isnull(x[1]) else x for x in col_tuples_for_multiindex]
+        [("", x[0]) if pd.isna(x[1]) else x for x in col_tuples_for_multiindex]
     )
     return dataframe
 
