@@ -1,6 +1,6 @@
 """Entrypoint for the package's UI."""
-from gpt_buddy_bot import GeneralConstants
-from gpt_buddy_bot.app.multipage import MultipageChatbotApp
+from pyrobbot import GeneralConstants
+from pyrobbot.app.multipage import MultipageChatbotApp
 
 
 def run_app():
