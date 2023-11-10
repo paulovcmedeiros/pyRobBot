@@ -23,15 +23,7 @@ _RecoveredChat = object()
 
 
 class AppPage(ABC):
-    """Abstract base class for a page within a streamlit application.
-
-    Attributes:
-        page_id (str): Unique identifier for the page.
-        page_number (int): The current number of created pages.
-        _fallback_sidebar_title (str): Default sidebar title used if none is provided.
-        _fallback_page_title (str): Default page title used if none is provided.
-
-    """
+    """Abstract base class for a page within a streamlit application."""
 
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
         """Initializes a new instance of the AppPage class.
@@ -91,16 +83,7 @@ class AppPage(ABC):
 
 
 class ChatBotPage(AppPage):
-    """Represents a chatbot page within a streamlit application, inheriting from AppPage.
-
-    Args:
-        AppPage ([type]): [description]
-
-    Attributes:
-        chat_obj (Chat): Chat object that manages the chat interactions.
-        avatars (dict): Dictionary holding avatar images for participants.
-
-    """
+    """Implement a chatbot page in a streamlit application, inheriting from AppPage."""
 
     def __init__(
         self, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
@@ -108,10 +91,10 @@ class ChatBotPage(AppPage):
         """Initialize new instance of the ChatBotPage class with an optional Chat object.
 
         Args:
-            chat_obj (Chat, optional): The chat object. Defaults to None.
-            sidebar_title (str, optional): The sidebar title for the chatbot page.
+            chat_obj (Chat): The chat object. Defaults to None.
+            sidebar_title (str): The sidebar title for the chatbot page.
                 Defaults to an empty string.
-            page_title (str, optional): The title for the chatbot page.
+            page_title (str): The title for the chatbot page.
                 Defaults to an empty string.
         """
         super().__init__(sidebar_title=sidebar_title, page_title=page_title)

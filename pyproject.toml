@@ -55,6 +55,9 @@
 [tool.black]
   line-length = 90
 
+[tool.flakeheaven]
+  base = ".flakeheaven.toml"
+
 [tool.isort]
   line_length = 90
   profile = "black"

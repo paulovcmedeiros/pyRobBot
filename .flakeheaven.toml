@@ -1,0 +1,24 @@
+[tool.flakeheaven]
+  exclude = [".*/", "tmp/", "*/tmp/", "*.ipynb"]
+  format = "colored"
+  # Show line of source code in output, with syntax highlighting
+  show_source = true
+  style = "google"
+
+# list of plugins and rules for them
+[tool.flakeheaven.plugins]
+  # Deactivate all rules for all plugins by default
+  "*" = ["-*"]
+  # Activate only those plugins not covered by ruff
+  pydoclint = [
+    "+*",
+    "-DOC105",
+    "-DOC106",
+    "-DOC107",
+    "-DOC109",
+    "-DOC110",
+    "-DOC203",
+    "-DOC301",
+    "-DOC403",
+    "-DOC404",
+  ]

@@ -101,6 +101,9 @@ class EmbeddingsDatabase:
             chat_model (str): The chat model.
             message_exchange: The message exchange.
             embedding: The embedding associated with the message exchange.
+
+        Raises:
+            ValueError: If the database already contains a different embedding model.
         """
         stored_embedding_model = self.get_embedding_model()
         if stored_embedding_model is None:
