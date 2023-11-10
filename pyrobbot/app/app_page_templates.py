@@ -3,9 +3,9 @@ import sys
 import uuid
 from abc import ABC, abstractmethod
 from json.decoder import JSONDecodeError
-from loguru import logger
 
 import streamlit as st
+from loguru import logger
 from PIL import Image
 
 from pyrobbot import GeneralConstants
