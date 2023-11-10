@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+"""Implementation of the Chat class."""
 import json
 import shutil
 import uuid
 from collections import defaultdict
 from pathlib import Path
+
+from loguru import logger
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions
@@ -13,7 +16,22 @@ from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
 
 
 class Chat:
+    """Manages conversations with an AI chat model.
+
+    This class encapsulates the chat behavior, including handling the chat context,
+    managing cache directories, and interfacing with the OpenAI API for generating chat
+    responses.
+    """
+
     def __init__(self, configs: ChatOptions = None):
+        """Initializes a chat instance.
+
+        Args:
+            configs (ChatOptions, optional): The configurations for this chat session.
+
+        Raises:
+            NotImplementedError: If the context model specified in configs is unknown.
+        """
         self.id = uuid.uuid4()
 
         if configs is None:
@@ -37,6 +55,7 @@ class Chat:
 
     @property
     def cache_dir(self):
+        """Return the cache directory for this chat."""
         return self._cache_dir
 
     @cache_dir.setter
@@ -47,8 +66,7 @@ class Chat:
 
     def save_cache(self):
         """Store the chat's configs and metadata to the cache directory."""
-        with open(self.configs_file, "w") as configs_f:
-            configs_f.write(self.configs.model_dump_json(indent=2))
+        self.configs.export(self.configs_file)
 
         metadata = self.metadata  # Trigger loading metadata if not yet done
         with open(self.metadata_file, "w") as metadata_f:
@@ -65,6 +83,7 @@ class Chat:
 
     @property
     def context_file_path(self):
+        """Return the path to the file that stores the chat context and history."""
         return self.cache_dir / "embeddings.db"
 
     @property
@@ -95,6 +114,7 @@ class Chat:
 
     @property
     def base_directive(self):
+        """Return the base directive for the LLM."""
         msg_content = " ".join(
             [
                 instruction.strip()
@@ -130,10 +150,32 @@ class Chat:
 
     @classmethod
     def from_dict(cls, configs: dict):
+        """Creates a Chat instance from a configuration dictionary.
+
+        Converts the configuration dictionary into a ChatOptions instance
+        and uses it to instantiate the Chat class.
+
+        Args:
+            configs (dict): The chat configuration options as a dictionary.
+
+        Returns:
+            Chat: An instance of Chat initialized with the given configurations.
+        """
         return cls(configs=ChatOptions.model_validate(configs))
 
     @classmethod
     def from_cli_args(cls, cli_args):
+        """Creates a Chat instance from CLI arguments.
+
+        Extracts relevant options from the CLI arguments and initializes a Chat instance
+        with them.
+
+        Args:
+            cli_args: The command line arguments.
+
+        Returns:
+            Chat: An instance of Chat initialized with CLI-specified configurations.
+        """
         chat_opts = {
             k: v
             for k, v in vars(cli_args).items()
@@ -143,7 +185,14 @@ class Chat:
 
     @classmethod
     def from_cache(cls, cache_dir: Path):
-        """Return a chat object from a cached chat."""
+        """Loads a chat instance from a cache directory.
+
+        Args:
+            cache_dir (Path): The path to the cache directory.
+
+        Returns:
+            Chat: An instance of Chat loaded with cached configurations and metadata.
+        """
         try:
             with open(cache_dir / "configs.json", "r") as configs_f:
                 new = cls.from_dict(json.load(configs_f))
@@ -152,16 +201,20 @@ class Chat:
         return new
 
     def load_history(self):
+        """Load chat history from cache."""
         return self.context_handler.load_history()
 
     @property
     def initial_greeting(self):
+        """Return the initial greeting for the chat."""
         return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
 
     def respond_user_prompt(self, prompt: str, **kwargs):
+        """Respond to a user prompt."""
         yield from self._respond_prompt(prompt=prompt, role="user", **kwargs)
 
     def respond_system_prompt(self, prompt: str, **kwargs):
+        """Respond to a system prompt."""
         yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
 
     def yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
@@ -211,6 +264,7 @@ class Chat:
 
     def start(self):
         """Start the chat."""
+        # ruff: noqa: T201
         print(f"{self.assistant_name}> {self.initial_greeting}\n")
         try:
             while True:
@@ -223,9 +277,11 @@ class Chat:
                 print()
                 print()
         except (KeyboardInterrupt, EOFError):
-            print("Exiting chat.")
+            print("", end="\r")
+            logger.info("Exiting chat.")
 
     def report_token_usage(self, current_chat: bool = True):
+        """Report token usage and associated costs."""
         self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
@@ -233,7 +289,8 @@ class Chat:
         yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
 
     @property
-    def _api_connection_error_msg(self):
+    def api_connection_error_msg(self):
+        """Return the error message for API connection errors."""
         return (
             "Sorry, I'm having trouble communicating with OpenAI. "
             + "Please check the validity of your API key and try again."

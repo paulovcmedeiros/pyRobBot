@@ -1,4 +1,4 @@
-"Code for the creation streamlit apps with dynamically created pages."
+"""Code for the creation streamlit apps with dynamically created pages."""
 import contextlib
 from abc import ABC, abstractmethod
 
@@ -81,7 +81,14 @@ class AbstractMultipageApp(ABC):
 
 
 class MultipageChatbotApp(AbstractMultipageApp):
+    """A Streamlit multipage app specifically for chatbot interactions.
+
+    Inherits from AbstractMultipageApp and adds chatbot-specific functionalities.
+
+    """
+
     def init_openai_client(self):
+        """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
         # Initialize the OpenAI API client
         placeholher = (
             "OPENAI_API_KEY detected"
@@ -102,182 +109,36 @@ class MultipageChatbotApp(AbstractMultipageApp):
             st.write(":red[You need to provide a key to use the chat]")
 
     def add_page(self, page: ChatBotPage = None, selected: bool = True, **kwargs):
+        """Adds a new ChatBotPage to the app.
+
+        If no page is specified, a new instance of ChatBotPage is created and added.
+
+        Args:
+            page: The ChatBotPage to be added. If None, a new page is created.
+            selected: Whether the added page should be selected immediately.
+            **kwargs: Additional keyword arguments for ChatBotPage creation.
+
+        Returns:
+            The result of the superclass's add_page method.
+
+        """
         if page is None:
             page = ChatBotPage(**kwargs)
         return super().add_page(page=page, selected=selected)
 
-    def handle_ui_page_selection(self):
-        """Control page selection in the UI sidebar."""
+    def get_widget_previous_value(self, widget_key, default=None):
+        """Get the previous value of a widget, if any."""
+        if "widget_previous_value" not in self.selected_page.state:
+            self.selected_page.state["widget_previous_value"] = {}
+        return self.selected_page.state["widget_previous_value"].get(widget_key, default)
 
-        st.markdown(
-            """
-            <style>
-            .stButton button[kind="primary"] {
-                background-color: white;
-                border-color: #f63366;
-                border-width: 2px;
-                opacity: 0;
-                transition: opacity 0.3s;
-            }
-            .stButton button[kind="primary"]:hover {
-                opacity: 1;
-            }
-            .stButton button[kind="secondary"]:disabled {
-                border-color: #2BB5E8;
-                border-width: 2px;
-                color: black;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        with self.sidebar_tabs["chats"]:
-            for page in self.pages.values():
-                col1, col2 = st.columns([0.9, 0.1])
-                with col1:
-                    st.button(
-                        label=page.sidebar_title,
-                        key=f"select_{page.page_id}",
-                        on_click=self.register_selected_page,
-                        kwargs={"page": page},
-                        use_container_width=True,
-                        disabled=page.page_id == self.selected_page.page_id,
-                    )
-                with col2:
-                    st.button(
-                        ":wastebasket:",
-                        key=f"delete_{page.page_id}",
-                        type="primary",
-                        use_container_width=True,
-                        on_click=self.remove_page,
-                        kwargs={"page": page},
-                        help="Delete this chat.",
-                    )
-
-        with self.sidebar_tabs["settings"]:
-            caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
-            if self.selected_page.title != self.selected_page._fallback_page_title:
-                caption += f": {self.selected_page.title}"
-            st.caption(caption)
-            current_chat_configs = self.selected_page.chat_obj.configs
-            updates_to_chat_configs = {}
-
-            # Present the user with the model and instructions fields first
-            field_names = ["model", "ai_instructions", "context_model"]
-            field_names += [field_name for field_name in ChatOptions.model_fields]
-            field_names = list(dict.fromkeys(field_names))
-            model_fields = {k: ChatOptions.model_fields[k] for k in field_names}
-
-            # Keep track of selected values so that selectbox doesn't reset
-            if "widget_previous_value" not in self.selected_page.state:
-                self.selected_page.state["widget_previous_value"] = {}
-
-            def save_widget_previous_values(element_key):
-                self.selected_page.state["widget_previous_value"][
-                    element_key
-                ] = st.session_state.get(element_key)
-
-            for field_name, field in model_fields.items():
-                title = field_name.replace("_", " ").title()
-                choices = ChatOptions.get_allowed_values(field=field_name)
-                description = ChatOptions.get_description(field=field_name)
-                field_type = ChatOptions.get_type(field=field_name)
-
-                # Check if the field is frozen and disable corresponding UI element if so
-                chat_started = self.selected_page.state.get("chat_started", False)
-                extra_info = field.json_schema_extra
-                if extra_info is None:
-                    extra_info = {}
-                disable_ui_element = extra_info.get("frozen", False) and (
-                    chat_started
-                    or any(
-                        msg["role"] == "user" for msg in self.selected_page.chat_history
-                    )
-                )
-
-                # Keep track of selected values so that selectbox doesn't reset
-                current_config_value = getattr(current_chat_configs, field_name)
-                element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
-                widget_previous_value = self.selected_page.state[
-                    "widget_previous_value"
-                ].get(element_key, current_config_value)
-                if choices:
-                    new_field_value = st.selectbox(
-                        title,
-                        key=element_key,
-                        options=choices,
-                        index=choices.index(widget_previous_value),
-                        help=description,
-                        disabled=disable_ui_element,
-                        on_change=save_widget_previous_values,
-                        args=[element_key],
-                    )
-                elif field_type == str:
-                    new_field_value = st.text_input(
-                        title,
-                        key=element_key,
-                        value=widget_previous_value,
-                        help=description,
-                        disabled=disable_ui_element,
-                        on_change=save_widget_previous_values,
-                        args=[element_key],
-                    )
-                elif field_type in [int, float]:
-                    step = 1 if field_type == int else 0.01
-                    bounds = [None, None]
-                    for item in field.metadata:
-                        with contextlib.suppress(AttributeError):
-                            bounds[0] = item.gt + step
-                        with contextlib.suppress(AttributeError):
-                            bounds[0] = item.ge
-                        with contextlib.suppress(AttributeError):
-                            bounds[1] = item.lt - step
-                        with contextlib.suppress(AttributeError):
-                            bounds[1] = item.le
-
-                    new_field_value = st.number_input(
-                        title,
-                        key=element_key,
-                        value=widget_previous_value,
-                        placeholder="OpenAI Default",
-                        min_value=bounds[0],
-                        max_value=bounds[1],
-                        step=step,
-                        help=description,
-                        disabled=disable_ui_element,
-                        on_change=save_widget_previous_values,
-                        args=[element_key],
-                    )
-                elif field_type in (list, tuple):
-                    prev_value = (
-                        widget_previous_value
-                        if isinstance(widget_previous_value, str)
-                        else "\n".join(widget_previous_value)
-                    )
-                    new_field_value = st.text_area(
-                        title,
-                        value=prev_value.strip(),
-                        key=element_key,
-                        help=description,
-                        disabled=disable_ui_element,
-                        on_change=save_widget_previous_values,
-                        args=[element_key],
-                    )
-                else:
-                    continue
-
-                if new_field_value != current_config_value:
-                    if field_type in (list, tuple):
-                        new_field_value = tuple(new_field_value.strip().split("\n"))
-                    updates_to_chat_configs[field_name] = new_field_value
-
-        if updates_to_chat_configs:
-            new_chat_configs = current_chat_configs.model_dump()
-            new_chat_configs.update(updates_to_chat_configs)
-            new_chat = Chat.from_dict(new_chat_configs)
-            self.selected_page.chat_obj = new_chat
-            new_chat.save_cache()
+    def save_widget_previous_values(self, element_key):
+        """Save a widget's 'previous value`, to be read by `get_widget_previous_value`."""
+        if "widget_previous_value" not in self.selected_page.state:
+            self.selected_page.state["widget_previous_value"] = {}
+        self.selected_page.state["widget_previous_value"][
+            element_key
+        ] = st.session_state.get(element_key)
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
@@ -291,7 +152,37 @@ class MultipageChatbotApp(AbstractMultipageApp):
             reverse=True,
         )
 
+    def handle_ui_page_selection(self):
+        """Control page selection and removal in the UI sidebar."""
+        _set_button_style()
+        self._build_sidebar_tabs()
+
+        with self.sidebar_tabs["settings"]:
+            caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
+            if self.selected_page.title != self.selected_page.fallback_page_title:
+                caption += f": {self.selected_page.title}"
+            st.caption(caption)
+            current_chat_configs = self.selected_page.chat_obj.configs
+
+            # Present the user with the model and instructions fields first
+            field_names = ["model", "ai_instructions", "context_model"]
+            field_names += list(ChatOptions.model_fields)
+            field_names = list(dict.fromkeys(field_names))
+            model_fields = {k: ChatOptions.model_fields[k] for k in field_names}
+
+            updates_to_chat_configs = self._handle_chat_configs_value_selection(
+                current_chat_configs, model_fields
+            )
+
+        if updates_to_chat_configs:
+            new_chat_configs = current_chat_configs.model_dump()
+            new_chat_configs.update(updates_to_chat_configs)
+            new_chat = Chat.from_dict(new_chat_configs)
+            self.selected_page.chat_obj = new_chat
+            new_chat.save_cache()
+
     def render(self, **kwargs):
+        """Renders the multipage chatbot app in the  UI according to the selected page."""
         with st.sidebar:
             st.title(GeneralConstants.APP_NAME)
             self.init_openai_client()
@@ -330,3 +221,149 @@ class MultipageChatbotApp(AbstractMultipageApp):
                     self.add_page()
 
         return super().render(**kwargs)
+
+    def _build_sidebar_tabs(self):
+        with self.sidebar_tabs["chats"]:
+            for page in self.pages.values():
+                col1, col2 = st.columns([0.9, 0.1])
+                with col1:
+                    st.button(
+                        label=page.sidebar_title,
+                        key=f"select_{page.page_id}",
+                        on_click=self.register_selected_page,
+                        kwargs={"page": page},
+                        use_container_width=True,
+                        disabled=page.page_id == self.selected_page.page_id,
+                    )
+                with col2:
+                    st.button(
+                        ":wastebasket:",
+                        key=f"delete_{page.page_id}",
+                        type="primary",
+                        use_container_width=True,
+                        on_click=self.remove_page,
+                        kwargs={"page": page},
+                        help="Delete this chat.",
+                    )
+
+    def _handle_chat_configs_value_selection(self, current_chat_configs, model_fields):
+        updates_to_chat_configs = {}
+        for field_name, field in model_fields.items():
+            title = field_name.replace("_", " ").title()
+            choices = ChatOptions.get_allowed_values(field=field_name)
+            description = ChatOptions.get_description(field=field_name)
+            field_type = ChatOptions.get_type(field=field_name)
+
+            # Check if the field is frozen and disable corresponding UI element if so
+            chat_started = self.selected_page.state.get("chat_started", False)
+            extra_info = field.json_schema_extra
+            if extra_info is None:
+                extra_info = {}
+            disable_ui_element = extra_info.get("frozen", False) and (
+                chat_started
+                or any(msg["role"] == "user" for msg in self.selected_page.chat_history)
+            )
+
+            # Keep track of selected values so that selectbox doesn't reset
+            current_config_value = getattr(current_chat_configs, field_name)
+            element_key = f"{field_name}-pg-{self.selected_page.page_id}-ui-element"
+            widget_previous_value = self.get_widget_previous_value(
+                element_key, default=current_config_value
+            )
+            if choices:
+                new_field_value = st.selectbox(
+                    title,
+                    key=element_key,
+                    options=choices,
+                    index=choices.index(widget_previous_value),
+                    help=description,
+                    disabled=disable_ui_element,
+                    on_change=self.save_widget_previous_values,
+                    args=[element_key],
+                )
+            elif field_type == str:
+                new_field_value = st.text_input(
+                    title,
+                    key=element_key,
+                    value=widget_previous_value,
+                    help=description,
+                    disabled=disable_ui_element,
+                    on_change=self.save_widget_previous_values,
+                    args=[element_key],
+                )
+            elif field_type in [int, float]:
+                step = 1 if field_type == int else 0.01
+                bounds = [None, None]
+                for item in field.metadata:
+                    with contextlib.suppress(AttributeError):
+                        bounds[0] = item.gt + step
+                    with contextlib.suppress(AttributeError):
+                        bounds[0] = item.ge
+                    with contextlib.suppress(AttributeError):
+                        bounds[1] = item.lt - step
+                    with contextlib.suppress(AttributeError):
+                        bounds[1] = item.le
+
+                new_field_value = st.number_input(
+                    title,
+                    key=element_key,
+                    value=widget_previous_value,
+                    placeholder="OpenAI Default",
+                    min_value=bounds[0],
+                    max_value=bounds[1],
+                    step=step,
+                    help=description,
+                    disabled=disable_ui_element,
+                    on_change=self.save_widget_previous_values,
+                    args=[element_key],
+                )
+            elif field_type in (list, tuple):
+                prev_value = (
+                    widget_previous_value
+                    if isinstance(widget_previous_value, str)
+                    else "\n".join(widget_previous_value)
+                )
+                new_field_value = st.text_area(
+                    title,
+                    value=prev_value.strip(),
+                    key=element_key,
+                    help=description,
+                    disabled=disable_ui_element,
+                    on_change=self.save_widget_previous_values,
+                    args=[element_key],
+                )
+            else:
+                continue
+
+            if new_field_value != current_config_value:
+                if field_type in (list, tuple):
+                    new_field_value = tuple(new_field_value.strip().split("\n"))
+                updates_to_chat_configs[field_name] = new_field_value
+
+        return updates_to_chat_configs
+
+
+def _set_button_style():
+    """CSS styling for the buttons in the app."""
+    st.markdown(
+        """
+        <style>
+        .stButton button[kind="primary"] {
+            background-color: white;
+            border-color: #f63366;
+            border-width: 2px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .stButton button[kind="primary"]:hover {
+            opacity: 1;
+        }
+        .stButton button[kind="secondary"]:disabled {
+            border-color: #2BB5E8;
+            border-width: 2px;
+            color: black;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )

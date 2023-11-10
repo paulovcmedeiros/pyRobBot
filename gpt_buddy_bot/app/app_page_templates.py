@@ -1,5 +1,4 @@
 """Utilities for creating pages in a streamlit app."""
-import pickle
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -24,18 +23,26 @@ _RecoveredChat = object()
 
 
 class AppPage(ABC):
-    """Abstract base class for pages in a streamlit app."""
+    """Abstract base class for a page within a streamlit application."""
 
     def __init__(self, sidebar_title: str = "", page_title: str = ""):
+        """Initializes a new instance of the AppPage class.
+
+        Args:
+            sidebar_title (str, optional): The title to be displayed in the sidebar.
+                Defaults to an empty string.
+            page_title (str, optional): The title to be displayed on the page.
+                Defaults to an empty string.
+        """
         self.page_id = str(uuid.uuid4())
         self.page_number = st.session_state.get("n_created_pages", 0) + 1
 
         chat_number_for_title = f"Chat #{self.page_number}"
         if page_title is _RecoveredChat:
-            self._fallback_page_title = f"{chat_number_for_title.strip('#')} (Recovered)"
+            self.fallback_page_title = f"{chat_number_for_title.strip('#')} (Recovered)"
             page_title = None
         else:
-            self._fallback_page_title = chat_number_for_title
+            self.fallback_page_title = chat_number_for_title
             if page_title:
                 self.title = page_title
 
@@ -63,7 +70,7 @@ class AppPage(ABC):
     @property
     def title(self):
         """Get the title of the page."""
-        return self.state.get("page_title", self._fallback_page_title)
+        return self.state.get("page_title", self.fallback_page_title)
 
     @title.setter
     def title(self, value: str):
@@ -76,9 +83,20 @@ class AppPage(ABC):
 
 
 class ChatBotPage(AppPage):
+    """Implement a chatbot page in a streamlit application, inheriting from AppPage."""
+
     def __init__(
         self, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
     ):
+        """Initialize new instance of the ChatBotPage class with an optional Chat object.
+
+        Args:
+            chat_obj (Chat): The chat object. Defaults to None.
+            sidebar_title (str): The sidebar title for the chatbot page.
+                Defaults to an empty string.
+            page_title (str): The title for the chatbot page.
+                Defaults to an empty string.
+        """
         super().__init__(sidebar_title=sidebar_title, page_title=page_title)
 
         if chat_obj:
@@ -91,8 +109,7 @@ class ChatBotPage(AppPage):
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
             chat_options_file_path = sys.argv[-1]
-            with open(chat_options_file_path, "rb") as chat_configs_file:
-                self.state["chat_configs"] = pickle.load(chat_configs_file)
+            self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
         return self.state["chat_configs"]
 
     @chat_configs.setter
@@ -168,18 +185,19 @@ class ChatBotPage(AppPage):
             )
 
             # Display (stream) assistant response in chat message container
-            with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                with st.empty():
-                    st.markdown("▌")
-                    full_response = ""
-                    try:
-                        for chunk in self.chat_obj.respond_user_prompt(prompt):
-                            full_response += chunk
-                            st.markdown(full_response + "▌")
-                    except CannotConnectToApiError:
-                        full_response = self.chat_obj._api_connection_error_msg
-                    finally:
-                        st.markdown(full_response)
+            with st.chat_message(
+                "assistant", avatar=self.avatars["assistant"]
+            ), st.empty():
+                st.markdown("▌")
+                full_response = ""
+                try:
+                    for chunk in self.chat_obj.respond_user_prompt(prompt):
+                        full_response += chunk
+                        st.markdown(full_response + "▌")
+                except CannotConnectToApiError:
+                    full_response = self.chat_obj.api_connection_error_msg
+                finally:
+                    st.markdown(full_response)
 
             self.chat_history.append(
                 {
@@ -190,7 +208,11 @@ class ChatBotPage(AppPage):
             )
 
             # Reset title according to conversation initial contents
-            if "page_title" not in self.state and len(self.chat_history) > 3:
+            min_history_len_for_summary = 3
+            if (
+                "page_title" not in self.state
+                and len(self.chat_history) > min_history_len_for_summary
+            ):
                 with st.spinner("Working out conversation topic..."):
                     prompt = "Summarize the messages in max 4 words.\n"
                     title = "".join(

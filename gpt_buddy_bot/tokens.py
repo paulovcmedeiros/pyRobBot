@@ -1,3 +1,4 @@
+"""Management of token usage and costs for OpenAI API."""
 import datetime
 import sqlite3
 from pathlib import Path
@@ -18,7 +19,10 @@ PRICE_PER_K_TOKENS = {
 
 
 class TokenUsageDatabase:
+    """Manages a database to store estimated token usage and costs for OpenAI API."""
+
     def __init__(self, fpath: Path):
+        """Initialize a TokenUsageDatabase instance."""
         self.fpath = fpath
         self.token_price = {}
         for model, price_per_k_tokens in PRICE_PER_K_TOKENS.items():
@@ -29,6 +33,7 @@ class TokenUsageDatabase:
         self.create()
 
     def create(self):
+        """Create the database if it doesn't exist."""
         self.fpath.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.fpath)
         cursor = conn.cursor()
@@ -50,8 +55,8 @@ class TokenUsageDatabase:
         conn.commit()
         conn.close()
 
-    # Function to insert data into the database
     def insert_data(self, model, n_input_tokens, n_output_tokens):
+        """Insert the data into the token_costs table."""
         if model is None:
             return
 
@@ -85,6 +90,7 @@ class TokenUsageDatabase:
         conn.close()
 
     def retrieve_sums_by_model(self):
+        """Retrieve the sums of tokens and costs by each model."""
         conn = sqlite3.connect(self.fpath)
         cursor = conn.cursor()
 
@@ -121,6 +127,7 @@ class TokenUsageDatabase:
         return sums_by_model
 
     def get_usage_balance_dataframe(self):
+        """Get a dataframe with the accumulated token usage and costs."""
         sums_by_model = self.retrieve_sums_by_model()
         df_rows = []
         for model, accumulated_usage in sums_by_model.items():
@@ -150,13 +157,14 @@ class TokenUsageDatabase:
             }
             df_rows.append(df_row)
 
-        df = pd.DataFrame(df_rows)
-        if not df.empty:
-            df = _add_totals_row(_group_columns_by_prefix(df))
+        usage_df = pd.DataFrame(df_rows)
+        if not usage_df.empty:
+            usage_df = _add_totals_row(_group_columns_by_prefix(usage_df))
 
-        return df
+        return usage_df
 
     def get_current_chat_usage_dataframe(self, token_usage_per_model: dict):
+        """Get a dataframe with the current chat's token usage and costs."""
         df_rows = []
         for model, token_usage in token_usage_per_model.items():
             if model is None:
@@ -173,13 +181,14 @@ class TokenUsageDatabase:
                 "Cost ($): Total": sum(costs.values()),
             }
             df_rows.append(df_row)
-        df = pd.DataFrame(df_rows)
+        chat_usage_df = pd.DataFrame(df_rows)
         if df_rows:
-            df = _group_columns_by_prefix(df.set_index("Model"))
-            df = _add_totals_row(df)
-        return df
+            chat_usage_df = _group_columns_by_prefix(chat_usage_df.set_index("Model"))
+            chat_usage_df = _add_totals_row(chat_usage_df)
+        return chat_usage_df
 
     def print_usage_costs(self, token_usage: dict, current_chat: bool = True):
+        """Print the estimated token usage and costs."""
         header_start = "Estimated token usage and associated costs"
         header2dataframe = {
             f"{header_start}: Accumulated": self.get_usage_balance_dataframe(),
@@ -222,26 +231,27 @@ def get_n_tokens_from_msgs(messages: list[dict], model: str):
     return num_tokens
 
 
-def _group_columns_by_prefix(df):
-    df = df.copy()
-    col_tuples_for_multiindex = df.columns.str.split(": ", expand=True).values
-    df.columns = pd.MultiIndex.from_tuples(
-        [("", x[0]) if pd.isnull(x[1]) else x for x in col_tuples_for_multiindex]
+def _group_columns_by_prefix(dataframe: pd.DataFrame):
+    dataframe = dataframe.copy()
+    col_tuples_for_multiindex = dataframe.columns.str.split(": ", expand=True).to_numpy()
+    dataframe.columns = pd.MultiIndex.from_tuples(
+        [("", x[0]) if pd.isna(x[1]) else x for x in col_tuples_for_multiindex]
     )
-    return df
+    return dataframe
 
 
-def _add_totals_row(df):
-    df = df.copy()
-    dtypes = df.dtypes
-    df.loc["Total"] = df.sum(numeric_only=True)
-    for col in df.columns:
-        df[col] = df[col].astype(dtypes[col])
-    df = df.fillna("")
-    return df
+def _add_totals_row(accounting_df: pd.DataFrame):
+    accounting_df = accounting_df.copy()
+    dtypes = accounting_df.dtypes
+    accounting_df.loc["Total"] = accounting_df.sum(numeric_only=True)
+    for col in accounting_df.columns:
+        accounting_df[col] = accounting_df[col].astype(dtypes[col])
+    accounting_df = accounting_df.fillna("")
+    return accounting_df
 
 
 def _print_df(df: pd.DataFrame, header: str):
+    # ruff: noqa: T201
     underline = "-" * len(header)
     print()
     print(underline)

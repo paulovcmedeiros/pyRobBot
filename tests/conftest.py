@@ -27,22 +27,22 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
-def set_env():
+def _set_env():
     # Make sure we don't consume our tokens in tests
     os.environ["OPENAI_API_KEY"] = "INVALID_API_KEY"
     openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
 @pytest.fixture(autouse=True)
-def mocked_general_constants(tmp_path):
+def _mocked_general_constants(tmp_path):
     gpt_buddy_bot.GeneralConstants.PACKAGE_CACHE_DIRECTORY = tmp_path / "cache"
 
 
 @pytest.fixture(autouse=True)
-def openai_api_request_mockers(request, mocker):
+def _openai_api_request_mockers(request, mocker):
     """Mockers for OpenAI API requests. We don't want to consume our tokens in tests."""
 
-    def _mock_openai_ChatCompletion_create(*args, **kwargs):
+    def _mock_openai_chat_completion_create(*args, **kwargs):  # noqa: ARG001
         """Mock `openai.ChatCompletion.create`. Yield from lorem ipsum instead."""
         completion_chunk = type("CompletionChunk", (), {})
         completion_chunk_choice = type("CompletionChunkChoice", (), {})
@@ -53,7 +53,7 @@ def openai_api_request_mockers(request, mocker):
             completion_chunk.choices = [completion_chunk_choice]
             yield completion_chunk
 
-    def _mock_openai_Embedding_create(*args, **kwargs):
+    def _mock_openai_embedding_create(*args, **kwargs):  # noqa: ARG001
         """Mock `openai.Embedding.create`. Yield from lorem ipsum instead."""
         embedding_request = {
             "data": [{"embedding": np.random.rand(512).tolist()}],
@@ -63,18 +63,18 @@ def openai_api_request_mockers(request, mocker):
 
     if "no_chat_completion_create_mocking" not in request.keywords:
         mocker.patch(
-            "openai.ChatCompletion.create", new=_mock_openai_ChatCompletion_create
+            "openai.ChatCompletion.create", new=_mock_openai_chat_completion_create
         )
     if "no_embedding_create_mocking" not in request.keywords:
-        mocker.patch("openai.Embedding.create", new=_mock_openai_Embedding_create)
+        mocker.patch("openai.Embedding.create", new=_mock_openai_embedding_create)
 
 
 @pytest.fixture()
-def input_builtin_mocker(mocker, user_input):
+def _input_builtin_mocker(mocker, user_input):
     """Mock the `input` builtin. Raise `KeyboardInterrupt` after the second call."""
 
     # We allow two calls in order to allow for the chat context handler to kick in
-    def _mock_input(*args, **kwargs):
+    def _mock_input(*args, **kwargs):  # noqa: ARG001
         try:
             _mock_input.execution_counter += 1
         except AttributeError:
@@ -83,7 +83,9 @@ def input_builtin_mocker(mocker, user_input):
             raise KeyboardInterrupt
         return user_input
 
-    mocker.patch("builtins.input", new=lambda _: _mock_input(user_input=user_input))
+    mocker.patch(  # noqa: PT008
+        "builtins.input", new=lambda _: _mock_input(user_input=user_input)
+    )
 
 
 @pytest.fixture(params=ChatOptions.get_allowed_values("model"))

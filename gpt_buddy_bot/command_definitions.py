@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-import pickle
+"""Commands supported by the package's script."""
 import subprocess
+
+from loguru import logger
 
 from . import GeneralConstants
 from .chat import Chat
@@ -9,7 +11,9 @@ from .chat_configs import ChatOptions
 
 def accounting(args):
     """Show the accumulated costs of the chat and exit."""
-    Chat.from_cli_args(cli_args=args).report_token_usage(current_chat=False)
+    chat = Chat.from_cli_args(cli_args=args)
+    chat.private_mode = True
+    chat.report_token_usage(current_chat=False)
 
 
 def run_on_terminal(args):
@@ -22,12 +26,10 @@ def run_on_terminal(args):
 
 def run_on_ui(args):
     """Run the chat on the browser."""
-    with open(GeneralConstants.PARSED_ARGS_FILE, "wb") as chat_options_file:
-        pickle.dump(ChatOptions.from_cli_args(args), chat_options_file)
-
+    ChatOptions.from_cli_args(args).export(fpath=GeneralConstants.PARSED_ARGS_FILE)
     try:
         subprocess.run(
-            [
+            [  # noqa: S603, S607
                 "streamlit",
                 "run",
                 GeneralConstants.APP_PATH.as_posix(),
@@ -35,6 +37,7 @@ def run_on_ui(args):
                 GeneralConstants.PARSED_ARGS_FILE.as_posix(),
             ],
             cwd=GeneralConstants.APP_DIR.as_posix(),
+            check=True,
         )
     except (KeyboardInterrupt, EOFError):
-        print("Exiting.")
+        logger.info("Exiting.")

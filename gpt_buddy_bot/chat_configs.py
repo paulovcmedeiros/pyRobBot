@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Registration and validation of options."""
 import argparse
+import json
 import types
 import typing
 from getpass import getuser
@@ -13,12 +14,15 @@ from gpt_buddy_bot import GeneralConstants
 
 
 class BaseConfigModel(BaseModel):
+    """Base model for configuring options."""
+
     @classmethod
     def get_allowed_values(cls, field: str):
         """Return a tuple of allowed values for `field`."""
         annotation = cls._get_field_param(field=field, param="annotation")
         if isinstance(annotation, type(Literal[""])):
             return get_args(annotation)
+        return None
 
     @classmethod
     def get_type(cls, field: str):
@@ -31,6 +35,7 @@ class BaseConfigModel(BaseModel):
         type_hint_first_arg = get_args(type_hint)[0]
         if isinstance(type_hint_first_arg, type):
             return type_hint_first_arg
+        return None
 
     @classmethod
     def get_default(cls, field: str):
@@ -64,8 +69,21 @@ class BaseConfigModel(BaseModel):
         except AttributeError as error:
             raise KeyError(item) from error
 
+    def export(self, fpath: Path):
+        """Export the model's data to a file."""
+        with open(fpath, "w") as configs_file:
+            configs_file.write(self.model_dump_json(indent=2, exclude_unset=True))
+
+    @classmethod
+    def from_file(cls, fpath: Path):
+        """Return an instance of the class given configs stored in a json file."""
+        with open(fpath, "r") as configs_file:
+            return cls.model_validate(json.load(configs_file))
+
 
 class OpenAiApiCallOptions(BaseConfigModel):
+    """Model for configuring options for OpenAI API calls."""
+
     _openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
     _models_url = "https://platform.openai.com/docs/models"
 
