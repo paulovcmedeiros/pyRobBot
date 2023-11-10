@@ -2,6 +2,8 @@
 import sys
 import uuid
 from abc import ABC, abstractmethod
+from json.decoder import JSONDecodeError
+from loguru import logger
 
 import streamlit as st
 from PIL import Image
@@ -108,8 +110,12 @@ class ChatBotPage(AppPage):
     def chat_configs(self) -> ChatOptions:
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
-            chat_options_file_path = sys.argv[-1]
-            self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
+            try:
+                chat_options_file_path = sys.argv[-1]
+                self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
+            except (FileNotFoundError, JSONDecodeError):
+                logger.warning("Could not retrieve cli args. Using default chat options.")
+                self.state["chat_configs"] = ChatOptions()
         return self.state["chat_configs"]
 
     @chat_configs.setter
