@@ -83,7 +83,9 @@ def _input_builtin_mocker(mocker, user_input):
             raise KeyboardInterrupt
         return user_input
 
-    mocker.patch("builtins.input", new=lambda _: _mock_input(user_input=user_input))
+    mocker.patch(  # noqa: PT008
+        "builtins.input", new=lambda _: _mock_input(user_input=user_input)
+    )
 
 
 @pytest.fixture(params=ChatOptions.get_allowed_values("model"))

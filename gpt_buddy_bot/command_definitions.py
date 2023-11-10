@@ -2,6 +2,8 @@
 """Commands supported by the package's script."""
 import subprocess
 
+from loguru import logger
+
 from . import GeneralConstants
 from .chat import Chat
 from .chat_configs import ChatOptions
@@ -36,4 +38,4 @@ def run_on_ui(args):
             check=True,
         )
     except (KeyboardInterrupt, EOFError):
-        print("Exiting.")
+        logger.info("Exiting.")

@@ -6,6 +6,8 @@ import uuid
 from collections import defaultdict
 from pathlib import Path
 
+from loguru import logger
+
 from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
@@ -275,7 +277,8 @@ class Chat:
                 print()
                 print()
         except (KeyboardInterrupt, EOFError):
-            print("Exiting chat.")
+            print("", end="\r")
+            logger.info("Exiting chat.")
 
     def report_token_usage(self, current_chat: bool = True):
         """Report token usage and associated costs."""

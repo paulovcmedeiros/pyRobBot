@@ -5,6 +5,7 @@ from functools import wraps
 from typing import TYPE_CHECKING
 
 import openai
+from loguru import logger
 
 from .chat_configs import OpenAiApiCallOptions
 
@@ -26,9 +27,11 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
 
     def on_error(error, n_attempts):
         if n_attempts < max_n_attempts:
-            print(
-                f"\n    > {error}. "
-                + f"Making new attempt ({n_attempts+1}/{max_n_attempts})..."
+            logger.warning(
+                "    > {}. Making new attempt ({}/{})...",
+                error,
+                n_attempts + 1,
+                max_n_attempts,
             )
             time.sleep(1)
         else:
