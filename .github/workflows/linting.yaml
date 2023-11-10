@@ -1,0 +1,68 @@
+#.github/workflows/linting.yaml
+name: Linting Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.py'
+      - '.github/workflows/linting.yaml'
+  push:
+    branches:
+      - '**' # Every branch
+    paths:
+      - '**.py'
+      - '.github/workflows/linting.yaml'
+
+jobs:
+  linting:
+    if: github.repository_owner == 'paulovcmedeiros'
+    name: Run Linters
+    runs-on: ubuntu-latest
+    steps:
+      #----------------------------------------------
+      #       check-out repo and set-up python
+      #----------------------------------------------
+      - name: Check out repository
+        uses: actions/checkout@v3
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      #----------------------------------------------
+      #  --- configure poetry & install project  ----
+      #----------------------------------------------
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install poethepoet
+        run: poetry self add 'poethepoet[poetry_plugin]'
+
+      - name: Load cached venv (if cache exists)
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: ${{ github.job }}-venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml', '**/poetry.toml') }}
+
+      - name: Install dependencies (if venv cache is not found)
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root --only main,linting
+
+      - name: Install the project itself
+        run: poetry install --no-interaction --only-root
+
+      #----------------------------------------------
+      #         Run the linting checks
+      #----------------------------------------------
+      - name: Run linters
+        run: |
+          poetry devtools lint
+

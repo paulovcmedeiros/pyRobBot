@@ -1,0 +1,158 @@
+[tool.poetry]
+  authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
+  description = "A simple UI & terminal chatbot that uses the OpenAI API."
+  license = "MIT"
+  name = "pyrobbot"
+  readme = "README.md"
+  version = "0.1.0"
+
+[build-system]
+  build-backend = "poetry.core.masonry.api"
+  requires = ["poetry-core"]
+
+[tool.poetry.scripts]
+  rob = "pyrobbot.__main__:main"
+
+[tool.poetry.dependencies]
+  # Python version
+  python = ">=3.9,<3.9.7 || >3.9.7,<3.13"
+  # Deps that should have been openapi deps
+  matplotlib = "^3.8.0"
+  plotly = "^5.18.0"
+  scikit-learn = "^1.3.2"
+  scipy = "^1.11.3"
+  # Other dependencies
+  loguru = "^0.7.2"
+  numpy = "^1.26.1"
+  openai = "^0.28.1"
+  pandas = "^2.1.2"
+  pillow = "^10.1.0"
+  pydantic = "^2.4.2"
+  streamlit = "^1.28.0"
+  tiktoken = "^0.5.1"
+
+[tool.poetry.group.dev.dependencies]
+  ipython = "^8.16.1"
+
+[tool.poetry.group.linting.dependencies]
+  black = "^23.10.1"
+  flakeheaven = "^3.3.0"
+  isort = "^5.12.0"
+  pydoclint = "^0.3.8"
+  ruff = "^0.1.3"
+
+[tool.poetry.group.test.dependencies]
+  pytest = "^7.4.3"
+  pytest-cov = "^4.1.0"
+  pytest-mock = "^3.12.0"
+  pytest-order = "^1.1.0"
+  python-lorem = "^1.3.0.post1"
+
+  ##################
+  # Linter configs #
+  ##################
+
+[tool.black]
+  line-length = 90
+
+[tool.flakeheaven]
+  base = ".flakeheaven.toml"
+
+[tool.isort]
+  line_length = 90
+  profile = "black"
+
+[tool.ruff]
+  # C901: Function is too complex. Ignoring this for now but will be removed later.
+  ignore = ["C901", "D105", "EXE001", "RET504", "RUF012"]
+  line-length = 90
+  select = [
+    "A",
+    "ARG",
+    "B",
+    "BLE",
+    "C4",
+    "C90",
+    "D",
+    "E",
+    "ERA",
+    "EXE",
+    "F",
+    "G",
+    "I",
+    "N",
+    "PD",
+    "PERF",
+    "PIE",
+    "PL",
+    "PT",
+    "Q",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "T20",
+    "W",
+  ]
+
+[tool.ruff.per-file-ignores]
+  # S101: Use of `assert` detected
+  "tests/**/*.py" = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+    "E501",
+    "S101",
+    "SLF001",
+  ]
+
+[tool.ruff.pydocstyle]
+  convention = "google"
+
+  ##################
+  # pytest configs #
+  ##################
+
+[tool.pytest.ini_options]
+  addopts = "-v --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
+  log_cli_level = "INFO"
+  testpaths = ["tests/smoke", "tests/unit"]
+
+  ####################################
+  # Leave configs for `poe` separate #
+  ####################################
+
+[tool.poe]
+  poetry_command = "devtools"
+
+[tool.poe.tasks]
+  _black = "black ."
+  _isort = "isort ."
+  _ruff = "ruff check ."
+  # Test-related tasks
+  pytest = "pytest"
+  # Tasks to be run as pre-push checks
+  pre-push-checks = ["lint", "pytest"]
+
+[tool.poe.tasks._flake8]
+  cmd = "flakeheaven lint ."
+  env = {FLAKEHEAVEN_CACHE_TIMEOUT = "0"}
+
+[tool.poe.tasks.lint]
+  args = [{name = "fix", type = "boolean", default = false}]
+  control = {expr = "fix"}
+
+[[tool.poe.tasks.lint.switch]]
+  case = "True"
+  sequence = ["_isort", "_black", "_ruff --fix", "_flake8"]
+
+[[tool.poe.tasks.lint.switch]]
+  case = "False"
+  sequence = ["_isort --check-only", "_black --check --diff", "_ruff", "_flake8"]
