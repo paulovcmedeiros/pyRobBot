@@ -1,5 +1,3 @@
-import os
-
 import lorem
 import numpy as np
 import openai
@@ -21,22 +19,22 @@ def pytest_configure(config):
         "no_embedding_create_mocking: mark test to not mock openai.Embedding.create",
     )
 
-    pytest.ORIGINAL_PACKAGE_CACHE_DIRECTORY = (
-        pyrobbot.GeneralConstants.PACKAGE_CACHE_DIRECTORY
+    pytest.original_package_cache_directory = (
+        pyrobbot.GeneralConstants.package_cache_directory
     )
 
 
 @pytest.fixture(autouse=True)
-def _set_env():
+def _set_env(monkeypatch):
     # Make sure we don't consume our tokens in tests
-    os.environ["OPENAI_API_KEY"] = "INVALID_API_KEY"
-    openai.api_key = os.environ["OPENAI_API_KEY"]
+    monkeypatch.setenv("OPENAI_API_KEY", "INVALID_API_KEY")
+    openai.api_key = "INVALID_API_KEY"
 
 
 @pytest.fixture(autouse=True)
 def _mocked_general_constants(tmp_path, mocker):
     mocker.patch(
-        "pyrobbot.GeneralDefinitions.PACKAGE_CACHE_DIRECTORY", tmp_path / "cache"
+        "pyrobbot.GeneralDefinitions.package_cache_directory", tmp_path / "cache"
     )
 
 
@@ -105,7 +103,8 @@ def default_chat_configs(llm_model, context_model, tmp_path):
     return ChatOptions(
         model=llm_model,
         context_model=context_model,
-        token_usage_db_path=tmp_path / "token_usage.db",  # Don't use the regular db file
+        # Don't use the regular db file
+        general_token_usage_db_path=tmp_path / "token_usage.db",
         cache_dir=tmp_path,  # Don't use our cache files
     )
 

@@ -106,7 +106,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
         placeholher = (
             "OPENAI_API_KEY detected"
-            if GeneralConstants.OPENAI_API_KEY
+            if GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
             else "You need this to use the chat"
         )
         self.openai_api_key = st.text_input(
@@ -119,7 +119,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         openai.api_key = (
             self.openai_api_key
             if self.openai_api_key
-            else GeneralConstants.OPENAI_API_KEY
+            else GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
         )
         if not openai.api_key:
             st.write(":red[You need to provide a key to use the chat]")
@@ -163,7 +163,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return sorted(
             (
                 directory
-                for directory in GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/")
+                for directory in GeneralConstants.chat_cache_dir.glob("chat_*/")
                 if next(directory.iterdir(), False)
             ),
             key=lambda fpath: fpath.stat().st_mtime,

@@ -62,7 +62,7 @@ class Chat:
                 "Cannot change cache directory after changing OpenAI API key."
             )
         if value is None:
-            value = GeneralConstants.CHAT_CACHE_DIR / f"chat_{self.id}"
+            value = GeneralConstants.chat_cache_dir / f"chat_{self.id}"
         self._cache_dir = Path(value)
 
     def save_cache(self):

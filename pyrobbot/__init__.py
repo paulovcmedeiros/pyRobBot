@@ -15,6 +15,9 @@ import openai
 class GeneralDefinitions:
     """General definitions for the package."""
 
+    # Keep track of the OpenAI API key available to the package at initialization
+    SYSTEM_ENV_OPENAI_API_KEY: str = None
+
     # Main package info
     RUN_ID = uuid.uuid4().hex
     PACKAGE_NAME = __name__
@@ -31,18 +34,6 @@ class GeneralDefinitions:
     APP_PATH = APP_DIR / "app.py"
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
 
-    # Constants related to using the OpenAI API
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-    def __post_init__(self):
-        # Initialize the OpenAI API client
-        openai.api_key = self.OPENAI_API_KEY
-
-        # Initialise the package's directories
-        self.PACKAGE_TMPDIR.mkdir(parents=True, exist_ok=True)
-        self.PACKAGE_CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-        self.CHAT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
     @staticmethod
     def openai_key_hash():
         """Return a hash of the OpenAI API key."""
@@ -51,21 +42,26 @@ class GeneralDefinitions:
         return hashlib.sha256(openai.api_key.encode("utf-8")).hexdigest()
 
     @property
-    def PACKAGE_CACHE_DIRECTORY(self):
+    def package_cache_directory(self):
         """Return the path to the package's cache directory."""
         return (
             Path.home() / ".cache" / self.PACKAGE_NAME / f"user_{self.openai_key_hash()}"
         )
 
     @property
-    def CHAT_CACHE_DIR(self):
+    def chat_cache_dir(self):
         """Return the path to the package's cache directory."""
-        return self.PACKAGE_CACHE_DIRECTORY / "chats"
+        return self.package_cache_directory / "chats"
 
     @property
-    def TOKEN_USAGE_DATABASE(self):
+    def general_token_usage_db_path(self):
         """Return the path to the package's token usage database."""
-        return self.PACKAGE_CACHE_DIRECTORY / "token_usage.db"
+        return self.package_cache_directory / "token_usage.db"
 
 
-GeneralConstants = GeneralDefinitions()
+GeneralConstants = GeneralDefinitions(
+    SYSTEM_ENV_OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY")
+)
+
+# Initialize the OpenAI API client
+openai.api_key = GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY

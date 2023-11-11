@@ -25,14 +25,14 @@ def test_testbed_doesnt_actually_connect_to_openai(default_chat):
 def test_we_are_using_tmp_cachedir():
     try:
         assert (
-            GeneralConstants.PACKAGE_CACHE_DIRECTORY
-            != pytest.ORIGINAL_PACKAGE_CACHE_DIRECTORY
+            GeneralConstants.package_cache_directory
+            != pytest.original_package_cache_directory
         )
 
     except AssertionError:
         pytest.exit(
             "Refuse to continue: Tests attempted to use the package's real cache dir "
-            + f"({GeneralConstants.PACKAGE_CACHE_DIRECTORY})!"
+            + f"({GeneralConstants.package_cache_directory})!"
         )
 
 
