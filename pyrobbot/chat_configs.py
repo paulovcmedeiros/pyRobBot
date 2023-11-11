@@ -149,8 +149,8 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         description="Initial instructions for the AI",
     )
-    token_usage_db_path: Optional[Path] = Field(
-        default=GeneralConstants.TOKEN_USAGE_DATABASE,
+    general_token_usage_db_path: Optional[Path] = Field(
+        default=GeneralConstants.general_token_usage_db_path,
         description="Path to the token usage database",
     )
     api_connection_max_n_attempts: int = Field(

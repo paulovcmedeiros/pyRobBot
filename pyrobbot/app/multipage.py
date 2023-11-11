@@ -1,6 +1,6 @@
 """Code for the creation streamlit apps with dynamically created pages."""
 import contextlib
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractproperty
 
 import openai
 import streamlit as st
@@ -28,21 +28,24 @@ class AbstractMultipageApp(ABC):
     @property
     def n_created_pages(self):
         """Return the number of pages created by the app, including deleted ones."""
-        return st.session_state.get("n_created_pages", 0)
+        return self.state.get("n_created_pages", 0)
 
     @n_created_pages.setter
     def n_created_pages(self, value):
-        st.session_state["n_created_pages"] = value
+        self.state["n_created_pages"] = value
 
     @property
     def pages(self) -> dict[AppPage]:
         """Return the pages of the app."""
-        if "available_pages" not in st.session_state:
-            st.session_state["available_pages"] = {}
-        return st.session_state["available_pages"]
+        if "available_pages" not in self.state:
+            self.state["available_pages"] = {}
+        return self.state["available_pages"]
 
-    def add_page(self, page: AppPage, selected: bool = True):
+    def add_page(self, page: AppPage, selected: bool = True, **page_obj_kwargs):
         """Add a page to the app."""
+        if page is None:
+            page = AppPage(parent=self, **page_obj_kwargs)
+
         self.pages[page.page_id] = page
         self.n_created_pages += 1
         if selected:
@@ -60,24 +63,28 @@ class AbstractMultipageApp(ABC):
 
     def register_selected_page(self, page: AppPage):
         """Register a page as selected."""
-        st.session_state["selected_page"] = page
+        self.state["selected_page"] = page
 
     @property
     def selected_page(self) -> ChatBotPage:
         """Return the selected page."""
-        if "selected_page" not in st.session_state:
+        if "selected_page" not in self.state:
             return next(iter(self.pages.values()))
-        return st.session_state["selected_page"]
-
-    @abstractmethod
-    def handle_ui_page_selection(self, **kwargs):
-        """Control page selection in the UI sidebar."""
+        return self.state["selected_page"]
 
     def render(self, **kwargs):
         """Render the multipage app with focus on the selected page."""
         self.handle_ui_page_selection(**kwargs)
         self.selected_page.render()
-        st.session_state["last_rendered_page"] = self.selected_page.page_id
+        self.state["last_rendered_page"] = self.selected_page.page_id
+
+    @abstractproperty
+    def state(self):
+        """Return the state of the app, for persistence of data."""
+
+    @abstractmethod
+    def handle_ui_page_selection(self, **kwargs):
+        """Control page selection in the UI sidebar."""
 
 
 class MultipageChatbotApp(AbstractMultipageApp):
@@ -87,28 +94,40 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
     """
 
-    def init_openai_client(self):
+    @property
+    def state(self):
+        """Return the state of the app, for persistence of data."""
+        app_state_id = f"app_state_{self.openai_api_key}"
+        if app_state_id not in st.session_state:
+            st.session_state[app_state_id] = {}
+        return st.session_state[app_state_id]
+
+    def init_chat_credentials(self):
         """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
-        # Initialize the OpenAI API client
         placeholher = (
             "OPENAI_API_KEY detected"
-            if GeneralConstants.OPENAI_API_KEY
+            if GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
             else "You need this to use the chat"
         )
-        openai_api_key = st.text_input(
+        self.openai_api_key = st.text_input(
             label="OpenAI API Key (required)",
             placeholder=placeholher,
             key="openai_api_key",
             type="password",
-            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys)",
+            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys). "
+            + "Chats created with this key won't be visible to people using other keys.",
         )
         openai.api_key = (
-            openai_api_key if openai_api_key else GeneralConstants.OPENAI_API_KEY
+            self.openai_api_key
+            if self.openai_api_key
+            else GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
         )
         if not openai.api_key:
             st.write(":red[You need to provide a key to use the chat]")
 
-    def add_page(self, page: ChatBotPage = None, selected: bool = True, **kwargs):
+    def add_page(
+        self, page: ChatBotPage = None, selected: bool = True, **page_obj_kwargs
+    ):
         """Adds a new ChatBotPage to the app.
 
         If no page is specified, a new instance of ChatBotPage is created and added.
@@ -116,14 +135,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
         Args:
             page: The ChatBotPage to be added. If None, a new page is created.
             selected: Whether the added page should be selected immediately.
-            **kwargs: Additional keyword arguments for ChatBotPage creation.
+            **page_obj_kwargs: Additional keyword arguments for ChatBotPage creation.
 
         Returns:
             The result of the superclass's add_page method.
 
         """
         if page is None:
-            page = ChatBotPage(**kwargs)
+            page = ChatBotPage(parent=self, **page_obj_kwargs)
         return super().add_page(page=page, selected=selected)
 
     def get_widget_previous_value(self, widget_key, default=None):
@@ -145,7 +164,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return sorted(
             (
                 directory
-                for directory in GeneralConstants.CHAT_CACHE_DIR.glob("chat_*/")
+                for directory in GeneralConstants.chat_cache_dir.glob("chat_*/")
                 if next(directory.iterdir(), False)
             ),
             key=lambda fpath: fpath.stat().st_mtime,
@@ -185,17 +204,23 @@ class MultipageChatbotApp(AbstractMultipageApp):
         """Renders the multipage chatbot app in the  UI according to the selected page."""
         with st.sidebar:
             st.title(GeneralConstants.APP_NAME)
-            self.init_openai_client()
+            self.init_chat_credentials()
             # Create a sidebar with tabs for chats and settings
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
+                # Add button to show the costs table
+                st.toggle(
+                    key="toggle_show_costs",
+                    label=":moneybag:",
+                    help="Show estimated token usage and associated costs",
+                )
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
 
                 # Reopen chats from cache (if any)
-                if not st.session_state.get("saved_chats_reloaded", False):
-                    st.session_state["saved_chats_reloaded"] = True
+                if not self.state.get("saved_chats_reloaded", False):
+                    self.state["saved_chats_reloaded"] = True
                     for cache_dir_path in self.get_saved_chat_cache_dir_paths():
                         try:
                             chat = Chat.from_cache(cache_dir=cache_dir_path)
@@ -208,6 +233,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                             continue
 
                         new_page = ChatBotPage(
+                            parent=self,
                             chat_obj=chat,
                             page_title=chat.metadata.get("page_title", _RecoveredChat),
                             sidebar_title=chat.metadata.get("sidebar_title"),
