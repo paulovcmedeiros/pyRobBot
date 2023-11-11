@@ -152,15 +152,28 @@ class ChatBotPage(AppPage):
             with st.chat_message(role, avatar=self.avatars.get(role)):
                 st.markdown(message["content"])
 
-    def render(self):
+    def render_cost_estimate_page(self):
+        """Render the estimated costs information in the chat."""
+        general_df = self.chat_obj.general_token_usage_db.get_usage_balance_dataframe()
+        chat_df = self.chat_obj.token_usage_db.get_usage_balance_dataframe()
+        dfs = {"All Recorded Chats": general_df, "Current Chat": chat_df}
+
+        st.header(dfs["Current Chat"].attrs["description"], divider="rainbow")
+        with st.container():
+            for category, df in dfs.items():
+                st.subheader(f"**{category}**")
+                st.dataframe(df)
+                st.write()
+            st.caption(df.attrs["disclaimer"])
+
+    def _render_chatbot_page(self):
         """Render a chatbot page.
 
         Adapted from:
         <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
 
         """
-        st.title(self.title)
-        st.divider()
+        st.header(self.title, divider="rainbow")
 
         if self.chat_history:
             self.render_chat_history()
@@ -230,4 +243,11 @@ class ChatBotPage(AppPage):
 
                     self.title = title
                     self.sidebar_title = title
-                    st.title(title)
+                    st.header(title, divider="rainbow")
+
+    def render(self):
+        """Render the app's chatbot or costs page, depending on user choice."""
+        if st.session_state.get("toggle_show_costs"):
+            self.render_cost_estimate_page()
+        else:
+            self._render_chatbot_page()

@@ -3,7 +3,6 @@
 import json
 import shutil
 import uuid
-from collections import defaultdict
 from pathlib import Path
 
 from loguru import logger
@@ -12,7 +11,7 @@ from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .openai_utils import make_api_chat_completion_call
-from .tokens import TokenUsageDatabase, get_n_tokens_from_msgs
+from .tokens import TokenUsageDatabase
 
 
 class Chat:
@@ -43,9 +42,6 @@ class Chat:
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.token_usage = defaultdict(lambda: {"input": 0, "output": 0})
-        self.token_usage_db = TokenUsageDatabase(fpath=self.token_usage_db_path)
-
         if self.context_model == "full-history":
             self.context_handler = FullHistoryChatContext(parent_chat=self)
         elif self.context_model == "text-embedding-ada-002":
@@ -75,6 +71,21 @@ class Chat:
     def clear_cache(self):
         """Remove the cache directory."""
         shutil.rmtree(self.cache_dir, ignore_errors=True)
+
+    @property
+    def token_usage_db_path(self):
+        """Return the path to the chat's token usage database."""
+        return self.cache_dir / "chat_token_usage.db"
+
+    @property
+    def token_usage_db(self):
+        """Return the chat's token usage database."""
+        return TokenUsageDatabase(fpath=self.token_usage_db_path)
+
+    @property
+    def general_token_usage_db(self):
+        """Return the general token usage database for all chats."""
+        return TokenUsageDatabase(fpath=self.general_token_usage_db_path)
 
     @property
     def configs_file(self):
@@ -132,14 +143,6 @@ class Chat:
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
     def __del__(self):
-        # Store token usage to database
-        for model in [self.model, self.context_model]:
-            self.token_usage_db.insert_data(
-                model=model,
-                n_input_tokens=self.token_usage[model]["input"],
-                n_output_tokens=self.token_usage[model]["output"],
-            )
-
         cache_empty = self.cache_dir.exists() and not next(
             self.cache_dir.iterdir(), False
         )
@@ -220,46 +223,23 @@ class Chat:
     def yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
         """Yield response from a prompt message."""
         # Get appropriate context for prompt from the context handler
-        prompt_context_request = self.context_handler.get_context(msg=prompt_msg)
-        context = prompt_context_request["context_messages"]
-
-        # Update token_usage with tokens used in context handler for prompt
-        self.token_usage[self.context_model]["input"] += sum(
-            prompt_context_request["tokens_usage"].values()
-        )
-
-        contextualised_prompt = [self.base_directive, *context, prompt_msg]
-        # Update token_usage with tokens used in chat input
-        self.token_usage[self.model]["input"] += get_n_tokens_from_msgs(
-            messages=contextualised_prompt, model=self.model
-        )
+        context = self.context_handler.get_context(msg=prompt_msg)
 
         # Make API request and yield response chunks
         full_reply_content = ""
         for chunk in make_api_chat_completion_call(
-            conversation=contextualised_prompt, chat_obj=self
+            conversation=[self.base_directive, *context, prompt_msg], chat_obj=self
         ):
             full_reply_content += chunk
             yield chunk
 
-        # Update token_usage ith tokens used in chat output
-        reply_as_msg = {"role": "assistant", "content": full_reply_content}
-        self.token_usage[self.model]["output"] += get_n_tokens_from_msgs(
-            messages=[reply_as_msg], model=self.model
-        )
-
         if add_to_history:
             # Put current chat exchange in context handler's history
-            history_entry_reg_tokens_usage = self.context_handler.add_to_history(
+            self.context_handler.add_to_history(
                 msg_list=[
                     prompt_msg,
                     {"role": "assistant", "content": full_reply_content},
                 ]
-            )
-
-            # Update token_usage with tokens used in context handler for reply
-            self.token_usage[self.context_model]["output"] += sum(
-                history_entry_reg_tokens_usage.values()
             )
 
     def start(self):
@@ -280,9 +260,26 @@ class Chat:
             print("", end="\r")
             logger.info("Exiting chat.")
 
-    def report_token_usage(self, current_chat: bool = True):
+    def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
-        self.token_usage_db.print_usage_costs(self.token_usage, current_chat=current_chat)
+        dfs = {}
+        if report_general:
+            dfs[
+                "All Recorded Chats"
+            ] = self.general_token_usage_db.get_usage_balance_dataframe()
+        if report_current_chat:
+            dfs["Current Chat"] = self.token_usage_db.get_usage_balance_dataframe()
+
+        if dfs:
+            for category, df in dfs.items():
+                header = f"{df.attrs['description']}: {category}"
+                table_separator = "=" * (len(header) + 4)
+                print(table_separator)
+                print(f"  {header}  ")
+                print(table_separator)
+                print(df)
+                print()
+            print(df.attrs["disclaimer"])
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
         prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}

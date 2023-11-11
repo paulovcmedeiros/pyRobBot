@@ -38,13 +38,11 @@ class ChatContext(ABC):
 
     def add_to_history(self, msg_list: list[dict]):
         """Add message exchange to history."""
-        embedding_request = self.request_embedding(msg_list=msg_list)
         self.database.insert_message_exchange(
             chat_model=self.parent_chat.model,
             message_exchange=msg_list,
-            embedding=embedding_request["embedding"],
+            embedding=self.request_embedding(msg_list=msg_list),
         )
-        return embedding_request["tokens_usage"]
 
     def load_history(self) -> list[dict]:
         """Load the chat history."""
@@ -52,67 +50,69 @@ class ChatContext(ABC):
         msg_exchanges = messages_df["message_exchange"].apply(ast.literal_eval).tolist()
         return list(itertools.chain.from_iterable(msg_exchanges))
 
+    def get_context(self, msg: dict):
+        """Return messages to serve as context for `msg` when requesting a completion."""
+        return _make_list_of_context_msgs(
+            history=self.select_relevant_history(msg=msg),
+            system_name=self.parent_chat.system_name,
+        )
+
     @abstractmethod
     def request_embedding(self, msg_list: list[dict]):
         """Request embedding from OpenAI API."""
 
     @abstractmethod
-    def get_context(self, msg: dict):
-        """Return context messages."""
+    def select_relevant_history(self, msg: dict):
+        """Select chat history msgs to use as context for `msg`."""
 
 
 class FullHistoryChatContext(ChatContext):
     """Context class using full chat history."""
 
-    def __init__(self, *args, **kwargs):
-        """Initialise instance. Args and kwargs are passed to the parent class' `init`."""
-        super().__init__(*args, **kwargs)
-        self._placeholder_tokens_usage = {"input": 0, "output": 0}
-
     # Implement abstract methods
     def request_embedding(self, msg_list: list[dict]):  # noqa: ARG002
-        """Return a placeholder embedding request."""
-        return {"embedding": None, "tokens_usage": self._placeholder_tokens_usage}
+        """Return a placeholder embedding."""
+        return
 
-    def get_context(self, msg: dict):  # noqa: ARG002
-        """Return context messages."""
-        context_msgs = _make_list_of_context_msgs(
-            history=self.load_history(), system_name=self.parent_chat.system_name
-        )
-        return {
-            "context_messages": context_msgs,
-            "tokens_usage": self._placeholder_tokens_usage,
-        }
+    def select_relevant_history(self, msg: dict):  # noqa: ARG002
+        """Select chat history msgs to use as context for `msg`."""
+        return self.load_history()
 
 
 class EmbeddingBasedChatContext(ChatContext):
     """Chat context using embedding models."""
 
-    def _request_embedding_for_text(self, text: str):
-        return request_embedding_from_openai(text=text, model=self.embedding_model)
+    def request_embedding_for_text(self, text: str):
+        """Request embedding for `text` from OpenAI according to used embedding model."""
+        embedding_request = request_embedding_from_openai(
+            text=text, model=self.embedding_model
+        )
+
+        # Update parent chat's token usage db with tokens used in embedding request
+        for db in [
+            self.parent_chat.general_token_usage_db,
+            self.parent_chat.token_usage_db,
+        ]:
+            for comm_type, n_tokens in embedding_request["tokens_usage"].items():
+                input_or_output_kwargs = {f"n_{comm_type}_tokens": n_tokens}
+                db.insert_data(model=self.embedding_model, **input_or_output_kwargs)
+
+        return embedding_request["embedding"]
 
     # Implement abstract methods
     def request_embedding(self, msg_list: list[dict]):
-        """Request embedding from OpenAI API."""
+        """Convert `msg_list` into a paragraph and get embedding from OpenAI API call."""
         text = "\n".join(
             [f"{msg['role'].strip()}: {msg['content'].strip()}" for msg in msg_list]
         )
-        return self._request_embedding_for_text(text=text)
+        return self.request_embedding_for_text(text=text)
 
-    def get_context(self, msg: dict):
-        """Return context messages."""
-        embedding_request = self._request_embedding_for_text(text=msg["content"])
-        selected_history = _select_relevant_history(
+    def select_relevant_history(self, msg: dict):
+        """Select chat history msgs to use as context for `msg`."""
+        return _select_relevant_history(
             history_df=self.database.get_messages_dataframe(),
-            embedding=embedding_request["embedding"],
+            embedding=self.request_embedding_for_text(text=msg["content"]),
         )
-        context_messages = _make_list_of_context_msgs(
-            history=selected_history, system_name=self.parent_chat.system_name
-        )
-        return {
-            "context_messages": context_messages,
-            "tokens_usage": embedding_request["tokens_usage"],
-        }
 
 
 @retry_api_call()
@@ -138,7 +138,7 @@ def _make_list_of_context_msgs(history: list[dict], system_name: str):
 
 def _select_relevant_history(
     history_df: pd.DataFrame,
-    embedding: list[float],
+    embedding: np.ndarray,
     max_n_prompt_reply_pairs: int = 5,
     max_n_tailing_prompt_reply_pairs: int = 2,
 ):
