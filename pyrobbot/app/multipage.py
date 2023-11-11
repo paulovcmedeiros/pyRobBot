@@ -114,7 +114,8 @@ class MultipageChatbotApp(AbstractMultipageApp):
             placeholder=placeholher,
             key="openai_api_key",
             type="password",
-            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys)",
+            help="[OpenAI API auth key](https://platform.openai.com/account/api-keys). "
+            + "Chats created with this key won't be visible to people using other keys.",
         )
         openai.api_key = (
             self.openai_api_key
