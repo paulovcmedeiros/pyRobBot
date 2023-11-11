@@ -37,6 +37,7 @@ class AppPage(ABC):
         """Initializes a new instance of the AppPage class.
 
         Args:
+            parent (MultipageChatbotApp): The parent app of the page.
             sidebar_title (str, optional): The title to be displayed in the sidebar.
                 Defaults to an empty string.
             page_title (str, optional): The title to be displayed on the page.
@@ -95,11 +96,16 @@ class ChatBotPage(AppPage):
     """Implement a chatbot page in a streamlit application, inheriting from AppPage."""
 
     def __init__(
-        self, parent, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
+        self,
+        parent: "MultipageChatbotApp",
+        chat_obj: Chat = None,
+        sidebar_title: str = "",
+        page_title: str = "",
     ):
         """Initialize new instance of the ChatBotPage class with an optional Chat object.
 
         Args:
+            parent (MultipageChatbotApp): The parent app of the page.
             chat_obj (Chat): The chat object. Defaults to None.
             sidebar_title (str): The sidebar title for the chatbot page.
                 Defaults to an empty string.
@@ -256,7 +262,7 @@ class ChatBotPage(AppPage):
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
-        if st.session_state["toggle_show_costs"]:
+        if st.session_state.get("toggle_show_costs"):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
