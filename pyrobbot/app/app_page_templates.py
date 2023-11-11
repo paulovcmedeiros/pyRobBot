@@ -256,7 +256,7 @@ class ChatBotPage(AppPage):
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
-        if self.parent.state.get("toggle_show_costs"):
+        if st.session_state["toggle_show_costs"]:
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
