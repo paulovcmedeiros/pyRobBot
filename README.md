@@ -1,5 +1,6 @@
-[![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/paulovcmedeiros/pyRobBot)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pyrobbot.streamlit.app)
 
+[![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/paulovcmedeiros/pyRobBot)
 
 [![Contributors Welcome](https://img.shields.io/badge/Contributors-welcome-<COLOR>.svg)](https://github.com/paulovcmedeiros/pyRobBot/pulls)
 [![Linting](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/linting.yaml/badge.svg)](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/linting.yaml)
@@ -10,7 +11,7 @@
 
 A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https://platform.openai.com/docs/models) via OpenAI API. Written in Python with a Web UI made with [Streamlit](https://streamlit.io). Can also be used directly from the terminal.
 
-See also the [online documentation](https://paulovcmedeiros.github.io/pyRobBot-docs).
+See also the [demo app on Streamlit](https://pyrobbot.streamlit.app).
 
 ## Features
 - [x] Web UI
