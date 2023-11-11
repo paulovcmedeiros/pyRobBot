@@ -34,8 +34,10 @@ def _set_env():
 
 
 @pytest.fixture(autouse=True)
-def _mocked_general_constants(tmp_path):
-    pyrobbot.GeneralConstants.PACKAGE_CACHE_DIRECTORY = tmp_path / "cache"
+def _mocked_general_constants(tmp_path, mocker):
+    mocker.patch(
+        "pyrobbot.GeneralDefinitions.PACKAGE_CACHE_DIRECTORY", tmp_path / "cache"
+    )
 
 
 @pytest.fixture(autouse=True)

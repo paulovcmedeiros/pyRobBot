@@ -3,6 +3,7 @@ import sys
 import uuid
 from abc import ABC, abstractmethod
 from json.decoder import JSONDecodeError
+from typing import TYPE_CHECKING
 
 import streamlit as st
 from loguru import logger
@@ -12,6 +13,9 @@ from pyrobbot import GeneralConstants
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
 from pyrobbot.openai_utils import CannotConnectToApiError
+
+if TYPE_CHECKING:
+    from pyrobbot.app.multipage import MultipageChatbotApp
 
 _AVATAR_FILES_DIR = GeneralConstants.APP_DIR / "data"
 _ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"
@@ -27,7 +31,9 @@ _RecoveredChat = object()
 class AppPage(ABC):
     """Abstract base class for a page within a streamlit application."""
 
-    def __init__(self, sidebar_title: str = "", page_title: str = ""):
+    def __init__(
+        self, parent: "MultipageChatbotApp", sidebar_title: str = "", page_title: str = ""
+    ):
         """Initializes a new instance of the AppPage class.
 
         Args:
@@ -37,7 +43,8 @@ class AppPage(ABC):
                 Defaults to an empty string.
         """
         self.page_id = str(uuid.uuid4())
-        self.page_number = st.session_state.get("n_created_pages", 0) + 1
+        self.parent = parent
+        self.page_number = self.parent.state.get("n_created_pages", 0) + 1
 
         chat_number_for_title = f"Chat #{self.page_number}"
         if page_title is _RecoveredChat:
@@ -55,9 +62,9 @@ class AppPage(ABC):
     @property
     def state(self):
         """Return the state of the page, for persistence of data."""
-        if self.page_id not in st.session_state:
-            st.session_state[self.page_id] = {}
-        return st.session_state[self.page_id]
+        if self.page_id not in self.parent.state:
+            self.parent.state[self.page_id] = {}
+        return self.parent.state[self.page_id]
 
     @property
     def sidebar_title(self):
@@ -88,7 +95,7 @@ class ChatBotPage(AppPage):
     """Implement a chatbot page in a streamlit application, inheriting from AppPage."""
 
     def __init__(
-        self, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
+        self, parent, chat_obj: Chat = None, sidebar_title: str = "", page_title: str = ""
     ):
         """Initialize new instance of the ChatBotPage class with an optional Chat object.
 
@@ -99,7 +106,9 @@ class ChatBotPage(AppPage):
             page_title (str): The title for the chatbot page.
                 Defaults to an empty string.
         """
-        super().__init__(sidebar_title=sidebar_title, page_title=page_title)
+        super().__init__(
+            parent=parent, sidebar_title=sidebar_title, page_title=page_title
+        )
 
         if chat_obj:
             self.chat_obj = chat_obj
@@ -247,7 +256,7 @@ class ChatBotPage(AppPage):
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
-        if st.session_state.get("toggle_show_costs"):
+        if self.parent.state.get("toggle_show_costs"):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()

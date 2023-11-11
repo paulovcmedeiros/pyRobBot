@@ -32,6 +32,7 @@ class Chat:
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = uuid.uuid4()
+        self.initial_openai_key_hash = GeneralConstants.openai_key_hash()
 
         if configs is None:
             configs = ChatOptions()
@@ -56,6 +57,10 @@ class Chat:
 
     @cache_dir.setter
     def cache_dir(self, value):
+        if self.initial_openai_key_hash != GeneralConstants.openai_key_hash():
+            raise PermissionError(
+                "Cannot change cache directory after changing OpenAI API key."
+            )
         if value is None:
             value = GeneralConstants.CHAT_CACHE_DIR / f"chat_{self.id}"
         self._cache_dir = Path(value)
