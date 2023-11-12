@@ -5,7 +5,7 @@ import os
 import tempfile
 import uuid
 from dataclasses import dataclass
-from importlib.metadata import version
+from importlib.metadata import metadata, version
 from pathlib import Path
 
 import openai
@@ -22,6 +22,7 @@ class GeneralDefinitions:
     RUN_ID = uuid.uuid4().hex
     PACKAGE_NAME = __name__
     VERSION = version(__name__)
+    PACKAGE_DESCRIPTION = metadata(__name__)["Summary"]
 
     # Main package directories
     PACKAGE_DIRECTORY = Path(__file__).parent

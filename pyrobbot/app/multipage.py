@@ -7,7 +7,12 @@ import streamlit as st
 from pydantic import ValidationError
 
 from pyrobbot import GeneralConstants
-from pyrobbot.app.app_page_templates import AppPage, ChatBotPage, _RecoveredChat
+from pyrobbot.app.app_page_templates import (
+    _ASSISTANT_AVATAR_IMAGE,
+    AppPage,
+    ChatBotPage,
+    _RecoveredChat,
+)
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
 
@@ -202,7 +207,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
     def render(self, **kwargs):
         """Renders the multipage chatbot app in the  UI according to the selected page."""
         with st.sidebar:
-            st.title(GeneralConstants.APP_NAME)
+            _left_col, centre_col, _right_col = st.columns([0.33, 0.34, 0.33])
+            with centre_col:
+                st.title(GeneralConstants.APP_NAME)
+                st.image(_ASSISTANT_AVATAR_IMAGE, use_column_width=True)
+            st.subheader(GeneralConstants.PACKAGE_DESCRIPTION, divider="rainbow")
             self.init_chat_credentials()
             # Create a sidebar with tabs for chats and settings
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])

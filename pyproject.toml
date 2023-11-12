@@ -1,6 +1,6 @@
 [tool.poetry]
   authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
-  description = "A simple UI & terminal chatbot that uses the OpenAI API."
+  description = "Simple GPT chatbot using OpenAI API"
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"

@@ -117,13 +117,8 @@ def context_model(request):
 
 
 @pytest.fixture()
-def default_chat_configs(llm_model, context_model, tmp_path):
-    return ChatOptions(
-        model=llm_model,
-        context_model=context_model,
-        # Don't use our cache files in tests
-        user_cache_dir=tmp_path,
-    )
+def default_chat_configs(llm_model, context_model):
+    return ChatOptions(model=llm_model, context_model=context_model)
 
 
 @pytest.fixture()
