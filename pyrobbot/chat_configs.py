@@ -141,7 +141,6 @@ class ChatOptions(OpenAiApiCallOptions):
         default=(
             "You answer correctly.",
             "You do not lie.",
-            "You answer with the fewest tokens possible.",
         ),
         description="Initial instructions for the AI",
     )
