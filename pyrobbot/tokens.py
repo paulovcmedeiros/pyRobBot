@@ -2,6 +2,7 @@
 import datetime
 import sqlite3
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import tiktoken
@@ -9,11 +10,17 @@ import tiktoken
 # See <https://openai.com/pricing> for the latest prices.
 PRICE_PER_K_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
+    "gpt-3.5-turbo-0613": {"input": 0.0015, "output": 0.002},
     "gpt-3.5-turbo-16k": {"input": 0.001, "output": 0.002},
+    "gpt-3.5-turbo-16k-0613": {"input": 0.001, "output": 0.002},
     "gpt-3.5-turbo-1106": {"input": 0.001, "output": 0.002},
-    "gpt-4-1106-preview": {"input": 0.03, "output": 0.06},
+    "gpt-4-1106-preview": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4-0613": {"input": 0.03, "output": 0.06},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
+    "text-embedding-ada-002-v2": {"input": 0.0001, "output": 0.0},
+    "text-davinci:002": {"input": 0.0020, "output": 0.020},
     "full-history": {"input": 0.0, "output": 0.0},
 }
 
@@ -55,7 +62,13 @@ class TokenUsageDatabase:
         conn.commit()
         conn.close()
 
-    def insert_data(self, model: str, n_input_tokens: int = 0, n_output_tokens: int = 0):
+    def insert_data(
+        self,
+        model: str,
+        n_input_tokens: int = 0,
+        n_output_tokens: int = 0,
+        timestamp: Optional[int] = None,
+    ):
         """Insert the data into the token_costs table."""
         if model is None:
             return
@@ -77,7 +90,7 @@ class TokenUsageDatabase:
         VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
-                int(datetime.datetime.utcnow().timestamp()),
+                timestamp or int(datetime.datetime.utcnow().timestamp()),
                 model,
                 n_input_tokens,
                 n_output_tokens,
@@ -104,7 +117,7 @@ class TokenUsageDatabase:
                 SUM(cost_input_tokens + cost_output_tokens) AS "Cost ($): Tot."
             FROM token_costs
             GROUP BY model
-            ORDER BY "Tokens: Tot." DESC
+            ORDER BY "Cost ($): Tot." DESC
         """
 
         usage_df = pd.read_sql_query(query, con=conn)
