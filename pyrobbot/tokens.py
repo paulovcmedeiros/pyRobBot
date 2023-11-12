@@ -2,6 +2,7 @@
 import datetime
 import sqlite3
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import tiktoken
@@ -61,7 +62,13 @@ class TokenUsageDatabase:
         conn.commit()
         conn.close()
 
-    def insert_data(self, model: str, n_input_tokens: int = 0, n_output_tokens: int = 0):
+    def insert_data(
+        self,
+        model: str,
+        n_input_tokens: int = 0,
+        n_output_tokens: int = 0,
+        timestamp: Optional[int] = None,
+    ):
         """Insert the data into the token_costs table."""
         if model is None:
             return
@@ -83,7 +90,7 @@ class TokenUsageDatabase:
         VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
-                int(datetime.datetime.utcnow().timestamp()),
+                timestamp or int(datetime.datetime.utcnow().timestamp()),
                 model,
                 n_input_tokens,
                 n_output_tokens,
@@ -110,7 +117,7 @@ class TokenUsageDatabase:
                 SUM(cost_input_tokens + cost_output_tokens) AS "Cost ($): Tot."
             FROM token_costs
             GROUP BY model
-            ORDER BY "Tokens: Tot." DESC
+            ORDER BY "Cost ($): Tot." DESC
         """
 
         usage_df = pd.read_sql_query(query, con=conn)
