@@ -164,7 +164,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return sorted(
             (
                 directory
-                for directory in GeneralConstants.chat_cache_dir.glob("chat_*/")
+                for directory in GeneralConstants.current_user_cache_dir.glob("chat_*/")
                 if next(directory.iterdir(), False)
             ),
             key=lambda fpath: fpath.stat().st_mtime,
@@ -198,7 +198,6 @@ class MultipageChatbotApp(AbstractMultipageApp):
             new_chat_configs.update(updates_to_chat_configs)
             new_chat = Chat.from_dict(new_chat_configs)
             self.selected_page.chat_obj = new_chat
-            new_chat.save_cache()
 
     def render(self, **kwargs):
         """Renders the multipage chatbot app in the  UI according to the selected page."""
@@ -358,12 +357,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
                     on_change=self.save_widget_previous_values,
                     args=[element_key],
                 )
+                new_field_value = tuple(new_field_value.strip().split("\n"))
             else:
                 continue
 
             if new_field_value != current_config_value:
-                if field_type in (list, tuple):
-                    new_field_value = tuple(new_field_value.strip().split("\n"))
                 updates_to_chat_configs[field_name] = new_field_value
 
         return updates_to_chat_configs

@@ -2,10 +2,28 @@ import lorem
 import numpy as np
 import openai
 import pytest
+from _pytest.logging import LogCaptureFixture
+from loguru import logger
 
 import pyrobbot
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
+
+
+@pytest.fixture()
+def caplog(caplog: LogCaptureFixture):
+    """Override the default `caplog` fixture to propagate Loguru to the caplog handler."""
+    # Source: <https://loguru.readthedocs.io/en/stable/resources/migration.html
+    #          #replacing-caplog-fixture-from-pytest-library>
+    handler_id = logger.add(
+        caplog.handler,
+        format="{message}",
+        level=0,
+        filter=lambda record: record["level"].no >= caplog.handler.level,
+        enqueue=False,  # Set to 'True' if your test is spawning child processes.
+    )
+    yield caplog
+    logger.remove(handler_id)
 
 
 # Register markers and constants
@@ -103,9 +121,8 @@ def default_chat_configs(llm_model, context_model, tmp_path):
     return ChatOptions(
         model=llm_model,
         context_model=context_model,
-        # Don't use the regular db file
-        general_token_usage_db_path=tmp_path / "token_usage.db",
-        cache_dir=tmp_path,  # Don't use our cache files
+        # Don't use our cache files in tests
+        user_cache_dir=tmp_path,
     )
 
 
