@@ -9,11 +9,17 @@ import tiktoken
 # See <https://openai.com/pricing> for the latest prices.
 PRICE_PER_K_TOKENS = {
     "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
+    "gpt-3.5-turbo-0613": {"input": 0.0015, "output": 0.002},
     "gpt-3.5-turbo-16k": {"input": 0.001, "output": 0.002},
+    "gpt-3.5-turbo-16k-0613": {"input": 0.001, "output": 0.002},
     "gpt-3.5-turbo-1106": {"input": 0.001, "output": 0.002},
-    "gpt-4-1106-preview": {"input": 0.03, "output": 0.06},
+    "gpt-4-1106-preview": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4-0613": {"input": 0.03, "output": 0.06},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
+    "text-embedding-ada-002-v2": {"input": 0.0001, "output": 0.0},
+    "text-davinci:002": {"input": 0.0020, "output": 0.020},
     "full-history": {"input": 0.0, "output": 0.0},
 }
 
