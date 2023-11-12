@@ -10,7 +10,7 @@ from loguru import logger
 from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
-from .openai_utils import make_api_chat_completion_call
+from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
 from .tokens import TokenUsageDatabase
 
 
@@ -31,7 +31,7 @@ class Chat:
         Raises:
             NotImplementedError: If the context model specified in configs is unknown.
         """
-        self.id = uuid.uuid4()
+        self.id = str(uuid.uuid4())
         self.initial_openai_key_hash = GeneralConstants.openai_key_hash()
 
         if configs is None:
@@ -41,56 +41,45 @@ class Chat:
         for field in self._passed_configs.model_fields:
             setattr(self, field, self._passed_configs[field])
 
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def base_directive(self):
+        """Return the base directive for the LLM."""
+        msg_content = " ".join(
+            [
+                instruction.strip()
+                for instruction in [
+                    f"You are {self.assistant_name} (model {self.model}).",
+                    f"You are a helpful assistant to {self.username}.",
+                    " ".join(
+                        [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
+                    ),
+                    f"You must remember and follow all directives by {self.system_name} ",
+                    f"unless otherwise instructed by {self.username}.",
+                ]
+                if instruction.strip()
+            ]
+        )
+        return {"role": "system", "name": self.system_name, "content": msg_content}
 
-        if self.context_model == "full-history":
-            self.context_handler = FullHistoryChatContext(parent_chat=self)
-        elif self.context_model == "text-embedding-ada-002":
-            self.context_handler = EmbeddingBasedChatContext(parent_chat=self)
-        else:
-            raise NotImplementedError(f"Unknown context model: {self.context_model}")
+    @property
+    def configs(self):
+        """Return the chat's configs after initialisation."""
+        configs_dict = {}
+        for field_name in ChatOptions.model_fields:
+            configs_dict[field_name] = getattr(self, field_name)
+        return ChatOptions.model_validate(configs_dict)
+
+    @property
+    def user_cache_dir(self):
+        """Return the general-purpose cache directory assigned to the user."""
+        return GeneralConstants.current_user_cache_dir
 
     @property
     def cache_dir(self):
         """Return the cache directory for this chat."""
-        return self._cache_dir
-
-    @cache_dir.setter
-    def cache_dir(self, value):
-        if self.initial_openai_key_hash != GeneralConstants.openai_key_hash():
-            raise PermissionError(
-                "Cannot change cache directory after changing OpenAI API key."
-            )
-        if value is None:
-            value = GeneralConstants.chat_cache_dir / f"chat_{self.id}"
-        self._cache_dir = Path(value)
-
-    def save_cache(self):
-        """Store the chat's configs and metadata to the cache directory."""
-        self.configs.export(self.configs_file)
-
-        metadata = self.metadata  # Trigger loading metadata if not yet done
-        with open(self.metadata_file, "w") as metadata_f:
-            json.dump(metadata, metadata_f, indent=2)
-
-    def clear_cache(self):
-        """Remove the cache directory."""
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
-
-    @property
-    def token_usage_db_path(self):
-        """Return the path to the chat's token usage database."""
-        return self.cache_dir / "chat_token_usage.db"
-
-    @property
-    def token_usage_db(self):
-        """Return the chat's token usage database."""
-        return TokenUsageDatabase(fpath=self.token_usage_db_path)
-
-    @property
-    def general_token_usage_db(self):
-        """Return the general token usage database for all chats."""
-        return TokenUsageDatabase(fpath=self.general_token_usage_db_path)
+        directory = self.user_cache_dir / f"chat_{self.id}"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     @property
     def configs_file(self):
@@ -101,6 +90,27 @@ class Chat:
     def context_file_path(self):
         """Return the path to the file that stores the chat context and history."""
         return self.cache_dir / "embeddings.db"
+
+    @property
+    def context_handler(self):
+        """Return the chat's context handler."""
+        if self.context_model == "full-history":
+            return FullHistoryChatContext(parent_chat=self)
+
+        if self.context_model == "text-embedding-ada-002":
+            return EmbeddingBasedChatContext(parent_chat=self)
+
+        raise NotImplementedError(f"Unknown context model: {self.context_model}")
+
+    @property
+    def token_usage_db(self):
+        """Return the chat's token usage database."""
+        return TokenUsageDatabase(fpath=self.cache_dir / "chat_token_usage.db")
+
+    @property
+    def general_token_usage_db(self):
+        """Return the general token usage database for all chats."""
+        return TokenUsageDatabase(fpath=self.cache_dir.parent / "token_usage.db")
 
     @property
     def metadata_file(self):
@@ -120,38 +130,27 @@ class Chat:
                 self._metadata = {}
         return self._metadata
 
-    @property
-    def configs(self):
-        """Return the chat's configs after initialisation."""
-        configs_dict = {}
-        for field_name in ChatOptions.model_fields:
-            configs_dict[field_name] = getattr(self, field_name)
-        return ChatOptions.model_validate(configs_dict)
+    @metadata.setter
+    def metadata(self, value):
+        self._metadata = dict(value)
 
-    @property
-    def base_directive(self):
-        """Return the base directive for the LLM."""
-        msg_content = " ".join(
-            [
-                instruction.strip()
-                for instruction in [
-                    f"You are {self.assistant_name} (model {self.model}).",
-                    f"You are a helpful assistant to {self.username}.",
-                    " ".join(
-                        [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
-                    ),
-                    f"You must remember and follow all directives by {self.system_name}.",
-                ]
-                if instruction.strip()
-            ]
-        )
-        return {"role": "system", "name": self.system_name, "content": msg_content}
+    def save_cache(self):
+        """Store the chat's configs and metadata to the cache directory."""
+        self.configs.export(self.configs_file)
+
+        metadata = self.metadata  # Trigger loading metadata if not yet done
+        metadata["chat_id"] = self.id
+        with open(self.metadata_file, "w") as metadata_f:
+            json.dump(metadata, metadata_f, indent=2)
+
+    def clear_cache(self):
+        """Remove the cache directory."""
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     def __del__(self):
-        cache_empty = self.cache_dir.exists() and not next(
-            self.cache_dir.iterdir(), False
-        )
-        if self.private_mode or cache_empty:
+        embedding_model = self.context_handler.database.get_embedding_model()
+        chat_started = embedding_model is not None
+        if self.private_mode or not chat_started:
             self.clear_cache()
         else:
             self.save_cache()
@@ -204,7 +203,14 @@ class Chat:
         try:
             with open(cache_dir / "configs.json", "r") as configs_f:
                 new = cls.from_dict(json.load(configs_f))
+            with open(cache_dir / "metadata.json", "r") as metadata_f:
+                new.metadata = json.load(metadata_f)
+                new.id = new.metadata["chat_id"]
         except FileNotFoundError:
+            logger.warning(
+                "Could not find configs and/or metadata file in cache directory."
+                + "Creating chat with default configs."
+            )
             new = cls()
         return new
 
@@ -263,7 +269,10 @@ class Chat:
                 print()
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
-            logger.info("Exiting chat.")
+            logger.info("Leaving chat.")
+        except CannotConnectToApiError as error:
+            print(f"{self.api_connection_error_msg}\n")
+            logger.error("Leaving chat: {}", error)
 
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
@@ -294,8 +303,8 @@ class Chat:
     def api_connection_error_msg(self):
         """Return the error message for API connection errors."""
         return (
-            "Sorry, I'm having trouble communicating with OpenAI. "
-            + "Please check the validity of your API key and try again."
+            "Sorry, I'm having trouble communicating with OpenAI right now. "
+            + "Please check the validity of your API key and try again. "
             + "If the problem persists, please also take a look at the "
-            + "OpenAI status page: https://status.openai.com."
+            + "OpenAI status page <https://status.openai.com>."
         )

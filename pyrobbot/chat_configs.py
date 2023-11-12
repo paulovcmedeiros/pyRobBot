@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from pyrobbot import GeneralConstants
 
 
-class BaseConfigModel(BaseModel):
+class BaseConfigModel(BaseModel, extra="forbid"):
     """Base model for configuring options."""
 
     @classmethod
@@ -137,21 +137,12 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         json_schema_extra={"frozen": True},
     )
-    cache_dir: Optional[Path] = Field(
-        default=None,
-        description="Directory where to store/save info about the chat.",
-    )
     ai_instructions: tuple[str, ...] = Field(
         default=(
             "You answer correctly.",
             "You do not lie.",
-            "You answer with the fewest tokens possible.",
         ),
         description="Initial instructions for the AI",
-    )
-    general_token_usage_db_path: Optional[Path] = Field(
-        default=GeneralConstants.general_token_usage_db_path,
-        description="Path to the token usage database",
     )
     api_connection_max_n_attempts: int = Field(
         default=5,

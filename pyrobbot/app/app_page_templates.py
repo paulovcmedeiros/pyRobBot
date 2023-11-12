@@ -1,4 +1,5 @@
 """Utilities for creating pages in a streamlit app."""
+import contextlib
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -148,8 +149,13 @@ class ChatBotPage(AppPage):
 
     @chat_obj.setter
     def chat_obj(self, new_chat_obj: Chat):
+        current_chat = self.state.get("chat_obj")
+        if current_chat:
+            current_chat.save_cache()
+            new_chat_obj.id = current_chat.id
         self.state["chat_obj"] = new_chat_obj
         self.state["chat_configs"] = new_chat_obj.configs
+        new_chat_obj.save_cache()
 
     @property
     def chat_history(self) -> list[dict[str, str]]:
@@ -247,7 +253,9 @@ class ChatBotPage(AppPage):
                 "page_title" not in self.state
                 and len(self.chat_history) > min_history_len_for_summary
             ):
-                with st.spinner("Working out conversation topic..."):
+                with st.spinner("Working out conversation topic..."), contextlib.suppress(
+                    CannotConnectToApiError
+                ):
                     prompt = "Summarize the messages in max 4 words.\n"
                     title = "".join(
                         self.chat_obj.respond_system_prompt(prompt, add_to_history=False)
