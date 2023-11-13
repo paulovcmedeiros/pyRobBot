@@ -1,5 +1,6 @@
 """Utilities for creating pages in a streamlit app."""
 import contextlib
+import datetime
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -219,6 +220,7 @@ class ChatBotPage(AppPage):
         ):
             # Display user message in chat message container
             with st.chat_message("user", avatar=self.avatars["user"]):
+                st.caption(datetime.datetime.now().replace(microsecond=0))
                 st.markdown(prompt)
             self.chat_history.append(
                 {"role": "user", "name": self.chat_obj.username, "content": prompt}
@@ -237,6 +239,7 @@ class ChatBotPage(AppPage):
                 except CannotConnectToApiError:
                     full_response = self.chat_obj.api_connection_error_msg
                 finally:
+                    st.caption(datetime.datetime.now().replace(microsecond=0))
                     st.markdown(full_response)
 
             self.chat_history.append(

@@ -1,5 +1,6 @@
 """Code for the creation streamlit apps with dynamically created pages."""
 import contextlib
+import datetime
 from abc import ABC, abstractmethod, abstractproperty
 
 import openai
@@ -311,9 +312,15 @@ class MultipageChatbotApp(AbstractMultipageApp):
                             args=[page],
                         )
                     else:
+                        mtime = None
+                        with contextlib.suppress(FileNotFoundError):
+                            mtime = page.chat_obj.context_file_path.stat().st_mtime
+                            mtime = datetime.datetime.fromtimestamp(mtime)
+                            mtime = mtime.replace(microsecond=0)
                         st.button(
                             label=page.sidebar_title,
                             key=f"select_{page.page_id}",
+                            help=f"Latest backup: {mtime}" if mtime else None,
                             on_click=self.register_selected_page,
                             kwargs={"page": page},
                             use_container_width=True,
