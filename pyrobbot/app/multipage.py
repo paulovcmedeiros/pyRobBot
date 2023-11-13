@@ -257,19 +257,50 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return super().render(**kwargs)
 
     def _build_sidebar_tabs(self):
+        def toggle_change_chat_title(page):
+            page.state["edit_chat_text"] = not page.state.get("edit_chat_text", False)
+
+        def set_page_title(page):
+            page.state["edit_chat_text"] = False
+            title = st.session_state.get(f"edit_{page.page_id}_text_input", "").strip()
+            if not title:
+                return
+            page.title = title
+            page.sidebar_title = title
+            page.chat_obj.metadata["page_title"] = title
+            page.chat_obj.metadata["sidebar_title"] = title
+
         with self.sidebar_tabs["chats"]:
             for page in self.pages.values():
-                col1, col2 = st.columns([0.9, 0.1])
+                col1, col2, col3 = st.columns([0.7, 0.15, 0.15])
                 with col1:
-                    st.button(
-                        label=page.sidebar_title,
-                        key=f"select_{page.page_id}",
-                        on_click=self.register_selected_page,
-                        kwargs={"page": page},
-                        use_container_width=True,
-                        disabled=page.page_id == self.selected_page.page_id,
-                    )
+                    if page.state.get("edit_chat_text"):
+                        st.text_input(
+                            "Edit Chat Title",
+                            value=page.sidebar_title,
+                            key=f"edit_{page.page_id}_text_input",
+                            on_change=set_page_title,
+                            args=[page],
+                        )
+                    else:
+                        st.button(
+                            label=page.sidebar_title,
+                            key=f"select_{page.page_id}",
+                            on_click=self.register_selected_page,
+                            kwargs={"page": page},
+                            use_container_width=True,
+                            disabled=page.page_id == self.selected_page.page_id,
+                        )
                 with col2:
+                    st.button(
+                        ":pencil:",
+                        key=f"edit_{page.page_id}_button",
+                        use_container_width=True,
+                        on_click=toggle_change_chat_title,
+                        args=[page],
+                        help="Edit chat title",
+                    )
+                with col3:
                     st.button(
                         ":wastebasket:",
                         key=f"delete_{page.page_id}",
