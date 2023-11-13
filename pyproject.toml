@@ -1,10 +1,10 @@
 [tool.poetry]
   authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
-  description = "Simple GPT chatbot using OpenAI API"
+  description = "GPT chatbot using OpenAI API"
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.1.5"
+  version = "0.1.6"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"

@@ -2,6 +2,7 @@
 import ast
 import itertools
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -46,8 +47,22 @@ class ChatContext(ABC):
 
     def load_history(self) -> list[dict]:
         """Load the chat history."""
-        messages_df = self.database.get_messages_dataframe()
+        selected_columns = ["timestamp", "message_exchange"]
+        messages_df = self.database.get_messages_dataframe()[selected_columns]
+
+        # Convert unix timestamps to datetime objs at the local timezone
+        messages_df["timestamp"] = messages_df["timestamp"].apply(
+            lambda ts: datetime.fromtimestamp(ts)
+            .replace(microsecond=0, tzinfo=timezone.utc)
+            .astimezone(tz=None)
+            .replace(tzinfo=None)
+        )
+
         msg_exchanges = messages_df["message_exchange"].apply(ast.literal_eval).tolist()
+        # Add timestamps to messages
+        for i_msg_exchange, timestamp in enumerate(messages_df["timestamp"]):
+            msg_exchanges[i_msg_exchange][0]["timestamp"] = timestamp
+
         return list(itertools.chain.from_iterable(msg_exchanges))
 
     def get_context(self, msg: dict):
@@ -76,7 +91,11 @@ class FullHistoryChatContext(ChatContext):
 
     def select_relevant_history(self, msg: dict):  # noqa: ARG002
         """Select chat history msgs to use as context for `msg`."""
-        return self.load_history()
+        history = []
+        for history_msg in self.load_history():
+            history_msg.pop("timestamp", None)
+            history.append(history_msg)
+        return history
 
 
 class EmbeddingBasedChatContext(ChatContext):

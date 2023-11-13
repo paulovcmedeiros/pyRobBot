@@ -1,5 +1,6 @@
 """Utilities for creating pages in a streamlit app."""
 import contextlib
+import datetime
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -171,6 +172,8 @@ class ChatBotPage(AppPage):
             if role == "system":
                 continue
             with st.chat_message(role, avatar=self.avatars.get(role)):
+                with contextlib.suppress(KeyError):
+                    st.caption(message["timestamp"])
                 st.markdown(message["content"])
 
     def render_cost_estimate_page(self):
@@ -217,11 +220,18 @@ class ChatBotPage(AppPage):
             placeholder=placeholder,
             on_submit=lambda: self.state.update({"chat_started": True}),
         ):
+            time_now = datetime.datetime.now().replace(microsecond=0)
             # Display user message in chat message container
             with st.chat_message("user", avatar=self.avatars["user"]):
+                st.caption(time_now)
                 st.markdown(prompt)
             self.chat_history.append(
-                {"role": "user", "name": self.chat_obj.username, "content": prompt}
+                {
+                    "role": "user",
+                    "name": self.chat_obj.username,
+                    "content": prompt,
+                    "timestamp": time_now,
+                }
             )
 
             # Display (stream) assistant response in chat message container
@@ -237,6 +247,7 @@ class ChatBotPage(AppPage):
                 except CannotConnectToApiError:
                     full_response = self.chat_obj.api_connection_error_msg
                 finally:
+                    st.caption(datetime.datetime.now().replace(microsecond=0))
                     st.markdown(full_response)
 
             self.chat_history.append(
