@@ -56,7 +56,7 @@ class AbstractMultipageApp(ABC):
         if selected:
             self.register_selected_page(page)
 
-    def remove_page(self, page: AppPage):
+    def _remove_page(self, page: AppPage):
         """Remove a page from the app."""
         self.pages[page.page_id].chat_obj.private_mode = True
         self.pages[page.page_id].chat_obj.clear_cache()
@@ -65,6 +65,20 @@ class AbstractMultipageApp(ABC):
             self.register_selected_page(next(iter(self.pages.values())))
         except StopIteration:
             self.add_page()
+
+    def remove_page(self, page: AppPage):
+        """Remove a page from the app after confirmation."""
+        st.error("Are you sure you want to delete this chat?")
+        col1, col2 = st.columns([0.5, 0.5])
+        with col1:
+            st.button("No, take me back", use_container_width=True)
+        with col2:
+            st.button(
+                "Yes, delete chat",
+                on_click=self._remove_page,
+                kwargs={"page": page},
+                use_container_width=True,
+            )
 
     def register_selected_page(self, page: AppPage):
         """Register a page as selected."""
