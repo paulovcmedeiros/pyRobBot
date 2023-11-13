@@ -11,20 +11,25 @@
 
 A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https://platform.openai.com/docs/models) via OpenAI API. Written in Python with a Web UI made with [Streamlit](https://streamlit.io). Can also be used directly from the terminal.
 
-See also the [demo app on Streamlit](https://pyrobbot.streamlit.app).
+**See and try the [demo app on Streamlit](https://pyrobbot.streamlit.app)!**
 
 ## Features
 - [x] Web UI
   - Add/remove conversations dynamically
+  - Automatic/editable conversation summary title
 - [x] Fully configurable
   - Support for multiple GPT LLMs
   - Control over the parameters passed to the OpenAI API, with (hopefully) sensible defaults
-  - Ability o modify the chat parameters in the same conversation
-  - Each conversation has its own parameters
-- [x] Autosave and retrieve chat history
+  - Ability to pass base directives to the LLM
+    - E.g., to make it adopt a persona, but you decide which directived to pass
+  - Dynamically modifiable AI parameters in each chat separately
+    - No need to restart the chat
+- [x] Autosave & retrieve chat history
 - [x] Chat context handling using [embeddings](https://platform.openai.com/docs/guides/embeddings)
-- [x] Kepp track of estimated token usage and associated API call costs
-- [x] Terminal UI
+- [x] Estimated API token usage and associated costs
+- [x] Terminal UI (for a more "Wake up, Neo" experience")
+- [x] OpenAI API key is **never** stored on disk
+
 
 
 ## System Requirements
