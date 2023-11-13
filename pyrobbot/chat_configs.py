@@ -149,6 +149,9 @@ class ChatOptions(OpenAiApiCallOptions):
         gt=0,
         description="Maximum number of attempts to connect to the OpenAI API",
     )
+    language_speech: str = Field(
+        default="en", description="Language for text to speech/speech to text"
+    )
     private_mode: Optional[bool] = Field(
         default=None,
         description="Toggle private mode. If set to `True`, the chat will not "

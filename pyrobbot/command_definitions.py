@@ -42,3 +42,11 @@ def run_on_ui(args):
         )
     except (KeyboardInterrupt, EOFError):
         logger.info("Exiting.")
+
+
+def run_over_voice(args):
+    """Run the chat on the terminal."""
+    chat = Chat.from_cli_args(cli_args=args)
+    chat.start_talking()
+    if args.report_accounting_when_done:
+        chat.report_token_usage(report_general=True)

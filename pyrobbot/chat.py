@@ -11,6 +11,7 @@ from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
+from .text_to_speech import LiveAssistant
 from .tokens import TokenUsageDatabase
 
 
@@ -267,6 +268,30 @@ class Chat:
                     print(chunk, end="", flush=True)
                 print()
                 print()
+        except (KeyboardInterrupt, EOFError):
+            print("", end="\r")
+            logger.info("Leaving chat.")
+        except CannotConnectToApiError as error:
+            print(f"{self.api_connection_error_msg}\n")
+            logger.error("Leaving chat: {}", error)
+
+    def start_talking(self):
+        """Start the chat."""
+        # ruff: noqa: T201
+        lang = self.language_speech
+        en_greeting = self.initial_greeting
+        translation_prompt = f"Translate the greeting in the net line to {lang}. "
+        translation_prompt += "Do NOT write anything else. Only the translation.\n"
+        translation_prompt += f"{en_greeting}"
+        initial_greeting = "".join(self.respond_system_prompt(prompt=translation_prompt))
+        assistant = LiveAssistant(language=self.language_speech)
+        assistant.speak(initial_greeting)
+        try:
+            while True:
+                question = assistant.listen()
+                if not question:
+                    continue
+                assistant.speak("".join(self.respond_user_prompt(prompt=question)))
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
             logger.info("Leaving chat.")

@@ -14,6 +14,8 @@ A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https
 **See and try the [demo app on Streamlit](https://pyrobbot.streamlit.app)!**
 
 ## Features
+- [x] Text to speech and speech to text
+  - Talk to the assistant :)
 - [x] Web UI
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
