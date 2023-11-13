@@ -172,6 +172,8 @@ class ChatBotPage(AppPage):
             if role == "system":
                 continue
             with st.chat_message(role, avatar=self.avatars.get(role)):
+                with contextlib.suppress(KeyError):
+                    st.caption(message["timestamp"])
                 st.markdown(message["content"])
 
     def render_cost_estimate_page(self):
@@ -218,12 +220,18 @@ class ChatBotPage(AppPage):
             placeholder=placeholder,
             on_submit=lambda: self.state.update({"chat_started": True}),
         ):
+            time_now = datetime.datetime.now().replace(microsecond=0)
             # Display user message in chat message container
             with st.chat_message("user", avatar=self.avatars["user"]):
-                st.caption(datetime.datetime.now().replace(microsecond=0))
+                st.caption(time_now)
                 st.markdown(prompt)
             self.chat_history.append(
-                {"role": "user", "name": self.chat_obj.username, "content": prompt}
+                {
+                    "role": "user",
+                    "name": self.chat_obj.username,
+                    "content": prompt,
+                    "timestamp": time_now,
+                }
             )
 
             # Display (stream) assistant response in chat message container
