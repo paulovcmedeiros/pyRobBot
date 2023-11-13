@@ -196,9 +196,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         self._build_sidebar_tabs()
 
         with self.sidebar_tabs["settings"]:
-            caption = f"\u2699\uFE0F Settings for Chat #{self.selected_page.page_number}"
-            if self.selected_page.title != self.selected_page.fallback_page_title:
-                caption += f": {self.selected_page.title}"
+            caption = f"\u2699\uFE0F {self.selected_page.title}"
             st.caption(caption)
             current_chat_configs = self.selected_page.chat_obj.configs
 
@@ -224,8 +222,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
             _left_col, centre_col, _right_col = st.columns([0.33, 0.34, 0.33])
             with centre_col:
                 st.title(GeneralConstants.APP_NAME)
-                st.image(_ASSISTANT_AVATAR_IMAGE, use_column_width=True)
-            st.subheader(GeneralConstants.PACKAGE_DESCRIPTION, divider="rainbow")
+                with contextlib.suppress(AttributeError, ValueError, OSError):
+                    # st image raises some exceptions occasionally
+                    st.image(_ASSISTANT_AVATAR_IMAGE, use_column_width=True)
+            st.subheader(
+                GeneralConstants.PACKAGE_DESCRIPTION,
+                divider="rainbow",
+                help="https://github.com/paulovcmedeiros/pyRobBot",
+            )
             self.init_chat_credentials()
             # Create a sidebar with tabs for chats and settings
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
@@ -286,8 +290,18 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
         with self.sidebar_tabs["chats"]:
             for page in self.pages.values():
-                col1, col2, col3 = st.columns([0.7, 0.15, 0.15])
+                col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
                 with col1:
+                    st.button(
+                        ":wastebasket:",
+                        key=f"delete_{page.page_id}",
+                        type="primary",
+                        use_container_width=True,
+                        on_click=self.remove_page,
+                        kwargs={"page": page},
+                        help="Delete this chat",
+                    )
+                with col2:
                     if page.state.get("edit_chat_text"):
                         st.text_input(
                             "Edit Chat Title",
@@ -305,7 +319,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                             use_container_width=True,
                             disabled=page.page_id == self.selected_page.page_id,
                         )
-                with col2:
+                with col3:
                     st.button(
                         ":pencil:",
                         key=f"edit_{page.page_id}_button",
@@ -313,16 +327,6 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         on_click=toggle_change_chat_title,
                         args=[page],
                         help="Edit chat title",
-                    )
-                with col3:
-                    st.button(
-                        ":wastebasket:",
-                        key=f"delete_{page.page_id}",
-                        type="primary",
-                        use_container_width=True,
-                        on_click=self.remove_page,
-                        kwargs={"page": page},
-                        help="Delete this chat.",
                     )
 
     def _handle_chat_configs_value_selection(self, current_chat_configs, model_fields):
@@ -428,13 +432,13 @@ def _set_button_style():
         <style>
         .stButton button[kind="primary"] {
             background-color: white;
-            border-color: #f63366;
-            border-width: 2px;
-            opacity: 0;
+            opacity: 0.5;
             transition: opacity 0.3s;
         }
         .stButton button[kind="primary"]:hover {
             opacity: 1;
+            border-color: #f63366;
+            border-width: 2px;
         }
         .stButton button[kind="secondary"]:disabled {
             border-color: #2BB5E8;
