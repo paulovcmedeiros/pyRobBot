@@ -24,15 +24,19 @@ class LiveAssistant:
 
     def speak(self, text):
         """Convert text to speech."""
+        logger.info("Converting text to speech...")
         # Initialize gTTS with the text to convert
         speech = gTTS(text, lang=self.language)
 
-        # Save the audio file to a temporary file
-        speech_file = "speech.mp3"
-        speech.save(speech_file)
+        # Convert the recorded array to an in-memory wav file
+        byte_io = io.BytesIO()
+        speech.write_to_fp(byte_io)
+        byte_io.seek(0)
+
+        logger.info("Done converting text to speech.")
 
         # Play the audio file
-        speech = mixer.Sound(speech_file)
+        speech = mixer.Sound(byte_io)
         channel = speech.play()
         while channel.get_busy():
             pygame.time.wait(100)
@@ -43,12 +47,13 @@ class LiveAssistant:
         sample_rate = 44100  # Hz
         n_frames = int(self.recording_duration_seconds * sample_rate)
         rec_as_array = sd.rec(
-            frames=n_frames, samplerate=sample_rate, channels=1, dtype="int16"
+            frames=n_frames, samplerate=sample_rate, channels=2, dtype="int16"
         )
         logger.info("Recording Audio")
         sd.wait()
         logger.info("Done Recording")
 
+        logger.info("Converting audio to text...")
         # Convert the recorded array to an in-memory wav file
         byte_io = io.BytesIO()
         wav.write(byte_io, rate=sample_rate, data=rec_as_array.astype(np.int16))
@@ -64,5 +69,7 @@ class LiveAssistant:
         except sr.exceptions.UnknownValueError:
             logger.warning("Could not understand audio")
             text = ""
+
+        logger.info("Done converting audio to text.")
 
         return text
