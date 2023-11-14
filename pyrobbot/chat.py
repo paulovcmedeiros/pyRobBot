@@ -11,7 +11,6 @@ from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
-from .text_to_speech import LiveAssistant
 from .tokens import TokenUsageDatabase
 
 
@@ -278,6 +277,8 @@ class Chat:
     def start_talking(self):
         """Start the chat."""
         # ruff: noqa: T201
+        from .text_to_speech import LiveAssistant
+
         lang = self.language_speech
         en_greeting = self.initial_greeting
         translation_prompt = f"Translate the greeting in the net line to {lang}. "
@@ -287,15 +288,19 @@ class Chat:
         assistant = LiveAssistant(language=self.language_speech)
         assistant.speak(initial_greeting)
         try:
+            previous_question_answered = True
             while True:
-                logger.info(f"{self.assistant_name}> Listening...")
+                if previous_question_answered:
+                    logger.info(f"{self.assistant_name}> Listening...")
                 question = assistant.listen()
                 if not question:
+                    previous_question_answered = False
                     continue
                 logger.info(f"{self.assistant_name}> Let me think...")
                 answer = "".join(self.respond_user_prompt(prompt=question))
                 logger.info(f"{self.assistant_name}> Ok, here we go:")
                 assistant.speak(answer)
+                previous_question_answered = True
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
             logger.info("Leaving chat.")

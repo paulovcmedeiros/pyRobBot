@@ -4,7 +4,7 @@
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.2.1"
+  version = "0.2.2"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -36,6 +36,7 @@
   sounddevice = "^0.4.6"
   soundfile = "^0.12.1"
   speechrecognition = "^3.10.0"
+  webrtcvad-wheels = "^2.0.11.post1"
 
 [tool.poetry.group.dev.dependencies]
   ipython = "^8.16.1"
