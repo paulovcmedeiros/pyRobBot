@@ -66,26 +66,6 @@ class LiveAssistant:
         while channel.get_busy():
             pygame.time.wait(100)
 
-    def listen_time_limited(self):
-        """Record audio from the mic, for a limited timelength, and convert it to text."""
-        n_frames = int(self.recording_duration_seconds * self.sample_rate)
-        # Record audio from the microphone
-        rec_as_array = sd.rec(
-            frames=n_frames, samplerate=self.sample_rate, channels=1, dtype="int16"
-        )
-        logger.debug("Recording Audio")
-        sd.wait()
-        logger.debug("Done Recording")
-
-        logger.debug("Converting audio to text...")
-        # Convert the recorded array to an in-memory wav file
-        byte_io = io.BytesIO()
-        wav.write(byte_io, rate=self.sample_rate, data=rec_as_array.astype(np.int16))
-        text = self._audio_buffer_to_text(self, byte_io)
-        logger.debug("Done converting audio to text.")
-
-        return text
-
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
         # Adapted from
