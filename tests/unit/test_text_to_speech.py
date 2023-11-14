@@ -2,6 +2,7 @@ import contextlib
 from unittest.mock import MagicMock
 
 import pygame
+
 from pyrobbot.text_to_speech import LiveAssistant
 
 
@@ -10,7 +11,7 @@ def test_speak(mocker):
     mocker.patch(
         "pyrobbot.text_to_speech.LiveAssistant.still_talking", return_value=False
     )
-    mocker.patch("gtts.gTTS.write_to_fp", return_value=b"\x00\x00\x00\x00")
+    mocker.patch("gtts.gTTS.write_to_fp")
 
     orig_func = LiveAssistant.sound_from_bytes_io
 
@@ -29,3 +30,13 @@ def test_speak(mocker):
 
     # Call the speak method
     assistant.speak("Hello world!")
+
+
+def test_listen(mocker):
+    """Test the listen method."""
+    mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
+    assistant = LiveAssistant(inactivity_timeout_seconds=1e-5)
+
+    # Call the listen method
+    with contextlib.suppress(KeyboardInterrupt):
+        assistant.listen()
