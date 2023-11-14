@@ -40,6 +40,9 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
 
 ## System Requirements
 - Python >= 3.9
+- [PortAudio](https://www.portaudio.com/docs/v19-doxydocs/index.html)
+  - Required for voice chat
+  - Install on Ubuntu with `sudo apt-get --assume-yes install portaudio19-dev python-all-dev`
 - A valid [OpenAI API key](https://platform.openai.com/account/api-keys)
   - Set in the Web UI or through the environment variable `OPENAI_API_KEY`
 
