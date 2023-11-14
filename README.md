@@ -9,13 +9,17 @@
 
 # pyRobBot
 
-A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https://platform.openai.com/docs/models) via OpenAI API. Written in Python with a Web UI made with [Streamlit](https://streamlit.io). Can also be used directly from the terminal.
+An interface to OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) that implements:
+* A conventional chatbot that can be used either via web UI or terminal
+* A personal assistant that can actually interact with you by voice
 
-**See and try the [demo app on Streamlit](https://pyrobbot.streamlit.app)!**
+The package is written in Python. The web chatbot UI is made with [Streamlit](https://streamlit.io).
+
+**See and try the [demo web app on Streamlit](https://pyrobbot.streamlit.app)!**
 
 ## Features
 - [x] Text to speech and speech to text
-  - Talk to the assistant :)
+  - Talk to the GPT assistant!
 - [x] Web UI
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
@@ -29,7 +33,6 @@ A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https
 - [x] Autosave & retrieve chat history
 - [x] Chat context handling using [embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [x] Estimated API token usage and associated costs
-- [x] Terminal UI (for a more "Wake up, Neo" experience")
 - [x] OpenAI API key is **never** stored on disk
 
 
@@ -69,10 +72,16 @@ that the `-h` goes after the subcommand in this case).
 rob
 ```
 
+### Chatting by Voice
+```shell
+rob voice
+```
+
 ### Running on the Terminal
 ```shell
 rob .
 ```
+
 ## Disclaimers
 This project's main purpose is to serve as a learning exercise for me (the author) and to serve as tool for and experimenting with OpenAI API and GPT LLMs. It does not aim to be the best or more robust OpenAI-powered chatbot out there.
 
