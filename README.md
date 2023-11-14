@@ -42,8 +42,13 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
 - Python >= 3.9
 - A valid [OpenAI API key](https://platform.openai.com/account/api-keys)
   - Set in the Web UI or through the environment variable `OPENAI_API_KEY`
+- Optionally, to enable voice chat, you also need:
+  - [PortAudio](https://www.portaudio.com/docs/v19-doxydocs/index.html)
+    - Install on Ubuntu with `sudo apt-get --assume-yes install portaudio19-dev python-all-dev`
+    - Install on CentOS/RHEL with `sudo yum install portaudio portaudio-devel`
 
 ## Installation
+This, naturally, assumes your systems fulfills all [requirements](#system-requirements).
 ### Using pip
 ```shell
 pip install pyrobbot
@@ -68,14 +73,15 @@ and general `rob` options. For info about specific subcommands and the
 options that apply to them only, **please run `rob SUBCOMMAND -h`** (note
 that the `-h` goes after the subcommand in this case).
 
-### Chatting by Voice
-```shell
-rob voice
-```
 
 ### Using the Web UI
 ```shell
 rob
+```
+
+### Chatting by Voice
+```shell
+rob voice
 ```
 
 ### Running on the Terminal
