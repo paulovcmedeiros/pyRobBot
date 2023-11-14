@@ -2,6 +2,7 @@
 """Unnoficial OpenAI API UI and CLI tool."""
 import hashlib
 import os
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -9,6 +10,10 @@ from importlib.metadata import metadata, version
 from pathlib import Path
 
 import openai
+from loguru import logger
+
+logger.remove()
+logger.add(sys.stderr, level="INFO")
 
 
 @dataclass
