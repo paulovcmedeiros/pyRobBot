@@ -5,7 +5,7 @@ import sys
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions
-from .command_definitions import accounting, run_on_terminal, run_on_ui
+from .command_definitions import accounting, run_on_terminal, run_on_ui, run_over_voice
 
 
 def get_parsed_args(argv=None, default_command="ui"):
@@ -91,6 +91,19 @@ def get_parsed_args(argv=None, default_command="ui"):
         help="Report estimated costs when done with the chat.",
     )
     parser_terminal.set_defaults(run_command=run_on_terminal)
+
+    parser_over_voice = subparsers.add_parser(
+        "voice",
+        aliases=["v"],
+        parents=[chat_options_parser],
+        help="Run the chat over voice.",
+    )
+    parser_over_voice.add_argument(
+        "--report-accounting-when-done",
+        action="store_true",
+        help="Report estimated costs when done with the chat.",
+    )
+    parser_over_voice.set_defaults(run_command=run_over_voice)
 
     parser_accounting = subparsers.add_parser(
         "accounting",

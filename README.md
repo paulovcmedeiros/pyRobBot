@@ -7,13 +7,20 @@
 [![Tests](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml/badge.svg)](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml)
 [![codecov](https://codecov.io/gh/paulovcmedeiros/pyRobBot/graph/badge.svg?token=XI8G1WH9O6)](https://codecov.io/gh/paulovcmedeiros/pyRobBot)
 
-# pyRobBot
+# pyRobBot: Talk and Chat with GPT LLMs
 
-A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https://platform.openai.com/docs/models) via OpenAI API. Written in Python with a Web UI made with [Streamlit](https://streamlit.io). Can also be used directly from the terminal.
+An interface to OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) that implements:
+* A conventional chatbot that can be used either via web UI or terminal
+* A personal assistant that can actually interact with you by voice
 
-**See and try the [demo app on Streamlit](https://pyrobbot.streamlit.app)!**
+The package is written in Python. The web chatbot UI is made with [Streamlit](https://streamlit.io).
+
+**See and try the [demo web app on Streamlit](https://pyrobbot.streamlit.app)!**
 
 ## Features
+- [x] Text to speech and speech to text (`rob voice`)
+  - Talk to the GPT assistant!
+  - You can choose your preferred language (e.g., `rob voice --lang pt-br`)
 - [x] Web UI
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
@@ -27,7 +34,6 @@ A simple chatbot that uses the OpenAI API to get responses from [GPT LLMs](https
 - [x] Autosave & retrieve chat history
 - [x] Chat context handling using [embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [x] Estimated API token usage and associated costs
-- [x] Terminal UI (for a more "Wake up, Neo" experience")
 - [x] OpenAI API key is **never** stored on disk
 
 
@@ -62,6 +68,11 @@ and general `rob` options. For info about specific subcommands and the
 options that apply to them only, **please run `rob SUBCOMMAND -h`** (note
 that the `-h` goes after the subcommand in this case).
 
+### Chatting by Voice
+```shell
+rob voice
+```
+
 ### Using the Web UI
 ```shell
 rob
@@ -71,11 +82,10 @@ rob
 ```shell
 rob .
 ```
-## Disclaimers
-This project's main purpose is to serve as a learning exercise for me (the author) and to serve as tool for and experimenting with OpenAI API and GPT LLMs. It does not aim to be the best or more robust OpenAI-powered chatbot out there.
 
-Having said this, this project *does* aim to have a friendly user interface and to be easy to use and configure. So, please feel free to open an issue or submit a pull request if you find a bug or have a suggestion.
+## Disclaimers
+This project's main purpose is to serve as a learning exercise for me, as well as tool for experimenting with OpenAI API, GPT LLMs and text-to-voice/voice-to-text. It does not claim to be the best or more robust OpenAI-powered chatbot out there.
+
+Having said this, this project *does* aim to provide a friendly user interface that is easy to use and configure. Feel free to open an issue or submit a pull request if you find a bug or have a suggestion.
 
 Last but not least: this project is **not** affiliated with OpenAI in any way.
-
-
