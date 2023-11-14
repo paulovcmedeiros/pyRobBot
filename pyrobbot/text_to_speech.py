@@ -13,7 +13,6 @@ import speech_recognition as sr
 import webrtcvad
 from gtts import gTTS
 from loguru import logger
-from pygame import mixer
 
 try:
     import sounddevice as sd
@@ -44,26 +43,36 @@ class LiveAssistant:
             )
             logger.error("Cannot continue. Exiting.")
             raise SystemExit(1)
-        mixer.init()
+
+        self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
+
+        self.mixer.init()
+
+    def sound_from_bytes_io(self, bytes_io):
+        return self.mixer.Sound(bytes_io)
+
+    def still_talking(self):
+        """Check if the assistant is still talking."""
+        return self.mixer.get_busy()
 
     def speak(self, text):
         """Convert text to speech."""
         logger.debug("Converting text to speech...")
         # Initialize gTTS with the text to convert
-        speech = gTTS(text, lang=self.language)
+        tts = gTTS(text, lang=self.language)
 
         # Convert the recorded array to an in-memory wav file
-        byte_io = io.BytesIO()
-        speech.write_to_fp(byte_io)
-        byte_io.seek(0)
+        tts_as_bytes_io = io.BytesIO()
+        tts.write_to_fp(tts_as_bytes_io)
+        tts_as_bytes_io.seek(0)
 
         logger.debug("Done converting text to speech.")
 
         # Play the audio file
-        speech = mixer.Sound(byte_io)
-        channel = speech.play()
-        while channel.get_busy():
+        speech_sound = self.sound_from_bytes_io(bytes_io=tts_as_bytes_io)
+        _channel = speech_sound.play()
+        while self.still_talking():
             pygame.time.wait(100)
 
     def listen(self):
