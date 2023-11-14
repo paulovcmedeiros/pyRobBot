@@ -50,6 +50,7 @@ class LiveAssistant:
         self.mixer.init()
 
     def sound_from_bytes_io(self, bytes_io):
+        """Create a pygame sound object from a BytesIO object."""
         return self.mixer.Sound(bytes_io)
 
     def still_talking(self):
