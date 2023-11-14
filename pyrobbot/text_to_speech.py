@@ -7,12 +7,22 @@ from datetime import datetime
 import numpy as np
 import pygame
 import scipy.io.wavfile as wav
-import sounddevice as sd
 import soundfile as sf
 import speech_recognition as sr
 from gtts import gTTS
 from loguru import logger
 from pygame import mixer
+
+try:
+    import sounddevice as sd
+
+    _sounddevice_imported = True
+except OSError as error:
+    logger.error(error)
+    logger.error(
+        "Can't use module `sounddevice`. Please check your system's PortAudio install."
+    )
+    _sounddevice_imported = False
 
 
 @dataclass
@@ -25,6 +35,12 @@ class LiveAssistant:
     inactivity_sound_intensity_threshold: float = 0.02
 
     def __post_init__(self):
+        if not _sounddevice_imported:
+            logger.error(
+                "Module `sounddevice`, needed for audio recording, is not available."
+            )
+            logger.error("Cannot continue. Exiting.")
+            raise SystemExit(1)
         mixer.init()
 
     def speak(self, text):
