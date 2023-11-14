@@ -22,14 +22,14 @@ class LiveAssistant:
     language: str = "en"
     recording_duration_seconds: int = 5
     inactivity_timeout_seconds: int = 2
-    inactivity_sound_intensity_threshold: float = 0.015
+    inactivity_sound_intensity_threshold: float = 0.02
 
     def __post_init__(self):
         mixer.init()
 
     def speak(self, text):
         """Convert text to speech."""
-        logger.info("Converting text to speech...")
+        logger.debug("Converting text to speech...")
         # Initialize gTTS with the text to convert
         speech = gTTS(text, lang=self.language)
 
@@ -38,7 +38,7 @@ class LiveAssistant:
         speech.write_to_fp(byte_io)
         byte_io.seek(0)
 
-        logger.info("Done converting text to speech.")
+        logger.debug("Done converting text to speech.")
 
         # Play the audio file
         speech = mixer.Sound(byte_io)
@@ -54,27 +54,32 @@ class LiveAssistant:
         rec_as_array = sd.rec(
             frames=n_frames, samplerate=sample_rate, channels=2, dtype="int16"
         )
-        logger.info("Recording Audio")
+        logger.debug("Recording Audio")
         sd.wait()
-        logger.info("Done Recording")
+        logger.debug("Done Recording")
 
-        logger.info("Converting audio to text...")
+        logger.debug("Converting audio to text...")
         # Convert the recorded array to an in-memory wav file
         byte_io = io.BytesIO()
         wav.write(byte_io, rate=sample_rate, data=rec_as_array.astype(np.int16))
         text = self._audio_buffer_to_text(self, byte_io)
-        logger.info("Done converting audio to text.")
+        logger.debug("Done converting audio to text.")
 
         return text
 
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
+        # Adapted from
+        # <https://python-sounddevice.readthedocs.io/en/0.4.6/examples.html#
+        #  recording-with-arbitrary-duration>
+        logger.debug("The assistant is listening...")
         q = queue.Queue()
 
         def callback(indata, frames, time, status):  # noqa: ARG001
             """This is called (from a separate thread) for each audio block."""
             q.put(indata.copy())
 
+        overall_max_intensity = 0.0
         raw_buffer = io.BytesIO()
         with sf.SoundFile(
             raw_buffer,
@@ -94,10 +99,16 @@ class LiveAssistant:
                 if (now - last_checked).seconds > self.inactivity_timeout_seconds:
                     last_checked = now
                     max_intensity = np.max([abs(np.min(new_data)), abs(np.max(new_data))])
+                    if max_intensity > overall_max_intensity:
+                        overall_max_intensity = max_intensity
 
-        logger.info("Converting audio to text...")
+        if overall_max_intensity < self.inactivity_sound_intensity_threshold:
+            logger.debug("No sound detected")
+            return ""
+
+        logger.debug("Converting audio to text...")
         text = self._audio_buffer_to_text(byte_io=raw_buffer)
-        logger.info("Done converting audio to text.")
+        logger.debug("Done converting audio to text.")
 
         return text
 
@@ -111,5 +122,5 @@ class LiveAssistant:
         try:
             return r.recognize_google(audio_data, language=self.language)
         except sr.exceptions.UnknownValueError:
-            logger.warning("Could not understand audio")
+            logger.debug("Could not understand audio")
             return ""

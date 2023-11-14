@@ -288,10 +288,14 @@ class Chat:
         assistant.speak(initial_greeting)
         try:
             while True:
+                logger.info(f"{self.assistant_name}> Listening...")
                 question = assistant.listen()
                 if not question:
                     continue
-                assistant.speak("".join(self.respond_user_prompt(prompt=question)))
+                logger.info(f"{self.assistant_name}> Let me think...")
+                answer = "".join(self.respond_user_prompt(prompt=question))
+                logger.info(f"{self.assistant_name}> Ok, here we go:")
+                assistant.speak(answer)
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
             logger.info("Leaving chat.")
