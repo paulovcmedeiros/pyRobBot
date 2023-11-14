@@ -1,4 +1,5 @@
 """Functions for converting text to speech and speech to text."""
+import contextlib
 import io
 import queue
 from collections import deque
@@ -31,7 +32,8 @@ class LiveAssistant:
     """Class for converting text to speech and speech to text."""
 
     language: str = "en"
-    inactivity_timeout_seconds: int = 2
+    inactivity_timeout_seconds: int = 1
+    speech_likelihood_threshold: float = 0.85
     sample_rate: int = 32000  # Hz
     recording_duration_seconds: int = 5
     inactivity_sound_intensity_threshold: float = 0.02
@@ -112,24 +114,33 @@ class LiveAssistant:
             )
             last_inactivity_checked = datetime.now()
             user_is_speaking = True
-            while user_is_speaking:
-                new_data = q.get()
-                audio_file.write(new_data)
+            with contextlib.suppress(KeyboardInterrupt):
+                while user_is_speaking:
+                    new_data = q.get()
+                    audio_file.write(new_data)
 
-                # Gather voice activity samples for the inactivity check
-                is_speech = self.vad.is_speech(
-                    _np_array_to_wav_in_memory(new_data, sample_rate=self.sample_rate),
-                    self.sample_rate,
-                )
-                voice_activity_detected.append(is_speech)
-
-                # Decide if user has been inactive for too long
-                now = datetime.now()
-                if (
-                    now - last_inactivity_checked
-                ).seconds >= self.inactivity_timeout_seconds:
-                    last_inactivity_checked = now
-                    user_is_speaking = any(voice_activity_detected)
+                    # Gather voice activity samples for the inactivity check
+                    vad_thinks_this_chunk_is_speech = self.vad.is_speech(
+                        _np_array_to_wav_in_memory(
+                            new_data, sample_rate=self.sample_rate
+                        ),
+                        self.sample_rate,
+                    )
+                    voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
+                    # Decide if user has been inactive for too long
+                    now = datetime.now()
+                    if (
+                        now - last_inactivity_checked
+                    ).seconds >= self.inactivity_timeout_seconds:
+                        speech_likelihood = 0.0
+                        if len(voice_activity_detected) > 0:
+                            speech_likelihood = sum(voice_activity_detected) / len(
+                                voice_activity_detected
+                            )
+                        user_is_speaking = (
+                            speech_likelihood >= self.speech_likelihood_threshold
+                        )
+                        last_inactivity_checked = now
 
         # Detect if there was any sound at all, skip the conversion if not
         recorded_audio = np.frombuffer(raw_buffer.getvalue(), dtype=np.int16)

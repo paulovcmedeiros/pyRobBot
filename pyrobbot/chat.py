@@ -221,7 +221,21 @@ class Chat:
     @property
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
-        return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
+        try:
+            passed_greeting = self._initial_greeting.strip()
+        except AttributeError:
+            passed_greeting = ""
+
+        if not passed_greeting:
+            self._initial_greeting = (
+                f"Hello! I'm {self.assistant_name}. How can I assist you today?"
+            )
+
+        return self._initial_greeting
+
+    @initial_greeting.setter
+    def initial_greeting(self, value: str):
+        self._initial_greeting = str(value).strip()
 
     def respond_user_prompt(self, prompt: str, **kwargs):
         """Respond to a user prompt."""

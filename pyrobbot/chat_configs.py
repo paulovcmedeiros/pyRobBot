@@ -144,6 +144,9 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         description="Initial instructions for the AI",
     )
+    initial_greeting: Optional[str] = Field(
+        default="", description="Initial greeting given by the assistant"
+    )
     api_connection_max_n_attempts: int = Field(
         default=5,
         gt=0,
