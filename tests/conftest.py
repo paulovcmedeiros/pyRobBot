@@ -161,3 +161,4 @@ def _text_to_speech_mockers(mocker):
     )
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
+    mocker.patch("pygame.mixer.init")
