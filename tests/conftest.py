@@ -1,6 +1,9 @@
+from unittest.mock import MagicMock
+
 import lorem
 import numpy as np
 import openai
+import pygame
 import pytest
 from _pytest.logging import LogCaptureFixture
 from loguru import logger
@@ -8,6 +11,7 @@ from loguru import logger
 import pyrobbot
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
+from pyrobbot.text_to_speech import LiveAssistant
 
 
 @pytest.fixture()
@@ -133,3 +137,27 @@ def cli_args_overrides(default_chat_configs):
 @pytest.fixture()
 def default_chat(default_chat_configs):
     return Chat(configs=default_chat_configs)
+
+
+@pytest.fixture(autouse=True)
+def _text_to_speech_mockers(mocker):
+    """Mockers for the text-to-speech module."""
+    mocker.patch(
+        "pyrobbot.text_to_speech.LiveAssistant.still_talking", return_value=False
+    )
+    mocker.patch("gtts.gTTS.write_to_fp")
+
+    orig_func = LiveAssistant.sound_from_bytes_io
+
+    def mock_sound_from_bytes_io(self: LiveAssistant, bytes_io):
+        try:
+            return orig_func(self, bytes_io)
+        except pygame.error:
+            return MagicMock()
+
+    mocker.patch(
+        "pyrobbot.text_to_speech.LiveAssistant.sound_from_bytes_io",
+        mock_sound_from_bytes_io,
+    )
+
+    mocker.patch("webrtcvad.Vad.is_speech", return_value=False)

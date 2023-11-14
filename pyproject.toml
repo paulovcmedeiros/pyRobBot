@@ -4,7 +4,7 @@
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.2.2"
+  version = "0.2.3"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -131,6 +131,9 @@
   addopts = "-v --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
   log_cli_level = "INFO"
   testpaths = ["tests/smoke", "tests/unit"]
+
+[tool.coverage.run]
+  omit = ["*/app/*"]
 
   ####################################
   # Leave configs for `poe` separate #
