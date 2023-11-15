@@ -46,6 +46,9 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
   - [PortAudio](https://www.portaudio.com/docs/v19-doxydocs/index.html)
     - Install on Ubuntu with `sudo apt-get --assume-yes install portaudio19-dev python-all-dev`
     - Install on CentOS/RHEL with `sudo yum install portaudio portaudio-devel`
+  - [ffmpeg](https://ffmpeg.org/download.html)
+    - Install on Ubuntu with `sudo apt-get --assume-yes install ffmpeg`
+    - Install on CentOS/RHEL with `sudo yum install ffmpeg`
 
 ## Installation
 This, naturally, assumes your systems fulfills all [requirements](#system-requirements).

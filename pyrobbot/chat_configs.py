@@ -152,11 +152,20 @@ class ChatOptions(OpenAiApiCallOptions):
         gt=0,
         description="Maximum number of attempts to connect to the OpenAI API",
     )
-    language_speech: str = Field(
-        default="en", description="Language for text to speech/speech to text"
-    )
     private_mode: Optional[bool] = Field(
         default=None,
         description="Toggle private mode. If set to `True`, the chat will not "
         + "be logged and the chat history will not be saved.",
     )
+    language_speech: str = Field(
+        default="en", description="Language for text to speech/speech to text"
+    )
+    tts_engine: Literal["google", "openai"] = Field(
+        default="google",
+        description="The text-to-speak engine to use. The `google` engine is free "
+        "(for now, at least). The `openai` engine will charge from your API credits, but "
+        "it sounds more natural.",
+    )
+    openai_tts_voice: Literal[
+        "alloy", "echo", "fable", "onyx", "nova", "shimmer"
+    ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")

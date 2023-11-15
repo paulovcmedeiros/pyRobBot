@@ -75,16 +75,16 @@ def _openai_api_request_mockers(request, mocker):
 
     def _mock_openai_embedding_create(*args, **kwargs):  # noqa: ARG001
         """Mock `openai.Embedding.create`. Yield from lorem ipsum instead."""
-        EmbeddingRequest = type("EmbeddingRequest", (), {})
-        Embedding = type("Embedding", (), {})
-        Usage = type("Usage", (), {})
+        embedding_request_mock_type = type("EmbeddingRequest", (), {})
+        embedding_mock_type = type("Embedding", (), {})
+        usage_mock_type = type("Usage", (), {})
 
-        embedding = Embedding()
+        embedding = embedding_mock_type()
         embedding.embedding = np.random.rand(512).tolist()
-        embedding_request = EmbeddingRequest()
+        embedding_request = embedding_request_mock_type()
         embedding_request.data = [embedding]
 
-        usage = Usage()
+        usage = usage_mock_type()
         usage.prompt_tokens = 0
         usage.total_tokens = 0
         embedding_request.usage = usage
@@ -159,17 +159,17 @@ def _text_to_speech_mockers(mocker):
     )
     mocker.patch("gtts.gTTS.write_to_fp")
 
-    orig_func = LiveAssistant.sound_from_bytes_io
+    orig_func = LiveAssistant.get_sound_from_wav_buffer
 
-    def mock_sound_from_bytes_io(self: LiveAssistant, bytes_io):
+    def mock_get_sound_from_wav_buffer(self: LiveAssistant, *args, **kwargs):
         try:
-            return orig_func(self, bytes_io)
+            return orig_func(self, *args, **kwargs)
         except pygame.error:
             return MagicMock()
 
     mocker.patch(
-        "pyrobbot.text_to_speech.LiveAssistant.sound_from_bytes_io",
-        mock_sound_from_bytes_io,
+        "pyrobbot.text_to_speech.LiveAssistant.get_sound_from_wav_buffer",
+        mock_get_sound_from_wav_buffer,
     )
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)

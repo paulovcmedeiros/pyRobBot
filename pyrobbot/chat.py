@@ -301,7 +301,7 @@ class Chat:
         translation_prompt += f"it verbatim in {lang} without adding anything.\n"
         translation_prompt += f"'''{en_greeting}'''"
         initial_greeting = "".join(self.respond_system_prompt(prompt=translation_prompt))
-        assistant = LiveAssistant(language=self.language_speech)
+        assistant = LiveAssistant(parent_chat=self)
         assistant.speak(initial_greeting)
         try:
             previous_question_answered = True

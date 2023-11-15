@@ -32,7 +32,9 @@
   tiktoken = "^0.5.1"
   # Text to speech
   gtts = "^2.4.0"
+  pydub = "^0.25.1"
   pygame = "^2.5.2"
+  setuptools = "^68.2.2"             # Needed by webrtcvad-wheels
   sounddevice = "^0.4.6"
   soundfile = "^0.12.1"
   speechrecognition = "^3.10.0"
