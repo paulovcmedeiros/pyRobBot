@@ -3,6 +3,7 @@
 import json
 import shutil
 import uuid
+from collections import defaultdict
 from pathlib import Path
 
 from loguru import logger
@@ -21,6 +22,8 @@ class Chat:
     managing cache directories, and interfacing with the OpenAI API for generating chat
     responses.
     """
+
+    _initial_greeting_translations = defaultdict(lambda: defaultdict(str))
 
     def __init__(self, configs: ChatOptions = None):
         """Initializes a chat instance.
@@ -208,7 +211,7 @@ class Chat:
                 new.id = new.metadata["chat_id"]
         except FileNotFoundError:
             logger.warning(
-                "Could not find configs and/or metadata file in cache directory."
+                "Could not find configs and/or metadata file in cache directory. "
                 + "Creating chat with default configs."
             )
             new = cls()
@@ -231,7 +234,16 @@ class Chat:
                 f"Hello! I'm {self.assistant_name}. How can I assist you today?"
             )
 
-        return self._initial_greeting
+        translated_greeting = type(self)._initial_greeting_translations[
+            self._initial_greeting
+        ][self.language_speech]
+        if not translated_greeting:
+            translated_greeting = self.translate(self._initial_greeting)
+            type(self)._initial_greeting_translations[self._initial_greeting][
+                self.language_speech
+            ] = translated_greeting
+
+        return translated_greeting
 
     @initial_greeting.setter
     def initial_greeting(self, value: str):
@@ -293,16 +305,8 @@ class Chat:
         # ruff: noqa: T201
         from .text_to_speech import LiveAssistant
 
-        lang = self.language_speech
-        en_greeting = self.initial_greeting
-        translation_prompt = f"Translate the greeting between triple quotes to {lang}. "
-        translation_prompt += "Do NOT write anything else. Only the translation. "
-        translation_prompt += f"If the greeting is already in {lang}, then just repeat "
-        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
-        translation_prompt += f"'''{en_greeting}'''"
-        initial_greeting = "".join(self.respond_system_prompt(prompt=translation_prompt))
         assistant = LiveAssistant(parent_chat=self)
-        assistant.speak(initial_greeting)
+        assistant.speak(self.translate(self.initial_greeting))
         try:
             previous_question_answered = True
             while True:
@@ -348,6 +352,17 @@ class Chat:
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
         prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}
         yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
+
+    def translate(self, text):
+        lang = self.language_speech
+        translation_prompt = f"Translate the text between triple quotes to {lang}. "
+        translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
+        translation_prompt += f"If the text is already in {lang}, then just repeat "
+        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
+        translation_prompt += f"'''{text}'''"
+        return "".join(
+            self.respond_system_prompt(prompt=translation_prompt, add_to_history=False)
+        )
 
     @property
     def api_connection_error_msg(self):
