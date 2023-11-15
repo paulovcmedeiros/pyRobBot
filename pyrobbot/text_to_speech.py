@@ -32,11 +32,9 @@ class LiveAssistant:
     """Class for converting text to speech and speech to text."""
 
     language: str = "en"
-    inactivity_timeout_seconds: int = 1
+    inactivity_timeout_seconds: int = 2
     speech_likelihood_threshold: float = 0.85
     sample_rate: int = 32000  # Hz
-    recording_duration_seconds: int = 5
-    inactivity_sound_intensity_threshold: float = 0.02
 
     def __post_init__(self):
         if not _sounddevice_imported:
