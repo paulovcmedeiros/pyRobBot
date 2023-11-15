@@ -13,7 +13,10 @@ import openai
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stderr, level="INFO")
+logger.add(
+    sys.stderr,
+    level=os.environ.get("LOGLEVEL", os.environ.get("LOGURU_LEVEL", "INFO")),
+)
 
 
 @dataclass
