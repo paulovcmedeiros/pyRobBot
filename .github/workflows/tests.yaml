@@ -70,6 +70,9 @@ jobs:
       #      run test suite and report coverage
       #----------------------------------------------
       - name: Run tests
+        env:
+          SDL_VIDEODRIVER: "dummy"
+          SDL_AUDIODRIVER: "disk"
         run: |
           poetry run pytest
 
