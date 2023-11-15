@@ -5,6 +5,9 @@ from functools import wraps
 from typing import TYPE_CHECKING
 
 import openai
+from openai import OpenAI
+
+client = OpenAI()
 from loguru import logger
 
 from .chat_configs import OpenAiApiCallOptions
@@ -21,7 +24,7 @@ class CannotConnectToApiError(Exception):
 def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to OpenAI API."):
     """Retry connecting to the API up to a maximum number of times."""
     handled_exceptions = (
-        openai.error.ServiceUnavailableError,
+        openai.ServiceUnavailableError,
         openai.error.Timeout,
         openai.error.APIError,
     )
@@ -94,9 +97,7 @@ def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
             db.insert_data(model=chat_obj.model, n_input_tokens=n_tokens)
 
         full_reply_content = ""
-        for completion_chunk in openai.ChatCompletion.create(
-            messages=conversation, stream=True, **api_call_args
-        ):
+        for completion_chunk in client.chat.completions.create(messages=conversation, stream=True, **api_call_args):
             reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
             full_reply_content += reply_chunk
             yield reply_chunk

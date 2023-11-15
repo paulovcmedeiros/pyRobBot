@@ -24,7 +24,7 @@
   # Other dependencies
   loguru = "^0.7.2"
   numpy = "^1.26.1"
-  openai = "^0.28.1"
+  openai = {extras = ["embeddings"], version = "^1.2.4"}
   pandas = "^2.1.2"
   pillow = "^10.1.0"
   pydantic = "^2.4.2"

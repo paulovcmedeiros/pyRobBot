@@ -71,4 +71,4 @@ GeneralConstants = GeneralDefinitions(
 )
 
 # Initialize the OpenAI API client
-openai.api_key = GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
+

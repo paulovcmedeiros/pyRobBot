@@ -50,7 +50,7 @@ def pytest_configure(config):
 def _set_env(monkeypatch):
     # Make sure we don't consume our tokens in tests
     monkeypatch.setenv("OPENAI_API_KEY", "INVALID_API_KEY")
-    openai.api_key = "INVALID_API_KEY"
+    
 
 
 @pytest.fixture(autouse=True)

@@ -137,11 +137,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             help="[OpenAI API auth key](https://platform.openai.com/account/api-keys). "
             + "Chats created with this key won't be visible to people using other keys.",
         )
-        openai.api_key = (
-            self.openai_api_key
-            if self.openai_api_key
-            else GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
-        )
+        
         if not openai.api_key:
             st.write(":red[You need to provide a key to use the chat]")
 

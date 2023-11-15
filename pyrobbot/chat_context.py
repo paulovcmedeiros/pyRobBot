@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import numpy as np
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 import pandas as pd
 from openai.embeddings_utils import cosine_similarity
 
@@ -138,7 +140,7 @@ class EmbeddingBasedChatContext(ChatContext):
 def request_embedding_from_openai(text: str, model: str):
     """Request embedding for `text` according to context model `model` from OpenAI."""
     text = text.strip()
-    embedding_request = openai.Embedding.create(input=[text], model=model)
+    embedding_request = client.embeddings.create(input=[text], model=model)
 
     embedding = embedding_request["data"][0]["embedding"]
 
