@@ -1,4 +1,5 @@
 """Functions for converting text to speech and speech to text."""
+import contextlib
 import io
 import queue
 from collections import deque
@@ -30,19 +31,32 @@ except OSError as error:
 class LiveAssistant:
     """Class for converting text to speech and speech to text."""
 
+    # May be any language supported by gTTS
     language: str = "en"
+    # How much time user should be inactive for the assistant to stop listening
     inactivity_timeout_seconds: int = 2
+    # Accept audio as speech if the likelihood is above this threshold
+    speech_likelihood_threshold: float = 0.85
+    # Params for audio capture
     sample_rate: int = 32000  # Hz
-    recording_duration_seconds: int = 5
-    inactivity_sound_intensity_threshold: float = 0.02
+    frame_duration: int = 30  # milliseconds
 
     def __post_init__(self):
         if not _sounddevice_imported:
-            logger.error(
+            raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
-            logger.error("Cannot continue. Exiting.")
-            raise SystemExit(1)
+
+        webrtcvad_restrictions = {
+            "sample_rate": [8000, 16000, 32000, 48000],
+            "frame_duration": [10, 20, 30],
+        }
+        for attr, allowed_values in webrtcvad_restrictions.items():
+            passed_value = getattr(self, attr)
+            if passed_value not in allowed_values:
+                raise ValueError(
+                    f"{attr} must be one of: {allowed_values}. Got '{passed_value}'."
+                )
 
         self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
@@ -88,9 +102,7 @@ class LiveAssistant:
             """This is called (from a separate thread) for each audio block."""
             q.put(indata.copy())
 
-        # From webrtcvad docs: A frame must be either 10, 20, or 30 ms in duration
-        frame_duration = 30  # milliseconds
-        stream_block_size = int((self.sample_rate * frame_duration) / 1000)
+        stream_block_size = int((self.sample_rate * self.frame_duration) / 1000)
         raw_buffer = io.BytesIO()
         with sf.SoundFile(
             raw_buffer,
@@ -108,34 +120,45 @@ class LiveAssistant:
         ):
             # Recording will stop after self.inactivity_timeout_seconds of silence
             voice_activity_detected = deque(
-                maxlen=int((1000.0 * self.inactivity_timeout_seconds) / frame_duration)
+                maxlen=int(
+                    (1000.0 * self.inactivity_timeout_seconds) / self.frame_duration
+                )
             )
             last_inactivity_checked = datetime.now()
             user_is_speaking = True
-            while user_is_speaking:
-                new_data = q.get()
-                audio_file.write(new_data)
+            speech_detected = False
+            with contextlib.suppress(KeyboardInterrupt):
+                while user_is_speaking:
+                    new_data = q.get()
+                    audio_file.write(new_data)
 
-                # Gather voice activity samples for the inactivity check
-                is_speech = self.vad.is_speech(
-                    _np_array_to_wav_in_memory(new_data, sample_rate=self.sample_rate),
-                    self.sample_rate,
-                )
-                voice_activity_detected.append(is_speech)
+                    # Gather voice activity samples for the inactivity check
+                    vad_thinks_this_chunk_is_speech = self.vad.is_speech(
+                        _np_array_to_wav_in_memory(
+                            new_data, sample_rate=self.sample_rate
+                        ),
+                        self.sample_rate,
+                    )
+                    voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
+                    # Decide if user has been inactive for too long
+                    now = datetime.now()
+                    if (
+                        now - last_inactivity_checked
+                    ).seconds >= self.inactivity_timeout_seconds:
+                        speech_likelihood = 0.0
+                        if len(voice_activity_detected) > 0:
+                            speech_likelihood = sum(voice_activity_detected) / len(
+                                voice_activity_detected
+                            )
+                        user_is_speaking = (
+                            speech_likelihood >= self.speech_likelihood_threshold
+                        )
+                        if user_is_speaking:
+                            speech_detected = True
+                        last_inactivity_checked = now
 
-                # Decide if user has been inactive for too long
-                now = datetime.now()
-                if (
-                    now - last_inactivity_checked
-                ).seconds >= self.inactivity_timeout_seconds:
-                    last_inactivity_checked = now
-                    user_is_speaking = any(voice_activity_detected)
-
-        # Detect if there was any sound at all, skip the conversion if not
-        recorded_audio = np.frombuffer(raw_buffer.getvalue(), dtype=np.int16)
-        max_intensity = np.max(np.absolute(recorded_audio))
-        if max_intensity < self.inactivity_sound_intensity_threshold:
-            logger.debug("No sound detected")
+        if not speech_detected:
+            logger.debug("No speech detected")
             return ""
 
         logger.debug("Converting audio to text...")

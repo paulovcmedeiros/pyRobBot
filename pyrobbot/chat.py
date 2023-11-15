@@ -221,7 +221,21 @@ class Chat:
     @property
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
-        return f"Hello! I'm {self.assistant_name}. How can I assist you today?"
+        try:
+            passed_greeting = self._initial_greeting.strip()
+        except AttributeError:
+            passed_greeting = ""
+
+        if not passed_greeting:
+            self._initial_greeting = (
+                f"Hello! I'm {self.assistant_name}. How can I assist you today?"
+            )
+
+        return self._initial_greeting
+
+    @initial_greeting.setter
+    def initial_greeting(self, value: str):
+        self._initial_greeting = str(value).strip()
 
     def respond_user_prompt(self, prompt: str, **kwargs):
         """Respond to a user prompt."""
@@ -281,9 +295,11 @@ class Chat:
 
         lang = self.language_speech
         en_greeting = self.initial_greeting
-        translation_prompt = f"Translate the greeting in the net line to {lang}. "
-        translation_prompt += "Do NOT write anything else. Only the translation.\n"
-        translation_prompt += f"{en_greeting}"
+        translation_prompt = f"Translate the greeting between triple quotes to {lang}. "
+        translation_prompt += "Do NOT write anything else. Only the translation. "
+        translation_prompt += f"If the greeting is already in {lang}, then just repeat "
+        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
+        translation_prompt += f"'''{en_greeting}'''"
         initial_greeting = "".join(self.respond_system_prompt(prompt=translation_prompt))
         assistant = LiveAssistant(language=self.language_speech)
         assistant.speak(initial_greeting)
