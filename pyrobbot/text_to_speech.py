@@ -112,6 +112,7 @@ class LiveAssistant:
             )
             last_inactivity_checked = datetime.now()
             user_is_speaking = True
+            speech_detected = False
             with contextlib.suppress(KeyboardInterrupt):
                 while user_is_speaking:
                     new_data = q.get()
@@ -138,13 +139,12 @@ class LiveAssistant:
                         user_is_speaking = (
                             speech_likelihood >= self.speech_likelihood_threshold
                         )
+                        if user_is_speaking:
+                            speech_detected = True
                         last_inactivity_checked = now
 
-        # Detect if there was any sound at all, skip the conversion if not
-        recorded_audio = np.frombuffer(raw_buffer.getvalue(), dtype=np.int16)
-        max_intensity = np.max(np.absolute(recorded_audio))
-        if max_intensity < self.inactivity_sound_intensity_threshold:
-            logger.debug("No sound detected")
+        if not speech_detected:
+            logger.debug("No speech detected")
             return ""
 
         logger.debug("Converting audio to text...")
