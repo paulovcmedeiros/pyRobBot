@@ -6,7 +6,7 @@ from sounddevice import PortAudioError
 from pyrobbot.text_to_speech import LiveAssistant
 
 
-def test_cannot_instanciate_assistant_is_soundcard_not_imported(mocker):
+def test_cannot_instanciate_assistant_if_soundcard_not_imported(mocker, default_chat):
     """Test that LiveAssistant cannot be instantiated if soundcard is not imported."""
     mocker.patch("pyrobbot.text_to_speech._sounddevice_imported", False)
     with pytest.raises(ImportError, match="Module `sounddevice`"):

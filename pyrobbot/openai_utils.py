@@ -5,9 +5,6 @@ from functools import wraps
 from typing import TYPE_CHECKING
 
 import openai
-from openai import OpenAI
-
-client = OpenAI()
 from loguru import logger
 
 from .chat_configs import OpenAiApiCallOptions
@@ -23,11 +20,6 @@ class CannotConnectToApiError(Exception):
 
 def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to OpenAI API."):
     """Retry connecting to the API up to a maximum number of times."""
-    handled_exceptions = (
-        openai.ServiceUnavailableError,
-        openai.error.Timeout,
-        openai.error.APIError,
-    )
 
     def on_error(error, n_attempts):
         if n_attempts < max_n_attempts:
@@ -48,9 +40,9 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
                 n_attempts += 1
                 try:
                     return function(*args, **kwargs)
-                except handled_exceptions as error:
+                except openai.APITimeoutError as error:
                     on_error(error=error, n_attempts=n_attempts)
-                except openai.error.AuthenticationError as error:
+                except (openai.APIError, openai.OpenAIError) as error:
                     raise CannotConnectToApiError(auth_error_msg) from error
 
         @wraps(function)
@@ -61,9 +53,9 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
                 n_attempts += 1
                 try:
                     yield from function(*args, **kwargs)
-                except handled_exceptions as error:
+                except openai.APITimeoutError as error:
                     on_error(error=error, n_attempts=n_attempts)
-                except openai.error.AuthenticationError as error:
+                except (openai.APIError, openai.OpenAIError) as error:
                     raise CannotConnectToApiError(auth_error_msg) from error
                 else:
                     success = True
@@ -97,8 +89,12 @@ def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
             db.insert_data(model=chat_obj.model, n_input_tokens=n_tokens)
 
         full_reply_content = ""
-        for completion_chunk in client.chat.completions.create(messages=conversation, stream=True, **api_call_args):
+        for completion_chunk in openai.chat.completions.create(
+            messages=conversation, stream=True, **api_call_args
+        ):
             reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")
+            if reply_chunk is None:
+                break
             full_reply_content += reply_chunk
             yield reply_chunk
 

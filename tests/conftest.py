@@ -2,7 +2,6 @@ from unittest.mock import MagicMock
 
 import lorem
 import numpy as np
-import openai
 import pygame
 import pytest
 from _pytest.logging import LogCaptureFixture
@@ -50,7 +49,6 @@ def pytest_configure(config):
 def _set_env(monkeypatch):
     # Make sure we don't consume our tokens in tests
     monkeypatch.setenv("OPENAI_API_KEY", "INVALID_API_KEY")
-    
 
 
 @pytest.fixture(autouse=True)
@@ -77,18 +75,32 @@ def _openai_api_request_mockers(request, mocker):
 
     def _mock_openai_embedding_create(*args, **kwargs):  # noqa: ARG001
         """Mock `openai.Embedding.create`. Yield from lorem ipsum instead."""
-        embedding_request = {
-            "data": [{"embedding": np.random.rand(512).tolist()}],
-            "usage": {"prompt_tokens": 0, "total_tokens": 0},
-        }
+        EmbeddingRequest = type("EmbeddingRequest", (), {})
+        Embedding = type("Embedding", (), {})
+        Usage = type("Usage", (), {})
+
+        embedding = Embedding()
+        embedding.embedding = np.random.rand(512).tolist()
+        embedding_request = EmbeddingRequest()
+        embedding_request.data = [embedding]
+
+        usage = Usage()
+        usage.prompt_tokens = 0
+        usage.total_tokens = 0
+        embedding_request.usage = usage
+
         return embedding_request
 
     if "no_chat_completion_create_mocking" not in request.keywords:
         mocker.patch(
-            "openai.ChatCompletion.create", new=_mock_openai_chat_completion_create
+            "openai.resources.chat.completions.Completions.create",
+            new=_mock_openai_chat_completion_create,
         )
     if "no_embedding_create_mocking" not in request.keywords:
-        mocker.patch("openai.Embedding.create", new=_mock_openai_embedding_create)
+        mocker.patch(
+            "openai.resources.embeddings.Embeddings.create",
+            new=_mock_openai_embedding_create,
+        )
 
 
 @pytest.fixture()

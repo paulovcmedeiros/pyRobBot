@@ -115,7 +115,7 @@ class OpenAiApiCallOptions(BaseConfigModel):
     top_p: Optional[float] = Field(
         default=None, ge=0.0, le=1.0, description=f"See <{_openai_url}-top_p>"
     )
-    request_timeout: Optional[float] = Field(
+    timeout: Optional[float] = Field(
         default=10.0, gt=0.0, description="Timeout for API requests in seconds"
     )
 

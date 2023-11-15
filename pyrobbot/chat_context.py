@@ -6,11 +6,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import numpy as np
-from openai import OpenAI
-
-client = OpenAI()
 import pandas as pd
-from openai.embeddings_utils import cosine_similarity
+from openai import OpenAI
+from scipy.spatial.distance import cosine as cosine_similarity
 
 from .embeddings_database import EmbeddingsDatabase
 from .openai_utils import retry_api_call
@@ -140,12 +138,14 @@ class EmbeddingBasedChatContext(ChatContext):
 def request_embedding_from_openai(text: str, model: str):
     """Request embedding for `text` according to context model `model` from OpenAI."""
     text = text.strip()
+    client = OpenAI()
+
     embedding_request = client.embeddings.create(input=[text], model=model)
 
-    embedding = embedding_request["data"][0]["embedding"]
+    embedding = embedding_request.data[0].embedding
 
-    input_tokens = embedding_request["usage"]["prompt_tokens"]
-    output_tokens = embedding_request["usage"]["total_tokens"] - input_tokens
+    input_tokens = embedding_request.usage.prompt_tokens
+    output_tokens = embedding_request.usage.total_tokens - input_tokens
     tokens_usage = {"input": input_tokens, "output": output_tokens}
 
     return {"embedding": embedding, "tokens_usage": tokens_usage}
