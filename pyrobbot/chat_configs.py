@@ -160,11 +160,11 @@ class ChatOptions(OpenAiApiCallOptions):
     language_speech: str = Field(
         default="en", description="Language for text to speech/speech to text"
     )
-    tts_engine: Literal["google", "openai"] = Field(
-        default="google",
+    tts_engine: Literal["openai", "google"] = Field(
+        default="openai",
         description="The text-to-speak engine to use. The `google` engine is free "
-        "(for now, at least). The `openai` engine will charge from your API credits, but "
-        "it sounds more natural.",
+        "(for now, at least), but the `openai` engine (which will charge from your "
+        "API credits) sounds more natural.",
     )
     openai_tts_voice: Literal[
         "alloy", "echo", "fable", "onyx", "nova", "shimmer"

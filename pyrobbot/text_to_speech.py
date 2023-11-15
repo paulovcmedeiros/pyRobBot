@@ -120,6 +120,9 @@ class LiveAssistant:
 
         wav_buffer = io.BytesIO()
         sound = pydub.AudioSegment.from_mp3(mp3_buffer)
+        # Increase the default volume, the default is a bit to quiet
+        volume_increase_db = 6
+        sound += volume_increase_db
         sound.export(wav_buffer, format="wav")
         wav_buffer.seek(0)
 
