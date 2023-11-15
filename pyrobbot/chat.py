@@ -295,9 +295,11 @@ class Chat:
 
         lang = self.language_speech
         en_greeting = self.initial_greeting
-        translation_prompt = f"Translate the greeting in the net line to {lang}. "
-        translation_prompt += "Do NOT write anything else. Only the translation.\n"
-        translation_prompt += f"{en_greeting}"
+        translation_prompt = f"Translate the greeting between triple quotes to {lang}. "
+        translation_prompt += "Do NOT write anything else. Only the translation. "
+        translation_prompt += f"If the greeting is already in {lang}, then just repeat "
+        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
+        translation_prompt += f"'''{en_greeting}'''"
         initial_greeting = "".join(self.respond_system_prompt(prompt=translation_prompt))
         assistant = LiveAssistant(language=self.language_speech)
         assistant.speak(initial_greeting)
