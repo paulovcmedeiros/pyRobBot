@@ -1,4 +1,4 @@
-"""Functions for converting text to speech and speech to text."""
+"""Code related to the voice chat feature."""
 import contextlib
 import io
 import queue

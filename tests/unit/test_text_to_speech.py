@@ -5,12 +5,12 @@ from pydantic import ValidationError
 from sounddevice import PortAudioError
 
 from pyrobbot.chat_configs import VoiceChatConfigs
-from pyrobbot.text_to_speech import VoiceChat
+from pyrobbot.voice_chat import VoiceChat
 
 
 def test_cannot_instanciate_assistant_is_soundcard_not_imported(mocker):
     """Test that the voice chat cannot be instantiated if soundcard is not imported."""
-    mocker.patch("pyrobbot.text_to_speech._sounddevice_imported", False)
+    mocker.patch("pyrobbot.voice_chat._sounddevice_imported", False)
     with pytest.raises(ImportError, match="Module `sounddevice`"):
         VoiceChat()
 

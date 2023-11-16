@@ -8,7 +8,7 @@ from . import GeneralConstants
 from .chat import Chat
 from .chat_configs import ChatOptions
 from .openai_utils import CannotConnectToApiError
-from .text_to_speech import VoiceChat
+from .voice_chat import VoiceChat
 
 
 def voice_chat(args):

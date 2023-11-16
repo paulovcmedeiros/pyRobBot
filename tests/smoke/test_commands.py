@@ -33,5 +33,5 @@ def test_voice_chat(mocker):
             raise KeyboardInterrupt
         return "foobar"
 
-    mocker.patch("pyrobbot.text_to_speech.VoiceChat.listen", _mock_listen)
+    mocker.patch("pyrobbot.voice_chat.VoiceChat.listen", _mock_listen)
     main(["voice", "--tts", "google"])
