@@ -6,6 +6,7 @@ import re
 from collections import deque
 from datetime import datetime
 
+import chime
 import numpy as np
 import pydub
 import pygame
@@ -64,6 +65,7 @@ class VoiceChat(Chat):
         self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
         self.mixer.init()
+        chime.theme("big-sur")
 
     def start(self):
         """Start the chat."""
@@ -73,29 +75,34 @@ class VoiceChat(Chat):
             previous_question_answered = True
             while True:
                 if previous_question_answered:
-                    logger.info(f"{self.assistant_name}> Listening...")
+                    chime.warning()
+                    logger.debug(f"{self.assistant_name}> Listening...")
                 question = self.listen().strip()
                 if not question:
                     previous_question_answered = False
                     continue
-                logger.info(f"{self.assistant_name}> Let me think...")
                 if any(
                     _get_lower_alphanumeric(question).startswith(
                         _get_lower_alphanumeric(expr)
                     )
                     for expr in self.exit_expressions
                 ):
-                    logger.info(f"{self.assistant_name}> Goodbye!")
+                    chime.theme("material")
+                    chime.error()
+                    logger.debug(f"{self.assistant_name}> Goodbye!")
                     break
+                chime.success()
                 logger.debug(f"{self.assistant_name}> Let me think...")
                 answer = "".join(self.respond_user_prompt(prompt=question))
-                logger.info(f"{self.assistant_name}> Ok, here we go:")
+                logger.debug(f"{self.assistant_name}> Ok, here we go:")
                 self.speak(answer)
                 previous_question_answered = True
         except (KeyboardInterrupt, EOFError):
+            chime.info()
             print("", end="\r")
-            logger.info("Leaving chat.")
+            logger.debug("Leaving chat.")
         except CannotConnectToApiError as error:
+            chime.error()
             print(f"{self.api_connection_error_msg}\n")
             logger.error("Leaving chat: {}", error)
 
