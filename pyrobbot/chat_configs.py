@@ -166,7 +166,7 @@ class VoiceAssistantConfigs(BaseConfigModel):
     """Model for the text-to-speech assistant's configuration options."""
 
     tts_engine: Literal["openai", "google"] = Field(
-        default="google",
+        default="openai",
         description="The text-to-speak engine to use. The `google` engine is free "
         "(for now, at least), but the `openai` engine (which will charge from your "
         "API credits) sounds more natural.",
