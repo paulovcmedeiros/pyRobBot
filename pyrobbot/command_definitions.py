@@ -19,8 +19,6 @@ def voice_chat(args):
     except CannotConnectToApiError as error:
         logger.error("API connection problems: {}\nExiting.", error)
         raise SystemExit(1) from error
-    if args.report_accounting_when_done:
-        chat.report_token_usage(report_general=True)
 
 
 def browser_chat(args):

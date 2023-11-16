@@ -9,21 +9,25 @@
 
 # pyRobBot: Talk and Chat with GPT LLMs
 
-An interface to OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) that implements:
-* A conventional chatbot that can be used either via web UI or terminal
-* A personal assistant that can actually interact with you by voice
+A python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
+* A fully configurable personal assistant that can speak and listen to you
+* An equally fully configurable text-based chatbot that can be used either via web UI or terminal
 
-The package is written in Python. The web chatbot UI is made with [Streamlit](https://streamlit.io).
-
-**See and try the [demo web app on Streamlit](https://pyrobbot.streamlit.app)!**
 
 ## Features
-- [x] Text to speech and speech to text (`rob voice`)
-  - Talk to the GPT assistant!
-  - You can choose your preferred language (e.g., `rob voice --lang pt-br`)
-- [x] Web UI
+- [x] Text to speech and speech to text
+  - Talk to the GPT assistant and the assistant will talk back to you!
+  - Choose your preferred language (e.g., `rob --lang pt-br`)
+  - Choose your preferred Text-to-Speech (TTS) engine
+    - [OpenAI Text-to-Speech](https://platform.openai.com/docs/guides/text-to-speech) (default): AI-generated *human-like* voice
+    - [Google TTS](https://cloud.google.com/text-to-speech) (`rob --tts google`): free at the time being, with decent quality
+
+
+- [x] Browser  UI (made with [Streamlit](https://pyrobbot.streamlit.app))
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
+- [x] Terminal UI
+  - For a more "Wake up, Neo" experience
 - [x] Fully configurable
   - Support for multiple GPT LLMs
   - Control over the parameters passed to the OpenAI API, with (hopefully) sensible defaults
@@ -32,6 +36,7 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
   - Dynamically modifiable AI parameters in each chat separately
     - No need to restart the chat
 - [x] Autosave & retrieve chat history
+  - In the browser UI, you can even read the transcripts of your voice conversations with the AI
 - [x] Chat context handling using [embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [x] Estimated API token usage and associated costs
 - [x] OpenAI API key is **never** stored on disk
@@ -42,7 +47,7 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
 - Python >= 3.9
 - A valid [OpenAI API key](https://platform.openai.com/account/api-keys)
   - Set in the Web UI or through the environment variable `OPENAI_API_KEY`
-- Optionally, to enable voice chat, you also need:
+- To enable voice chat, you also need:
   - [PortAudio](https://www.portaudio.com/docs/v19-doxydocs/index.html)
     - Install on Ubuntu with `sudo apt-get --assume-yes install portaudio19-dev python-all-dev`
     - Install on CentOS/RHEL with `sudo yum install portaudio portaudio-devel`
@@ -51,7 +56,7 @@ The package is written in Python. The web chatbot UI is made with [Streamlit](ht
     - Install on CentOS/RHEL with `sudo yum install ffmpeg`
 
 ## Installation
-This, naturally, assumes your systems fulfills all [requirements](#system-requirements).
+This, naturally, assumes your system fulfills all [requirements](#system-requirements).
 ### Using pip
 ```shell
 pip install pyrobbot
@@ -76,16 +81,16 @@ and general `rob` options. For info about specific subcommands and the
 options that apply to them only, **please run `rob SUBCOMMAND -h`** (note
 that the `-h` goes after the subcommand in this case).
 
-
-### Using the Web UI
+### Chatting by Voice (default)
 ```shell
 rob
 ```
 
-### Chatting by Voice
+### Using the Web UI
 ```shell
-rob voice
+rob ui
 ```
+
 
 ### Running on the Terminal
 ```shell
@@ -93,8 +98,10 @@ rob .
 ```
 
 ## Disclaimers
-This project's main purpose is to serve as a learning exercise for me, as well as tool for experimenting with OpenAI API, GPT LLMs and text-to-voice/voice-to-text. It does not claim to be the best or more robust OpenAI-powered chatbot out there.
+This project's main purpose has been to serve as a learning exercise for me, as well as tool for experimenting with OpenAI API, GPT LLMs and text-to-speech/speech-to-text.
 
-Having said this, this project *does* aim to provide a friendly user interface that is easy to use and configure. Feel free to open an issue or submit a pull request if you find a bug or have a suggestion.
+While it does not claim to be the best or more robust OpenAI-powered chatbot out there, it *does* aim to provide a friendly user interface that is easy to install, use and configure.
+
+Feel free to open an [issue](https://github.com/paulovcmedeiros/pyRobBot/issues) or, even better, [submit a pull request](https://github.com/paulovcmedeiros/pyRobBot/pulls) if you find a bug or have a suggestion.
 
 Last but not least: this project is **not** affiliated with OpenAI in any way.

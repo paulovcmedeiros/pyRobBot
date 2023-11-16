@@ -53,7 +53,7 @@ def get_parsed_args(argv=None, default_command="voice"):
         argv = sys.argv[1:]
     first_argv = next(iter(argv), "'")
     info_flags = ["--version", "-v", "-h", "--help"]
-    if first_argv.startswith("-") and first_argv not in info_flags:
+    if not argv or (first_argv.startswith("-") and first_argv not in info_flags):
         argv = [default_command, *argv]
 
     # Main parser that will handle the script's commands
