@@ -180,7 +180,7 @@ class VoiceAssistantConfigs(BaseConfigModel):
     )
 
     inactivity_timeout_seconds: int = Field(
-        default=2,
+        default=1,
         gt=0,
         description="How much time user should be inactive "
         "for the assistant to stop listening",

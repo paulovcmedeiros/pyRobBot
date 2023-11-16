@@ -84,7 +84,9 @@ class VoiceChat(Chat):
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
-        self.tts_conversion_queue.put(self.initial_greeting)
+        if not self.skip_initial_greeting:
+            self.tts_conversion_queue.put(self.initial_greeting)
+
         try:
             previous_question_answered = True
             while True:
