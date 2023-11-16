@@ -3,7 +3,6 @@
 import json
 import shutil
 import uuid
-from collections import defaultdict
 
 from loguru import logger
 
@@ -23,9 +22,10 @@ class Chat(AlternativeConstructors):
     responses.
     """
 
-    _initial_greeting_translations = defaultdict(lambda: defaultdict(str))
+    _initial_greeting_translations = {}  # map language:translation
+    default_configs = ChatOptions()
 
-    def __init__(self, configs: ChatOptions = None):
+    def __init__(self, configs: ChatOptions = default_configs):
         """Initializes a chat instance.
 
         Args:
@@ -36,9 +36,6 @@ class Chat(AlternativeConstructors):
         """
         self.id = str(uuid.uuid4())
         self.initial_openai_key_hash = GeneralConstants.openai_key_hash()
-
-        if configs is None:
-            configs = ChatOptions()
 
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
@@ -157,26 +154,24 @@ class Chat(AlternativeConstructors):
     @property
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
+        default_greeting = f"Hi! I'm {self.assistant_name}. How can I assist you today?"
         try:
             passed_greeting = self._initial_greeting.strip()
         except AttributeError:
             passed_greeting = ""
 
         if not passed_greeting:
-            self._initial_greeting = (
-                f"Hello! I'm {self.assistant_name}. How can I assist you today?"
-            )
+            self._initial_greeting = default_greeting
 
-        translated_greeting = type(self)._initial_greeting_translations[  # noqa: SLF001
-            self._initial_greeting
-        ][self.language]
-        if not translated_greeting:
-            translated_greeting = self._translate(self._initial_greeting)
-            type(self)._initial_greeting_translations[  # noqa: SLF001
-                self._initial_greeting
-            ][self.language] = translated_greeting
+        if passed_greeting or self.language != "en":
+            translation_cache = type(self)._initial_greeting_translations  # noqa: SLF001
+            translated_greeting = translation_cache.get(self.language)
+            if not translated_greeting:
+                translated_greeting = self._translate(self._initial_greeting)
+                translation_cache[self.language] = translated_greeting
+            self._initial_greeting = translated_greeting
 
-        return translated_greeting
+        return self._initial_greeting
 
     @initial_greeting.setter
     def initial_greeting(self, value: str):
@@ -280,6 +275,7 @@ class Chat(AlternativeConstructors):
 
     def _translate(self, text):
         lang = self.language
+        logger.debug("Processing translation of '{}' to '{}'...", text, lang)
         translation_prompt = f"Translate the text between triple quotes to {lang}. "
         translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
         translation_prompt += f"If the text is already in {lang}, then just repeat "

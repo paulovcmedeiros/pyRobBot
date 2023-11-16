@@ -4,7 +4,7 @@
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.3.0"
+  version = "0.3.1"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -31,6 +31,7 @@
   streamlit = "^1.28.0"
   tiktoken = "^0.5.1"
   # Text to speech
+  chime = "^0.7.0"
   gtts = "^2.4.0"
   pydub = "^0.25.1"
   pygame = "^2.5.2"
@@ -60,6 +61,7 @@
   ##################
   # Linter configs #
   ##################
+  pytest-xdist = "^3.4.0"
 
 [tool.black]
   line-length = 90
@@ -130,7 +132,7 @@
   ##################
 
 [tool.pytest.ini_options]
-  addopts = "-v --cache-clear --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
+  addopts = "-v --cache-clear -n auto --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
   log_cli_level = "INFO"
   testpaths = ["tests/smoke", "tests/unit"]
 

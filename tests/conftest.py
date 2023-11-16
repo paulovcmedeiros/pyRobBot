@@ -10,7 +10,7 @@ from loguru import logger
 import pyrobbot
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions, VoiceChatConfigs
-from pyrobbot.text_to_speech import VoiceChat
+from pyrobbot.voice_chat import VoiceChat
 
 
 @pytest.fixture()
@@ -165,10 +165,10 @@ def default_voice_chat(default_voice_chat_configs):
 
 
 @pytest.fixture(autouse=True)
-def _text_to_speech_mockers(mocker):
+def _voice_chat_mockers(mocker):
     """Mockers for the text-to-speech module."""
     mocker.patch(
-        "pyrobbot.text_to_speech.VoiceChat._assistant_still_talking", return_value=False
+        "pyrobbot.voice_chat.VoiceChat._assistant_still_talking", return_value=False
     )
     mocker.patch("gtts.gTTS.write_to_fp")
 
@@ -181,7 +181,7 @@ def _text_to_speech_mockers(mocker):
             return MagicMock()
 
     mocker.patch(
-        "pyrobbot.text_to_speech.VoiceChat._wav_buffer_to_sound",
+        "pyrobbot.voice_chat.VoiceChat._wav_buffer_to_sound",
         mock_wav_buffer_to_sound,
     )
 

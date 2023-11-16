@@ -26,6 +26,15 @@ def _populate_parser_from_pydantic_model(parser, model):
             for key in _argarse2pydantic
             if _argarse2pydantic[key](field_name) is not None
         }
+
+        if args_opts.get("type") == bool:
+            if args_opts.get("default") is True:
+                args_opts["action"] = "store_false"
+            else:
+                args_opts["action"] = "store_true"
+            args_opts.pop("default", None)
+            args_opts.pop("type", None)
+
         args_opts["required"] = field.is_required()
         if "help" in args_opts:
             args_opts["help"] = f"{args_opts['help']} (default: %(default)s)"

@@ -21,8 +21,7 @@ class AlternativeConstructors:
         Returns:
             cls: An instance of Chat initialized with the given configurations.
         """
-        dummy = cls()
-        return cls(configs=dummy.configs.model_validate(configs))
+        return cls(configs=cls.default_configs.model_validate(configs))
 
     @classmethod
     def from_cli_args(cls, cli_args):
@@ -37,11 +36,10 @@ class AlternativeConstructors:
         Returns:
             cls: An instance of the class initialized with CLI-specified configurations.
         """
-        dummy = cls()
         chat_opts = {
             k: v
             for k, v in vars(cli_args).items()
-            if k in dummy.configs.model_fields and v is not None
+            if k in cls.default_configs.model_fields and v is not None
         }
         return cls.from_dict(chat_opts)
 

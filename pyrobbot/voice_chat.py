@@ -1,13 +1,15 @@
-"""Functions for converting text to speech and speech to text."""
+"""Code related to the voice chat feature."""
 import contextlib
 import io
 import queue
+import re
+import threading
 from collections import deque
 from datetime import datetime
 
+import chime
 import numpy as np
 import pydub
-import pygame
 import scipy.io.wavfile as wav
 import soundfile as sf
 import speech_recognition as sr
@@ -16,9 +18,8 @@ from gtts import gTTS
 from loguru import logger
 from openai import OpenAI
 
-from pyrobbot.chat_configs import VoiceChatConfigs
-
 from .chat import Chat
+from .chat_configs import VoiceChatConfigs
 from .openai_utils import CannotConnectToApiError, retry_api_call
 
 try:
@@ -49,60 +50,120 @@ else:
 class VoiceChat(Chat):
     """Class for converting text to speech and speech to text."""
 
-    def __init__(self, configs: VoiceChatConfigs = None):
+    default_configs = VoiceChatConfigs()
+
+    def __init__(self, configs: VoiceChatConfigs = default_configs):
         """Initializes a chat instance."""
         if not _sounddevice_imported:
             raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
+        # Import it here to prevent the hello message from being printed when not needed
+        import pygame
 
-        if configs is None:
-            configs = VoiceChatConfigs()
         super().__init__(configs=configs)
 
+        self.pygame = pygame
         self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
         self.mixer.init()
+        chime.theme("big-sur")
+
+        # Create queues for TTS processing and speech playing
+        self.tts_conversion_queue = queue.Queue()
+        self.play_speech_queue = queue.Queue()
+        # Create threads to watch the TTS and speech playing queues
+        self.tts_conversion_watcher_thread = threading.Thread(
+            target=self.get_tts, args=(self.tts_conversion_queue,), daemon=True
+        )
+        self.play_speech_thread = threading.Thread(
+            target=self.speak, args=(self.play_speech_queue,), daemon=True
+        )
+        self.tts_conversion_watcher_thread.start()
+        self.play_speech_thread.start()
 
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
-        self.speak(self._translate(self.initial_greeting))
+        if not self.skip_initial_greeting:
+            self.tts_conversion_queue.put(self.initial_greeting)
+
         try:
             previous_question_answered = True
             while True:
+                # Wait for all items in the queue to be processed
+                self.tts_conversion_queue.join()
+                self.play_speech_queue.join()
                 if previous_question_answered:
-                    logger.info(f"{self.assistant_name}> Listening...")
-                question = self.listen()
-                if not question:
+                    chime.warning()
                     previous_question_answered = False
+                    logger.debug(f"{self.assistant_name}> Listening...")
+
+                question = self.listen().strip()
+                if not question:
                     continue
-                logger.info(f"{self.assistant_name}> Let me think...")
-                answer = "".join(self.respond_user_prompt(prompt=question))
-                logger.info(f"{self.assistant_name}> Ok, here we go:")
-                self.speak(answer)
+
+                # Check for the exit expressions
+                if any(
+                    _get_lower_alphanumeric(question).startswith(
+                        _get_lower_alphanumeric(expr)
+                    )
+                    for expr in self.exit_expressions
+                ):
+                    chime.theme("material")
+                    chime.error()
+                    logger.debug(f"{self.assistant_name}> Goodbye!")
+                    break
+
+                chime.success()
+                logger.debug(f"{self.assistant_name}> Getting response...")
+                sentence = ""
+                for answer_chunk in self.respond_user_prompt(prompt=question):
+                    sentence += answer_chunk
+                    if answer_chunk.strip().endswith(("?", "!", ".")):
+                        # Send sentence for TTS even if the request hasn't yet finished
+                        self.tts_conversion_queue.put(sentence)
+                        sentence = ""
+                if sentence:
+                    self.tts_conversion_queue.put(sentence)
+
                 previous_question_answered = True
+
         except (KeyboardInterrupt, EOFError):
+            chime.info()
             print("", end="\r")
-            logger.info("Leaving chat.")
+            logger.debug("Leaving chat.")
         except CannotConnectToApiError as error:
+            chime.error()
             print(f"{self.api_connection_error_msg}\n")
             logger.error("Leaving chat: {}", error)
 
-    def speak(self, text):
-        """Convert text to speech."""
-        logger.debug("Converting text to speech...")
-        if self.tts_engine == "openai" and _pydub_imported:
-            tts_wav__buffer = self._tts_openai(text)
-        else:
-            tts_wav__buffer = self._tts_google(text)
-        logger.debug("Done converting text to speech.")
+    def get_tts(self, text_queue: queue.Queue):
+        """Convert text to a pygame Sound object."""
+        while True:
+            text = text_queue.get()
+            logger.debug("Received for TTS: '{}'", text)
 
-        # Play the audio file
-        speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav__buffer)
-        _channel = speech_sound.play()
-        while self._assistant_still_talking():
-            pygame.time.wait(100)
+            if self.tts_engine == "openai" and _pydub_imported:
+                tts_wav_buffer = self._tts_openai(text)
+            else:
+                tts_wav_buffer = self._tts_google(text)
+
+            # Convert wav buffer to sound
+            speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
+            self.play_speech_queue.put(speech_sound)
+
+            logger.debug("Done with TTS for '{}'", text)
+            text_queue.task_done()
+
+    def speak(self, sound_obj_queue: queue.Queue):
+        """Reproduce audio from a pygame Sound object."""
+        while True:
+            sound = sound_obj_queue.get()
+            _channel = sound.play()
+            while self._assistant_still_talking():
+                self.pygame.time.wait(100)
+            sound_obj_queue.task_done()
 
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
@@ -147,13 +208,14 @@ class VoiceChat(Chat):
                     audio_file.write(new_data)
 
                     # Gather voice activity samples for the inactivity check
+                    wav_buffer = _np_array_to_wav_in_memory(
+                        new_data, sample_rate=self.sample_rate
+                    )
                     vad_thinks_this_chunk_is_speech = self.vad.is_speech(
-                        _np_array_to_wav_in_memory(
-                            new_data, sample_rate=self.sample_rate
-                        ),
-                        self.sample_rate,
+                        wav_buffer, self.sample_rate
                     )
                     voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
+
                     # Decide if user has been inactive for too long
                     now = datetime.now()
                     if (
@@ -214,7 +276,7 @@ class VoiceChat(Chat):
         wav_buffer = io.BytesIO()
         sound = pydub.AudioSegment.from_mp3(mp3_buffer)
         # Increase the default volume, the default is a bit to quiet
-        volume_increase_db = 6
+        volume_increase_db = 8
         sound += volume_increase_db
         sound.export(wav_buffer, format="wav")
         wav_buffer.seek(0)
@@ -253,3 +315,8 @@ def _np_array_to_wav_in_memory(array: np.ndarray, sample_rate: int):
     wav.write(byte_io, rate=sample_rate, data=array)
     byte_io.seek(44)  # Skip the WAV header
     return byte_io.read()
+
+
+def _get_lower_alphanumeric(string: str):
+    """Return a string with only lowercase alphanumeric characters."""
+    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())

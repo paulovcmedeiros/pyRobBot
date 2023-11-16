@@ -149,7 +149,7 @@ class ChatOptions(OpenAiApiCallOptions):
     )
     private_mode: Optional[bool] = Field(
         default=None,
-        description="Toggle private mode. If set to `True`, the chat will not "
+        description="Toggle private mode. If this flag is used, the chat will not "
         + "be logged and the chat history will not be saved.",
     )
     api_connection_max_n_attempts: int = Field(
@@ -174,15 +174,19 @@ class VoiceAssistantConfigs(BaseConfigModel):
     openai_tts_voice: Literal[
         "alloy", "echo", "fable", "onyx", "nova", "shimmer"
     ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")
+    exit_expressions: list[str] = Field(
+        default=["bye-bye", "ok bye-bye", "okay bye-bye"],
+        description="Expression(s) to use in order to exit the chat",
+    )
 
     inactivity_timeout_seconds: int = Field(
-        default=2,
+        default=1,
         gt=0,
         description="How much time user should be inactive "
         "for the assistant to stop listening",
     )
     speech_likelihood_threshold: float = Field(
-        default=0.85,
+        default=0.5,
         ge=0.0,
         le=1.0,
         description="Accept audio as speech if the likelihood is above this threshold",
@@ -194,6 +198,9 @@ class VoiceAssistantConfigs(BaseConfigModel):
     )
     frame_duration: Literal[10, 20, 30] = Field(
         default=30, description="Frame duration for audio recording, in milliseconds."
+    )
+    skip_initial_greeting: Optional[bool] = Field(
+        default=None, description="Skip initial greeting."
     )
 
 
