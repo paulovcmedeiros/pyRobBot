@@ -52,15 +52,15 @@ else:
 class VoiceChat(Chat):
     """Class for converting text to speech and speech to text."""
 
-    def __init__(self, configs: VoiceChatConfigs = None):
+    default_configs = VoiceChatConfigs()
+
+    def __init__(self, configs: VoiceChatConfigs = default_configs):
         """Initializes a chat instance."""
         if not _sounddevice_imported:
             raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
 
-        if configs is None:
-            configs = VoiceChatConfigs()
         super().__init__(configs=configs)
 
         self.mixer = pygame.mixer
@@ -84,7 +84,7 @@ class VoiceChat(Chat):
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
-        self.tts_conversion_queue.put(self._translate(self.initial_greeting))
+        self.tts_conversion_queue.put(self.initial_greeting)
         try:
             previous_question_answered = True
             while True:
@@ -93,11 +93,11 @@ class VoiceChat(Chat):
                 self.play_speech_queue.join()
                 if previous_question_answered:
                     chime.warning()
+                    previous_question_answered = False
                     logger.debug(f"{self.assistant_name}> Listening...")
 
                 question = self.listen().strip()
                 if not question:
-                    previous_question_answered = False
                     continue
 
                 # Check for the exit expressions

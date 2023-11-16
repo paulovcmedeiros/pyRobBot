@@ -61,6 +61,7 @@
   ##################
   # Linter configs #
   ##################
+  pytest-xdist = "^3.4.0"
 
 [tool.black]
   line-length = 90
@@ -131,7 +132,7 @@
   ##################
 
 [tool.pytest.ini_options]
-  addopts = "-v --cache-clear --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
+  addopts = "-v --cache-clear -n auto --failed-first --cov-report=term-missing --cov-report=term:skip-covered --cov-report=xml:.coverage.xml --cov=./"
   log_cli_level = "INFO"
   testpaths = ["tests/smoke", "tests/unit"]
 

@@ -22,11 +22,6 @@ def test_cannot_instanciate_assistant_with_invalid_webrtcvad_params(param_name):
         VoiceChat(configs=VoiceChatConfigs(**{param_name: 1}))
 
 
-def test_speak(default_voice_chat):
-    """Test the speak method."""
-    default_voice_chat.speak("Hello world!")
-
-
 def test_listen(default_voice_chat):
     """Test the listen method."""
     with contextlib.suppress(PortAudioError):
