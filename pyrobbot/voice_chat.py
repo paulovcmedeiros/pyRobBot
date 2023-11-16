@@ -2,6 +2,7 @@
 import contextlib
 import io
 import queue
+import re
 from collections import deque
 from datetime import datetime
 
@@ -73,11 +74,20 @@ class VoiceChat(Chat):
             while True:
                 if previous_question_answered:
                     logger.info(f"{self.assistant_name}> Listening...")
-                question = self.listen()
+                question = self.listen().strip()
                 if not question:
                     previous_question_answered = False
                     continue
                 logger.info(f"{self.assistant_name}> Let me think...")
+                if any(
+                    _get_lower_alphanumeric(question).startswith(
+                        _get_lower_alphanumeric(expr)
+                    )
+                    for expr in self.exit_expressions
+                ):
+                    logger.info(f"{self.assistant_name}> Goodbye!")
+                    break
+                logger.debug(f"{self.assistant_name}> Let me think...")
                 answer = "".join(self.respond_user_prompt(prompt=question))
                 logger.info(f"{self.assistant_name}> Ok, here we go:")
                 self.speak(answer)
@@ -253,3 +263,8 @@ def _np_array_to_wav_in_memory(array: np.ndarray, sample_rate: int):
     wav.write(byte_io, rate=sample_rate, data=array)
     byte_io.seek(44)  # Skip the WAV header
     return byte_io.read()
+
+
+def _get_lower_alphanumeric(string: str):
+    """Return a string with only lowercase alphanumeric characters."""
+    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
