@@ -3,6 +3,7 @@ import contextlib
 import io
 import queue
 import re
+import threading
 from collections import deque
 from datetime import datetime
 
@@ -67,20 +68,39 @@ class VoiceChat(Chat):
         self.mixer.init()
         chime.theme("big-sur")
 
+        # Create queues for TTS processing and speech playing
+        self.tts_conversion_queue = queue.Queue()
+        self.play_speech_queue = queue.Queue()
+        # Create threads to watch the TTS and speech playing queues
+        self.tts_conversion_watcher_thread = threading.Thread(
+            target=self.get_tts, args=(self.tts_conversion_queue,), daemon=True
+        )
+        self.play_speech_thread = threading.Thread(
+            target=self.speak, args=(self.play_speech_queue,), daemon=True
+        )
+        self.tts_conversion_watcher_thread.start()
+        self.play_speech_thread.start()
+
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
-        self.speak(self._translate(self.initial_greeting))
+        self.tts_conversion_queue.put(self._translate(self.initial_greeting))
         try:
             previous_question_answered = True
             while True:
+                # Wait for all items in the queue to be processed
+                self.tts_conversion_queue.join()
+                self.play_speech_queue.join()
                 if previous_question_answered:
                     chime.warning()
                     logger.debug(f"{self.assistant_name}> Listening...")
+
                 question = self.listen().strip()
                 if not question:
                     previous_question_answered = False
                     continue
+
+                # Check for the exit expressions
                 if any(
                     _get_lower_alphanumeric(question).startswith(
                         _get_lower_alphanumeric(expr)
@@ -91,12 +111,21 @@ class VoiceChat(Chat):
                     chime.error()
                     logger.debug(f"{self.assistant_name}> Goodbye!")
                     break
+
                 chime.success()
-                logger.debug(f"{self.assistant_name}> Let me think...")
-                answer = "".join(self.respond_user_prompt(prompt=question))
-                logger.debug(f"{self.assistant_name}> Ok, here we go:")
-                self.speak(answer)
+                logger.debug(f"{self.assistant_name}> Getting response...")
+                sentence = ""
+                for answer_chunk in self.respond_user_prompt(prompt=question):
+                    sentence += answer_chunk
+                    if answer_chunk.strip().endswith(("?", "!", ".")):
+                        # Send sentence for TTS even if the request hasn't yet finished
+                        self.tts_conversion_queue.put(sentence)
+                        sentence = ""
+                if sentence:
+                    self.tts_conversion_queue.put(sentence)
+
                 previous_question_answered = True
+
         except (KeyboardInterrupt, EOFError):
             chime.info()
             print("", end="\r")
@@ -106,20 +135,32 @@ class VoiceChat(Chat):
             print(f"{self.api_connection_error_msg}\n")
             logger.error("Leaving chat: {}", error)
 
-    def speak(self, text):
-        """Convert text to speech."""
-        logger.debug("Converting text to speech...")
-        if self.tts_engine == "openai" and _pydub_imported:
-            tts_wav__buffer = self._tts_openai(text)
-        else:
-            tts_wav__buffer = self._tts_google(text)
-        logger.debug("Done converting text to speech.")
+    def get_tts(self, text_queue: queue.Queue):
+        """Convert text to a pygame Sound object."""
+        while True:
+            text = text_queue.get()
+            logger.debug("Received for TTS: '{}'", text)
 
-        # Play the audio file
-        speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav__buffer)
-        _channel = speech_sound.play()
-        while self._assistant_still_talking():
-            pygame.time.wait(100)
+            if self.tts_engine == "openai" and _pydub_imported:
+                tts_wav_buffer = self._tts_openai(text)
+            else:
+                tts_wav_buffer = self._tts_google(text)
+
+            # Convert wav buffer to sound
+            speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
+            self.play_speech_queue.put(speech_sound)
+
+            logger.debug("Done with TTS for '{}'", text)
+            text_queue.task_done()
+
+    def speak(self, sound_obj_queue: queue.Queue):
+        """Reproduce audio from a pygame Sound object."""
+        while True:
+            sound = sound_obj_queue.get()
+            _channel = sound.play()
+            while self._assistant_still_talking():
+                pygame.time.wait(100)
+            sound_obj_queue.task_done()
 
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
