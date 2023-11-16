@@ -3,10 +3,10 @@ import contextlib
 import io
 import queue
 from collections import deque
-from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
+import pydub
 import pygame
 import scipy.io.wavfile as wav
 import soundfile as sf
@@ -14,6 +14,12 @@ import speech_recognition as sr
 import webrtcvad
 from gtts import gTTS
 from loguru import logger
+from openai import OpenAI
+
+from pyrobbot.chat_configs import VoiceChatConfigs
+
+from .chat import Chat
+from .openai_utils import CannotConnectToApiError, retry_api_call
 
 try:
     import sounddevice as sd
@@ -26,68 +32,76 @@ except OSError as error:
     )
     _sounddevice_imported = False
 
+try:
+    # Test if AudioSegment.from_mp3() can be used
+    with contextlib.suppress(pydub.exceptions.CouldntDecodeError):
+        pydub.AudioSegment.from_mp3(io.BytesIO())
+except (ImportError, OSError, FileNotFoundError) as error:
+    logger.error(
+        "{}. Can't use module `pydub`. Please check your system's ffmpeg install.", error
+    )
+    logger.warning("Using Google's TTS instead of OpenAI's, which requires `pydub`.")
+    _pydub_imported = False
+else:
+    _pydub_imported = True
 
-@dataclass
-class LiveAssistant:
+
+class VoiceChat(Chat):
     """Class for converting text to speech and speech to text."""
 
-    # May be any language supported by gTTS
-    language: str = "en"
-    # How much time user should be inactive for the assistant to stop listening
-    inactivity_timeout_seconds: int = 2
-    # Accept audio as speech if the likelihood is above this threshold
-    speech_likelihood_threshold: float = 0.85
-    # Params for audio capture
-    sample_rate: int = 32000  # Hz
-    frame_duration: int = 30  # milliseconds
-
-    def __post_init__(self):
+    def __init__(self, configs: VoiceChatConfigs = None):
+        """Initializes a chat instance."""
         if not _sounddevice_imported:
             raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
 
-        webrtcvad_restrictions = {
-            "sample_rate": [8000, 16000, 32000, 48000],
-            "frame_duration": [10, 20, 30],
-        }
-        for attr, allowed_values in webrtcvad_restrictions.items():
-            passed_value = getattr(self, attr)
-            if passed_value not in allowed_values:
-                raise ValueError(
-                    f"{attr} must be one of: {allowed_values}. Got '{passed_value}'."
-                )
+        if configs is None:
+            configs = VoiceChatConfigs()
+        super().__init__(configs=configs)
 
         self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
-
         self.mixer.init()
 
-    def sound_from_bytes_io(self, bytes_io):
-        """Create a pygame sound object from a BytesIO object."""
-        return self.mixer.Sound(bytes_io)
-
-    def still_talking(self):
-        """Check if the assistant is still talking."""
-        return self.mixer.get_busy()
+    def start(self):
+        """Start the chat."""
+        # ruff: noqa: T201
+        self.speak(self._translate(self.initial_greeting))
+        try:
+            previous_question_answered = True
+            while True:
+                if previous_question_answered:
+                    logger.info(f"{self.assistant_name}> Listening...")
+                question = self.listen()
+                if not question:
+                    previous_question_answered = False
+                    continue
+                logger.info(f"{self.assistant_name}> Let me think...")
+                answer = "".join(self.respond_user_prompt(prompt=question))
+                logger.info(f"{self.assistant_name}> Ok, here we go:")
+                self.speak(answer)
+                previous_question_answered = True
+        except (KeyboardInterrupt, EOFError):
+            print("", end="\r")
+            logger.info("Leaving chat.")
+        except CannotConnectToApiError as error:
+            print(f"{self.api_connection_error_msg}\n")
+            logger.error("Leaving chat: {}", error)
 
     def speak(self, text):
         """Convert text to speech."""
         logger.debug("Converting text to speech...")
-        # Initialize gTTS with the text to convert
-        tts = gTTS(text, lang=self.language)
-
-        # Convert the recorded array to an in-memory wav file
-        tts_as_bytes_io = io.BytesIO()
-        tts.write_to_fp(tts_as_bytes_io)
-        tts_as_bytes_io.seek(0)
-
+        if self.tts_engine == "openai" and _pydub_imported:
+            tts_wav__buffer = self._tts_openai(text)
+        else:
+            tts_wav__buffer = self._tts_google(text)
         logger.debug("Done converting text to speech.")
 
         # Play the audio file
-        speech_sound = self.sound_from_bytes_io(bytes_io=tts_as_bytes_io)
+        speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav__buffer)
         _channel = speech_sound.play()
-        while self.still_talking():
+        while self._assistant_still_talking():
             pygame.time.wait(100)
 
     def listen(self):
@@ -162,16 +176,68 @@ class LiveAssistant:
             return ""
 
         logger.debug("Converting audio to text...")
-        text = self._audio_buffer_to_text(byte_io=raw_buffer)
+        text = self._wav_buffer_to_text(wav_buffer=raw_buffer)
         logger.debug("Done converting audio to text.")
 
         return text
 
-    def _audio_buffer_to_text(self, byte_io):
+    def _assistant_still_talking(self):
+        """Check if the assistant is still talking."""
+        return self.mixer.get_busy()
+
+    @retry_api_call()
+    def _tts_openai(self, text):
+        """Convert text to speech using OpenAI's TTS."""
+        text = text.strip()
+        client = OpenAI()
+
+        openai_tts_model = "tts-1"
+
+        for db in [
+            self.general_token_usage_db,
+            self.token_usage_db,
+        ]:
+            db.insert_data(model=openai_tts_model, n_input_tokens=len(text))
+
+        response = client.audio.speech.create(
+            input=text,
+            model=openai_tts_model,
+            voice=self.openai_tts_voice,
+            response_format="mp3",
+        )
+
+        mp3_buffer = io.BytesIO()
+        for mp3_stream_chunk in response.iter_bytes(chunk_size=4096):
+            mp3_buffer.write(mp3_stream_chunk)
+        mp3_buffer.seek(0)
+
+        wav_buffer = io.BytesIO()
+        sound = pydub.AudioSegment.from_mp3(mp3_buffer)
+        # Increase the default volume, the default is a bit to quiet
+        volume_increase_db = 6
+        sound += volume_increase_db
+        sound.export(wav_buffer, format="wav")
+        wav_buffer.seek(0)
+
+        return wav_buffer
+
+    def _tts_google(self, text):
+        """Convert text to speech using Google's TTS."""
+        tts = gTTS(text.strip(), lang=self.language)
+        wav_buffer = io.BytesIO()
+        tts.write_to_fp(wav_buffer)
+        wav_buffer.seek(0)
+        return wav_buffer
+
+    def _wav_buffer_to_sound(self, wav_buffer):
+        """Create a pygame sound object from a BytesIO object."""
+        return self.mixer.Sound(wav_buffer)
+
+    def _wav_buffer_to_text(self, wav_buffer):
         """Use SpeechRecognition to convert the audio to text."""
-        byte_io.seek(0)  # Reset the file pointer to the beginning of the file
+        wav_buffer.seek(0)  # Reset the file pointer to the beginning of the file
         r = sr.Recognizer()
-        with sr.AudioFile(byte_io) as source:
+        with sr.AudioFile(wav_buffer) as source:
             audio_data = r.listen(source)
 
         try:
