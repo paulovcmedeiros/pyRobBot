@@ -250,6 +250,7 @@ class VoiceChat(Chat):
     @retry_api_call()
     def _tts_openai(self, text):
         """Convert text to speech using OpenAI's TTS."""
+        logger.debug("OpenAI TTS received: '{}'", text)
         text = text.strip()
         client = OpenAI()
 
@@ -266,6 +267,7 @@ class VoiceChat(Chat):
             model=openai_tts_model,
             voice=self.openai_tts_voice,
             response_format="mp3",
+            timeout=self.timeout,
         )
 
         mp3_buffer = io.BytesIO()
@@ -281,6 +283,7 @@ class VoiceChat(Chat):
         sound.export(wav_buffer, format="wav")
         wav_buffer.seek(0)
 
+        logger.debug("OpenAI TTS done for '{}'", text)
         return wav_buffer
 
     def _tts_google(self, text):
