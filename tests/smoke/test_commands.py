@@ -7,7 +7,7 @@ from pyrobbot.argparse_wrapper import get_parsed_args
 @pytest.mark.usefixtures("_input_builtin_mocker")
 @pytest.mark.parametrize("user_input", ["Hi!", ""], ids=["regular-input", "empty-input"])
 def test_terminal_command(cli_args_overrides):
-    args = ["terminal", "--report-accounting-when-done", *cli_args_overrides]
+    args = ["--report-accounting-when-done", "terminal", *cli_args_overrides]
     args = list(dict.fromkeys(args))
     main(args)
 
@@ -27,7 +27,7 @@ def test_default_command(mocker):
     main(argv=[])
 
 
-def test_voice_chat(cli_args_overrides, mocker):
+def test_voice_chat(mocker):
     # We allow two calls in order to let the function be tested first and then terminate
     # the chat
     def _mock_listen(*args, **kwargs):  # noqa: ARG001
@@ -39,7 +39,5 @@ def test_voice_chat(cli_args_overrides, mocker):
             raise KeyboardInterrupt
         return "foobar"
 
-    mocker.patch("pyrobbot.text_to_speech.LiveAssistant.listen", _mock_listen)
-    args = ["voice", *cli_args_overrides]
-    args = list(dict.fromkeys(args))
-    main(args)
+    mocker.patch("pyrobbot.text_to_speech.VoiceChat.listen", _mock_listen)
+    main(["voice", "--tts", "google"])

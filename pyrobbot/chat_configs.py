@@ -129,6 +129,13 @@ class ChatOptions(OpenAiApiCallOptions):
         default=f"{GeneralConstants.PACKAGE_NAME}_system",
         description="Name of the chat's system",
     )
+    ai_instructions: tuple[str, ...] = Field(
+        default=(
+            "You answer correctly.",
+            "You do not lie.",
+        ),
+        description="Initial instructions for the AI",
+    )
     context_model: Literal["text-embedding-ada-002", "full-history"] = Field(
         default="text-embedding-ada-002",
         description=(
@@ -137,31 +144,29 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         json_schema_extra={"frozen": True},
     )
-    ai_instructions: tuple[str, ...] = Field(
-        default=(
-            "You answer correctly.",
-            "You do not lie.",
-        ),
-        description="Initial instructions for the AI",
-    )
     initial_greeting: Optional[str] = Field(
         default="", description="Initial greeting given by the assistant"
-    )
-    api_connection_max_n_attempts: int = Field(
-        default=5,
-        gt=0,
-        description="Maximum number of attempts to connect to the OpenAI API",
     )
     private_mode: Optional[bool] = Field(
         default=None,
         description="Toggle private mode. If set to `True`, the chat will not "
         + "be logged and the chat history will not be saved.",
     )
-    language_speech: str = Field(
-        default="en", description="Language for text to speech/speech to text"
+    api_connection_max_n_attempts: int = Field(
+        default=5,
+        gt=0,
+        description="Maximum number of attempts to connect to the OpenAI API",
     )
+    language: str = Field(
+        default="en", description="Initial language adopted by the assistant."
+    )
+
+
+class VoiceAssistantConfigs(BaseConfigModel):
+    """Model for the text-to-speech assistant's configuration options."""
+
     tts_engine: Literal["openai", "google"] = Field(
-        default="openai",
+        default="google",
         description="The text-to-speak engine to use. The `google` engine is free "
         "(for now, at least), but the `openai` engine (which will charge from your "
         "API credits) sounds more natural.",
@@ -169,3 +174,28 @@ class ChatOptions(OpenAiApiCallOptions):
     openai_tts_voice: Literal[
         "alloy", "echo", "fable", "onyx", "nova", "shimmer"
     ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")
+
+    inactivity_timeout_seconds: int = Field(
+        default=2,
+        gt=0,
+        description="How much time user should be inactive "
+        "for the assistant to stop listening",
+    )
+    speech_likelihood_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Accept audio as speech if the likelihood is above this threshold",
+    )
+    # sample_rate and frame_duration have to be consistent with the values uaccepted by
+    # the webrtcvad package
+    sample_rate: Literal[8000, 16000, 32000, 48000] = Field(
+        default=32000, description="Sample rate for audio recording, in Hz."
+    )
+    frame_duration: Literal[10, 20, 30] = Field(
+        default=30, description="Frame duration for audio recording, in milliseconds."
+    )
+
+
+class VoiceChatConfigs(ChatOptions, VoiceAssistantConfigs):
+    """Model for the voice chat's configuration options."""

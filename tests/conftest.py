@@ -9,8 +9,8 @@ from loguru import logger
 
 import pyrobbot
 from pyrobbot.chat import Chat
-from pyrobbot.chat_configs import ChatOptions
-from pyrobbot.text_to_speech import LiveAssistant
+from pyrobbot.chat_configs import ChatOptions, VoiceChatConfigs
+from pyrobbot.text_to_speech import VoiceChat
 
 
 @pytest.fixture()
@@ -138,6 +138,11 @@ def default_chat_configs(llm_model, context_model):
 
 
 @pytest.fixture()
+def default_voice_chat_configs(llm_model, context_model):
+    return VoiceChatConfigs(model=llm_model, context_model=context_model)
+
+
+@pytest.fixture()
 def cli_args_overrides(default_chat_configs):
     args = []
     for field, value in default_chat_configs.model_dump().items():
@@ -151,25 +156,33 @@ def default_chat(default_chat_configs):
     return Chat(configs=default_chat_configs)
 
 
+@pytest.fixture()
+def default_voice_chat(default_voice_chat_configs):
+    chat = VoiceChat(configs=default_voice_chat_configs)
+    chat.inactivity_timeout_seconds = 1e-5
+    chat.tts_engine = "google"
+    return chat
+
+
 @pytest.fixture(autouse=True)
 def _text_to_speech_mockers(mocker):
     """Mockers for the text-to-speech module."""
     mocker.patch(
-        "pyrobbot.text_to_speech.LiveAssistant.still_talking", return_value=False
+        "pyrobbot.text_to_speech.VoiceChat._assistant_still_talking", return_value=False
     )
     mocker.patch("gtts.gTTS.write_to_fp")
 
-    orig_func = LiveAssistant.get_sound_from_wav_buffer
+    orig_func = VoiceChat._wav_buffer_to_sound
 
-    def mock_get_sound_from_wav_buffer(self: LiveAssistant, *args, **kwargs):
+    def mock_wav_buffer_to_sound(self: VoiceChat, *args, **kwargs):
         try:
             return orig_func(self, *args, **kwargs)
         except pygame.error:
             return MagicMock()
 
     mocker.patch(
-        "pyrobbot.text_to_speech.LiveAssistant.get_sound_from_wav_buffer",
-        mock_get_sound_from_wav_buffer,
+        "pyrobbot.text_to_speech.VoiceChat._wav_buffer_to_sound",
+        mock_wav_buffer_to_sound,
     )
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)

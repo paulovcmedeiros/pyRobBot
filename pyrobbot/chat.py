@@ -4,18 +4,18 @@ import json
 import shutil
 import uuid
 from collections import defaultdict
-from pathlib import Path
 
 from loguru import logger
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
+from .general_utils import AlternativeConstructors
 from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
 from .tokens import TokenUsageDatabase
 
 
-class Chat:
+class Chat(AlternativeConstructors):
     """Manages conversations with an AI chat model.
 
     This class encapsulates the chat behavior, including handling the chat context,
@@ -68,9 +68,9 @@ class Chat:
     def configs(self):
         """Return the chat's configs after initialisation."""
         configs_dict = {}
-        for field_name in ChatOptions.model_fields:
+        for field_name in self._passed_configs.model_fields:
             configs_dict[field_name] = getattr(self, field_name)
-        return ChatOptions.model_validate(configs_dict)
+        return self._passed_configs.model_validate(configs_dict)
 
     @property
     def user_cache_dir(self):
@@ -150,73 +150,6 @@ class Chat:
         """Remove the cache directory."""
         shutil.rmtree(self.cache_dir, ignore_errors=True)
 
-    def __del__(self):
-        embedding_model = self.context_handler.database.get_embedding_model()
-        chat_started = embedding_model is not None
-        if self.private_mode or not chat_started:
-            self.clear_cache()
-        else:
-            self.save_cache()
-
-    @classmethod
-    def from_dict(cls, configs: dict):
-        """Creates a Chat instance from a configuration dictionary.
-
-        Converts the configuration dictionary into a ChatOptions instance
-        and uses it to instantiate the Chat class.
-
-        Args:
-            configs (dict): The chat configuration options as a dictionary.
-
-        Returns:
-            Chat: An instance of Chat initialized with the given configurations.
-        """
-        return cls(configs=ChatOptions.model_validate(configs))
-
-    @classmethod
-    def from_cli_args(cls, cli_args):
-        """Creates a Chat instance from CLI arguments.
-
-        Extracts relevant options from the CLI arguments and initializes a Chat instance
-        with them.
-
-        Args:
-            cli_args: The command line arguments.
-
-        Returns:
-            Chat: An instance of Chat initialized with CLI-specified configurations.
-        """
-        chat_opts = {
-            k: v
-            for k, v in vars(cli_args).items()
-            if k in ChatOptions.model_fields and v is not None
-        }
-        return cls.from_dict(chat_opts)
-
-    @classmethod
-    def from_cache(cls, cache_dir: Path):
-        """Loads a chat instance from a cache directory.
-
-        Args:
-            cache_dir (Path): The path to the cache directory.
-
-        Returns:
-            Chat: An instance of Chat loaded with cached configurations and metadata.
-        """
-        try:
-            with open(cache_dir / "configs.json", "r") as configs_f:
-                new = cls.from_dict(json.load(configs_f))
-            with open(cache_dir / "metadata.json", "r") as metadata_f:
-                new.metadata = json.load(metadata_f)
-                new.id = new.metadata["chat_id"]
-        except FileNotFoundError:
-            logger.warning(
-                "Could not find configs and/or metadata file in cache directory. "
-                + "Creating chat with default configs."
-            )
-            new = cls()
-        return new
-
     def load_history(self):
         """Load chat history from cache."""
         return self.context_handler.load_history()
@@ -234,14 +167,14 @@ class Chat:
                 f"Hello! I'm {self.assistant_name}. How can I assist you today?"
             )
 
-        translated_greeting = type(self)._initial_greeting_translations[
+        translated_greeting = type(self)._initial_greeting_translations[  # noqa: SLF001
             self._initial_greeting
-        ][self.language_speech]
+        ][self.language]
         if not translated_greeting:
-            translated_greeting = self.translate(self._initial_greeting)
-            type(self)._initial_greeting_translations[self._initial_greeting][
-                self.language_speech
-            ] = translated_greeting
+            translated_greeting = self._translate(self._initial_greeting)
+            type(self)._initial_greeting_translations[  # noqa: SLF001
+                self._initial_greeting
+            ][self.language] = translated_greeting
 
         return translated_greeting
 
@@ -258,6 +191,16 @@ class Chat:
         yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
 
     def yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
+        """Yield response from a prompt message."""
+        try:
+            yield from self._yield_response_from_msg(
+                prompt_msg=prompt_msg, add_to_history=add_to_history
+            )
+        except CannotConnectToApiError as error:
+            logger.error("Leaving chat: {}", error)
+            yield self.api_connection_error_msg
+
+    def _yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
         """Yield response from a prompt message."""
         # Get appropriate context for prompt from the context handler
         context = self.context_handler.get_context(msg=prompt_msg)
@@ -300,34 +243,6 @@ class Chat:
             print(f"{self.api_connection_error_msg}\n")
             logger.error("Leaving chat: {}", error)
 
-    def start_talking(self):
-        """Start the chat."""
-        # ruff: noqa: T201
-        from .text_to_speech import LiveAssistant
-
-        assistant = LiveAssistant(parent_chat=self)
-        assistant.speak(self.translate(self.initial_greeting))
-        try:
-            previous_question_answered = True
-            while True:
-                if previous_question_answered:
-                    logger.info(f"{self.assistant_name}> Listening...")
-                question = assistant.listen()
-                if not question:
-                    previous_question_answered = False
-                    continue
-                logger.info(f"{self.assistant_name}> Let me think...")
-                answer = "".join(self.respond_user_prompt(prompt=question))
-                logger.info(f"{self.assistant_name}> Ok, here we go:")
-                assistant.speak(answer)
-                previous_question_answered = True
-        except (KeyboardInterrupt, EOFError):
-            print("", end="\r")
-            logger.info("Leaving chat.")
-        except CannotConnectToApiError as error:
-            print(f"{self.api_connection_error_msg}\n")
-            logger.error("Leaving chat: {}", error)
-
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
         dfs = {}
@@ -349,21 +264,6 @@ class Chat:
                 print()
             print(df.attrs["disclaimer"])
 
-    def _respond_prompt(self, prompt: str, role: str, **kwargs):
-        prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}
-        yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
-
-    def translate(self, text):
-        lang = self.language_speech
-        translation_prompt = f"Translate the text between triple quotes to {lang}. "
-        translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
-        translation_prompt += f"If the text is already in {lang}, then just repeat "
-        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
-        translation_prompt += f"'''{text}'''"
-        return "".join(
-            self.respond_system_prompt(prompt=translation_prompt, add_to_history=False)
-        )
-
     @property
     def api_connection_error_msg(self):
         """Return the error message for API connection errors."""
@@ -373,3 +273,26 @@ class Chat:
             + "If the problem persists, please also take a look at the "
             + "OpenAI status page <https://status.openai.com>."
         )
+
+    def _respond_prompt(self, prompt: str, role: str, **kwargs):
+        prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}
+        yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
+
+    def _translate(self, text):
+        lang = self.language
+        translation_prompt = f"Translate the text between triple quotes to {lang}. "
+        translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
+        translation_prompt += f"If the text is already in {lang}, then just repeat "
+        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
+        translation_prompt += f"'''{text}'''"
+        return "".join(
+            self.respond_system_prompt(prompt=translation_prompt, add_to_history=False)
+        )
+
+    def __del__(self):
+        embedding_model = self.context_handler.database.get_embedding_model()
+        chat_started = embedding_model is not None
+        if self.private_mode or not chat_started:
+            self.clear_cache()
+        else:
+            self.save_cache()

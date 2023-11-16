@@ -41,7 +41,7 @@ jobs:
       - name: Install PortAudio and PulseAudio
         run: |
           apt-get update
-          apt-get --assume-yes install portaudio19-dev python-all-dev pulseaudio
+          apt-get --assume-yes install portaudio19-dev python-all-dev pulseaudio ffmpeg
 
       #----------------------------------------------
       #  --- configure poetry & install project  ----
