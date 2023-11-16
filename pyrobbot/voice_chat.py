@@ -10,7 +10,6 @@ from datetime import datetime
 import chime
 import numpy as np
 import pydub
-import pygame
 import scipy.io.wavfile as wav
 import soundfile as sf
 import speech_recognition as sr
@@ -19,9 +18,8 @@ from gtts import gTTS
 from loguru import logger
 from openai import OpenAI
 
-from pyrobbot.chat_configs import VoiceChatConfigs
-
 from .chat import Chat
+from .chat_configs import VoiceChatConfigs
 from .openai_utils import CannotConnectToApiError, retry_api_call
 
 try:
@@ -60,9 +58,12 @@ class VoiceChat(Chat):
             raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
+        # Import it here to prevent the hello message from being printed when not needed
+        import pygame
 
         super().__init__(configs=configs)
 
+        self.pygame = pygame
         self.mixer = pygame.mixer
         self.vad = webrtcvad.Vad(2)
         self.mixer.init()
@@ -161,7 +162,7 @@ class VoiceChat(Chat):
             sound = sound_obj_queue.get()
             _channel = sound.play()
             while self._assistant_still_talking():
-                pygame.time.wait(100)
+                self.pygame.time.wait(100)
             sound_obj_queue.task_done()
 
     def listen(self):
