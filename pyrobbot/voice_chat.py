@@ -205,13 +205,14 @@ class VoiceChat(Chat):
                     audio_file.write(new_data)
 
                     # Gather voice activity samples for the inactivity check
+                    wav_buffer = _np_array_to_wav_in_memory(
+                        new_data, sample_rate=self.sample_rate
+                    )
                     vad_thinks_this_chunk_is_speech = self.vad.is_speech(
-                        _np_array_to_wav_in_memory(
-                            new_data, sample_rate=self.sample_rate
-                        ),
-                        self.sample_rate,
+                        wav_buffer, self.sample_rate
                     )
                     voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
+
                     # Decide if user has been inactive for too long
                     now = datetime.now()
                     if (

@@ -149,7 +149,7 @@ class ChatOptions(OpenAiApiCallOptions):
     )
     private_mode: Optional[bool] = Field(
         default=None,
-        description="Toggle private mode. If set to `True`, the chat will not "
+        description="Toggle private mode. If this flag is used, the chat will not "
         + "be logged and the chat history will not be saved.",
     )
     api_connection_max_n_attempts: int = Field(
