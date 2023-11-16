@@ -7,7 +7,7 @@ from pyrobbot.argparse_wrapper import get_parsed_args
 @pytest.mark.usefixtures("_input_builtin_mocker")
 @pytest.mark.parametrize("user_input", ["Hi!", ""], ids=["regular-input", "empty-input"])
 def test_terminal_command(cli_args_overrides):
-    args = ["--report-accounting-when-done", "terminal", *cli_args_overrides]
+    args = ["terminal", "--report-accounting-when-done", *cli_args_overrides]
     args = list(dict.fromkeys(args))
     main(args)
 

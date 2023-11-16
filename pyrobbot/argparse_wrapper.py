@@ -38,7 +38,7 @@ def _populate_parser_from_pydantic_model(parser, model):
     return parser
 
 
-def get_parsed_args(argv=None, default_command="ui"):
+def get_parsed_args(argv=None, default_command="voice"):
     """Get parsed command line arguments.
 
     Args:
@@ -51,8 +51,10 @@ def get_parsed_args(argv=None, default_command="ui"):
     """
     if argv is None:
         argv = sys.argv[1:]
-    if not argv:
-        argv = [default_command]
+    first_argv = next(iter(argv), "'")
+    info_flags = ["--version", "-v", "-h", "--help"]
+    if first_argv.startswith("-") and first_argv not in info_flags:
+        argv = [default_command, *argv]
 
     # Main parser that will handle the script's commands
     main_parser = argparse.ArgumentParser(
@@ -63,11 +65,6 @@ def get_parsed_args(argv=None, default_command="ui"):
         "-v",
         action="version",
         version=f"{GeneralConstants.PACKAGE_NAME} v" + GeneralConstants.VERSION,
-    )
-    main_parser.add_argument(
-        "--report-accounting-when-done",
-        action="store_true",
-        help="Report estimated costs when done with the chat.",
     )
     subparsers = main_parser.add_subparsers(
         title="commands",
@@ -86,6 +83,11 @@ def get_parsed_args(argv=None, default_command="ui"):
             formatter_class=argparse.ArgumentDefaultsHelpFormatter, add_help=False
         ),
         model=ChatOptions,
+    )
+    chat_options_parser.add_argument(
+        "--report-accounting-when-done",
+        action="store_true",
+        help="Report estimated costs when done with the chat.",
     )
 
     # Voice chat
