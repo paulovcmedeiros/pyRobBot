@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from importlib.metadata import metadata, version
 from pathlib import Path
 
-import openai
 from loguru import logger
+from openai import OpenAI, OpenAIError
 
 logger.remove()
 logger.add(
@@ -46,9 +46,15 @@ class GeneralDefinitions:
     @staticmethod
     def openai_key_hash():
         """Return a hash of the OpenAI API key."""
-        if openai.api_key is None:
+        try:
+            client = OpenAI()
+        except OpenAIError:
+            api_key = None
+        else:
+            api_key = client.api_key
+        if api_key is None:
             return "demo"
-        return hashlib.sha256(openai.api_key.encode("utf-8")).hexdigest()
+        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
     @property
     def package_cache_directory(self):
@@ -71,4 +77,3 @@ GeneralConstants = GeneralDefinitions(
 )
 
 # Initialize the OpenAI API client
-openai.api_key = GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY

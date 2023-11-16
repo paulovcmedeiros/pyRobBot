@@ -12,7 +12,9 @@ def testbed_doesnt_actually_connect_to_openai(default_chat, caplog):
     default_chat.start()
     success = default_chat.api_connection_error_msg in caplog.text
     if not success:
-        pytest.exit("Refuse to continue: Testbed is trying to connect to OpenAI API!")
+        err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
+        err_msg += f"\nThis is what the logger says:\n{caplog.text}"
+        pytest.exit(err_msg)
 
 
 @pytest.mark.order(2)
@@ -46,9 +48,12 @@ def test_chat_configs(default_chat, default_chat_configs):
 @pytest.mark.parametrize("user_input", ["regular-input"])
 def test_request_timeout_retry(mocker, default_chat, caplog):
     def _mock_openai_chat_completion_create(*args, **kwargs):  # noqa: ARG001
-        raise openai.error.Timeout("Mocked timeout error was not caught!")
+        raise openai.APITimeoutError("Mocked timeout error was not caught!")
 
-    mocker.patch("openai.ChatCompletion.create", new=_mock_openai_chat_completion_create)
+    mocker.patch(
+        "openai.resources.chat.completions.Completions.create",
+        new=_mock_openai_chat_completion_create,
+    )
     mocker.patch("time.sleep")  # Don't waste time sleeping in tests
     default_chat.start()
     assert default_chat.api_connection_error_msg in caplog.text

@@ -21,6 +21,8 @@ PRICE_PER_K_TOKENS = {
     "text-embedding-ada-002": {"input": 0.0001, "output": 0.0},
     "text-embedding-ada-002-v2": {"input": 0.0001, "output": 0.0},
     "text-davinci:002": {"input": 0.0020, "output": 0.020},
+    "tts-1": {"input": 0.015, "output": 0.0},
+    "tts-1-hd": {"input": 0.03, "output": 0.0},
     "full-history": {"input": 0.0, "output": 0.0},
 }
 

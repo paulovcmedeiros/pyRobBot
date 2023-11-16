@@ -2,7 +2,6 @@ from unittest.mock import MagicMock
 
 import lorem
 import numpy as np
-import openai
 import pygame
 import pytest
 from _pytest.logging import LogCaptureFixture
@@ -10,8 +9,8 @@ from loguru import logger
 
 import pyrobbot
 from pyrobbot.chat import Chat
-from pyrobbot.chat_configs import ChatOptions
-from pyrobbot.text_to_speech import LiveAssistant
+from pyrobbot.chat_configs import ChatOptions, VoiceChatConfigs
+from pyrobbot.text_to_speech import VoiceChat
 
 
 @pytest.fixture()
@@ -50,7 +49,6 @@ def pytest_configure(config):
 def _set_env(monkeypatch):
     # Make sure we don't consume our tokens in tests
     monkeypatch.setenv("OPENAI_API_KEY", "INVALID_API_KEY")
-    openai.api_key = "INVALID_API_KEY"
 
 
 @pytest.fixture(autouse=True)
@@ -77,18 +75,32 @@ def _openai_api_request_mockers(request, mocker):
 
     def _mock_openai_embedding_create(*args, **kwargs):  # noqa: ARG001
         """Mock `openai.Embedding.create`. Yield from lorem ipsum instead."""
-        embedding_request = {
-            "data": [{"embedding": np.random.rand(512).tolist()}],
-            "usage": {"prompt_tokens": 0, "total_tokens": 0},
-        }
+        embedding_request_mock_type = type("EmbeddingRequest", (), {})
+        embedding_mock_type = type("Embedding", (), {})
+        usage_mock_type = type("Usage", (), {})
+
+        embedding = embedding_mock_type()
+        embedding.embedding = np.random.rand(512).tolist()
+        embedding_request = embedding_request_mock_type()
+        embedding_request.data = [embedding]
+
+        usage = usage_mock_type()
+        usage.prompt_tokens = 0
+        usage.total_tokens = 0
+        embedding_request.usage = usage
+
         return embedding_request
 
     if "no_chat_completion_create_mocking" not in request.keywords:
         mocker.patch(
-            "openai.ChatCompletion.create", new=_mock_openai_chat_completion_create
+            "openai.resources.chat.completions.Completions.create",
+            new=_mock_openai_chat_completion_create,
         )
     if "no_embedding_create_mocking" not in request.keywords:
-        mocker.patch("openai.Embedding.create", new=_mock_openai_embedding_create)
+        mocker.patch(
+            "openai.resources.embeddings.Embeddings.create",
+            new=_mock_openai_embedding_create,
+        )
 
 
 @pytest.fixture()
@@ -126,6 +138,11 @@ def default_chat_configs(llm_model, context_model):
 
 
 @pytest.fixture()
+def default_voice_chat_configs(llm_model, context_model):
+    return VoiceChatConfigs(model=llm_model, context_model=context_model)
+
+
+@pytest.fixture()
 def cli_args_overrides(default_chat_configs):
     args = []
     for field, value in default_chat_configs.model_dump().items():
@@ -139,25 +156,33 @@ def default_chat(default_chat_configs):
     return Chat(configs=default_chat_configs)
 
 
+@pytest.fixture()
+def default_voice_chat(default_voice_chat_configs):
+    chat = VoiceChat(configs=default_voice_chat_configs)
+    chat.inactivity_timeout_seconds = 1e-5
+    chat.tts_engine = "google"
+    return chat
+
+
 @pytest.fixture(autouse=True)
 def _text_to_speech_mockers(mocker):
     """Mockers for the text-to-speech module."""
     mocker.patch(
-        "pyrobbot.text_to_speech.LiveAssistant.still_talking", return_value=False
+        "pyrobbot.text_to_speech.VoiceChat._assistant_still_talking", return_value=False
     )
     mocker.patch("gtts.gTTS.write_to_fp")
 
-    orig_func = LiveAssistant.sound_from_bytes_io
+    orig_func = VoiceChat._wav_buffer_to_sound
 
-    def mock_sound_from_bytes_io(self: LiveAssistant, bytes_io):
+    def mock_wav_buffer_to_sound(self: VoiceChat, *args, **kwargs):
         try:
-            return orig_func(self, bytes_io)
+            return orig_func(self, *args, **kwargs)
         except pygame.error:
             return MagicMock()
 
     mocker.patch(
-        "pyrobbot.text_to_speech.LiveAssistant.sound_from_bytes_io",
-        mock_sound_from_bytes_io,
+        "pyrobbot.text_to_speech.VoiceChat._wav_buffer_to_sound",
+        mock_wav_buffer_to_sound,
     )
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
