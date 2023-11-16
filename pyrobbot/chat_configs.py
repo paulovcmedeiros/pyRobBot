@@ -199,6 +199,9 @@ class VoiceAssistantConfigs(BaseConfigModel):
     frame_duration: Literal[10, 20, 30] = Field(
         default=30, description="Frame duration for audio recording, in milliseconds."
     )
+    skip_initial_greeting: Optional[bool] = Field(
+        default=None, description="Skip initial greeting."
+    )
 
 
 class VoiceChatConfigs(ChatOptions, VoiceAssistantConfigs):
