@@ -182,7 +182,7 @@ class VoiceAssistantConfigs(BaseConfigModel):
         "for the assistant to stop listening",
     )
     speech_likelihood_threshold: float = Field(
-        default=0.85,
+        default=0.45,
         ge=0.0,
         le=1.0,
         description="Accept audio as speech if the likelihood is above this threshold",
