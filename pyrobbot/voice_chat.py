@@ -82,7 +82,7 @@ class VoiceChat(Chat):
         self.tts_conversion_watcher_thread.start()
         self.play_speech_thread.start()
 
-    def start(self):
+    def start(self):  # noqa: PLR0912, PLR0915
         """Start the chat."""
         # ruff: noqa: T201
         if not self.skip_initial_greeting:
@@ -118,14 +118,43 @@ class VoiceChat(Chat):
                 chime.success()
                 logger.debug(f"{self.assistant_name}> Getting response...")
                 sentence = ""
+                inside_code_block = False
+                at_least_one_code_line_written = False
                 for answer_chunk in self.respond_user_prompt(prompt=question):
-                    sentence += answer_chunk
-                    if answer_chunk.strip().endswith(("?", "!", ".")):
-                        # Send sentence for TTS even if the request hasn't yet finished
-                        self.tts_conversion_queue.put(sentence)
-                        sentence = ""
+                    fmtd_chunk = answer_chunk.strip(" \n")
+                    code_block_start_detected = fmtd_chunk.startswith("``")
+
+                    if code_block_start_detected and not inside_code_block:
+                        # Toggle the code block state
+                        inside_code_block = True
+
+                    if inside_code_block:
+                        code_chunk = answer_chunk
+                        if at_least_one_code_line_written:
+                            inside_code_block = not fmtd_chunk.endswith("``")  # Code ends
+                            if not inside_code_block:
+                                code_chunk = answer_chunk.rstrip("`") + "```\n"
+                        print(
+                            code_chunk,
+                            end="" if inside_code_block else "\n",
+                            flush=True,
+                        )
+                        at_least_one_code_line_written = True
+                    else:
+                        # The answer chunk is to be spoken
+                        sentence += answer_chunk
+                        if answer_chunk.strip().endswith(("?", "!", ".")):
+                            # Send sentence for TTS even if the request hasn't finished
+                            self.tts_conversion_queue.put(sentence)
+                            sentence = ""
+
                 if sentence:
                     self.tts_conversion_queue.put(sentence)
+
+                if at_least_one_code_line_written:
+                    spoken_info_to_user = "The code has been written in the console"
+                    spoken_info_to_user = self._translate(spoken_info_to_user)
+                    self.tts_conversion_queue.put(spoken_info_to_user)
 
                 previous_question_answered = True
 
