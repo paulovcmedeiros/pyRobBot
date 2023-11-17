@@ -2,6 +2,7 @@ import openai
 import pytest
 
 from pyrobbot import GeneralConstants
+from pyrobbot.chat import Chat
 
 
 @pytest.mark.order(1)
@@ -11,9 +12,10 @@ from pyrobbot import GeneralConstants
 def testbed_doesnt_actually_connect_to_openai(default_chat, caplog):
     default_chat.start()
     success = default_chat.api_connection_error_msg in caplog.text
+
+    err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
+    err_msg += f"\nThis is what the logger says:\n{caplog.text}"
     if not success:
-        err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
-        err_msg += f"\nThis is what the logger says:\n{caplog.text}"
         pytest.exit(err_msg)
 
 
@@ -57,3 +59,14 @@ def test_request_timeout_retry(mocker, default_chat, caplog):
     mocker.patch("time.sleep")  # Don't waste time sleeping in tests
     default_chat.start()
     assert default_chat.api_connection_error_msg in caplog.text
+
+
+def test_can_read_chat_from_cache(default_chat):
+    default_chat.save_cache()
+    new_chat = Chat.from_cache(default_chat.cache_dir)
+    assert new_chat.configs == default_chat.configs
+
+
+def test_create_from_cache_returns_default_chat_if_invalid_cachedir(default_chat, caplog):
+    _ = Chat.from_cache(default_chat.cache_dir / "foobar")
+    assert "Creating Chat with default configs" in caplog.text

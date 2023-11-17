@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from pyrobbot.__main__ import main
@@ -19,6 +21,21 @@ def test_terminal_command(cli_args_overrides):
 
 def test_accounting_command():
     main(["accounting"])
+
+
+def test_ui_command(mocker, caplog):
+    original_run = subprocess.run
+
+    def new_run(*args, **kwargs):
+        kwargs.pop("timeout", None)
+        try:
+            original_run(*args, **kwargs, timeout=0.5)
+        except subprocess.TimeoutExpired as error:
+            raise KeyboardInterrupt from error
+
+    mocker.patch("subprocess.run", new=new_run)
+    main(["ui"])
+    assert "Exiting." in caplog.text
 
 
 def test_voice_chat(mocker):

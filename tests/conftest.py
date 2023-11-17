@@ -49,6 +49,7 @@ def pytest_configure(config):
 def _set_env(monkeypatch):
     # Make sure we don't consume our tokens in tests
     monkeypatch.setenv("OPENAI_API_KEY", "INVALID_API_KEY")
+    monkeypatch.setenv("STREAMLIT_SERVER_HEADLESS", "true")
 
 
 @pytest.fixture(autouse=True)
@@ -187,3 +188,4 @@ def _voice_chat_mockers(mocker):
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
     mocker.patch("pygame.mixer.init")
+    mocker.patch("chime.play_wav")

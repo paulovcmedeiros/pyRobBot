@@ -152,7 +152,7 @@ class VoiceChat(Chat):
                     self.tts_conversion_queue.put(sentence)
 
                 if at_least_one_code_line_written:
-                    spoken_info_to_user = "The code has been written in the console"
+                    spoken_info_to_user = "The code has been written to the console"
                     spoken_info_to_user = self._translate(spoken_info_to_user)
                     self.tts_conversion_queue.put(spoken_info_to_user)
 
