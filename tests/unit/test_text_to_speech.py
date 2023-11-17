@@ -24,5 +24,5 @@ def test_cannot_instanciate_assistant_with_invalid_webrtcvad_params(param_name):
 
 def test_listen(default_voice_chat):
     """Test the listen method."""
-    with contextlib.suppress(PortAudioError):
+    with contextlib.suppress(PortAudioError, pytest.PytestUnraisableExceptionWarning):
         default_voice_chat.listen()
