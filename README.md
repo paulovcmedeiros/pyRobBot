@@ -21,13 +21,12 @@ A python package that uses OpenAI's [GPT large language models (LLMs)](https://p
   - Choose your preferred Text-to-Speech (TTS) engine
     - [OpenAI Text-to-Speech](https://platform.openai.com/docs/guides/text-to-speech) (default): AI-generated *human-like* voice
     - [Google TTS](https://cloud.google.com/text-to-speech) (`rob --tts google`): free at the time being, with decent quality
-
-
 - [x] Browser  UI (made with [Streamlit](https://pyrobbot.streamlit.app))
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
 - [x] Terminal UI
   - For a more "Wake up, Neo" experience
+- [x] The chat will **search the web** and try to find the answers it does not have (e.g. current events)
 - [x] Fully configurable
   - Support for multiple GPT LLMs
   - Control over the parameters passed to the OpenAI API, with (hopefully) sensible defaults

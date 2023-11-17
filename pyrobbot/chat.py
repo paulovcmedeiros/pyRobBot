@@ -10,6 +10,7 @@ from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors
+from .internet_search import websearch
 from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
 from .tokens import TokenUsageDatabase
 
@@ -55,6 +56,9 @@ class Chat(AlternativeConstructors):
                     ),
                     f"You must remember and follow all directives by {self.system_name} ",
                     f"unless otherwise instructed by {self.username}.",
+                    "If you are not able to provide any information, you: "
+                    "(1) MUST NOT APOLOGISE, (2) MUST say you don't know the answer and ",
+                    "(3) MUST state you WILL look it up online.",
                 ]
                 if instruction.strip()
             ]
@@ -185,17 +189,21 @@ class Chat(AlternativeConstructors):
         """Respond to a system prompt."""
         yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
 
-    def yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
+    def yield_response_from_msg(
+        self, prompt_msg: dict, add_to_history: bool = True, **kwargs
+    ):
         """Yield response from a prompt message."""
         try:
             yield from self._yield_response_from_msg(
-                prompt_msg=prompt_msg, add_to_history=add_to_history
+                prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
             )
         except CannotConnectToApiError as error:
             logger.error("Leaving chat: {}", error)
             yield self.api_connection_error_msg
 
-    def _yield_response_from_msg(self, prompt_msg: dict, add_to_history: bool = True):
+    def _yield_response_from_msg(
+        self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
+    ):
         """Yield response from a prompt message."""
         # Get appropriate context for prompt from the context handler
         context = self.context_handler.get_context(msg=prompt_msg)
@@ -207,6 +215,58 @@ class Chat(AlternativeConstructors):
         ):
             full_reply_content += chunk
             yield chunk
+
+        if not skip_check:
+            logger.debug("Checking if we need to ask the system to look on the web...")
+            last_msg_exchange = (
+                f"user: {prompt_msg['content']}\n you: {full_reply_content}"
+            )
+            system_check_msg = (
+                "Consider ONLY the following chat exchange and nothing more:\n\n"
+                + last_msg_exchange
+                + "\n\nDid you have the information the user requested? "
+                + "Respond 'yes' or 'no'."
+            )
+            reply = "".join(
+                self.respond_system_prompt(
+                    prompt=system_check_msg, add_to_history=False, skip_check=True
+                )
+            )
+
+            if reply.strip(".' ").lower() == "no":
+                logger.debug("Doing web search...")
+                web_results = [
+                    json.dumps(result, indent=2)
+                    for result in websearch(prompt_msg["content"])
+                ]
+                if web_results:
+                    logger.debug("Asking assistant to summarise results...")
+                    original_prompt = prompt_msg["content"]
+                    prompt = (
+                        "Consider ONLY the information in the json below and nothing more"
+                    )
+                    prompt = (
+                        ". Summarise that information and answer the following prompt: "
+                    )
+                    prompt += f"'{original_prompt}'?"
+                    prompt += "\n\n"
+                    prompt += "```json"
+                    prompt += "\n\n".join(web_results)
+                    prompt += "```"
+                    prompt += (
+                        "\n\n Do NOT include links or anything a human "
+                        + "can't pronounce, unless the user asks for it. "
+                        + "Say that your answer is according to a quick web search and "
+                        + "ask the user to double-check."
+                    )
+
+                    full_reply_content += " "
+                    yield " "
+                    for chunk in self.respond_system_prompt(
+                        prompt=prompt, add_to_history=False, skip_check=True
+                    ):
+                        full_reply_content += chunk
+                        yield chunk
 
         if add_to_history:
             # Put current chat exchange in context handler's history
@@ -282,7 +342,9 @@ class Chat(AlternativeConstructors):
         translation_prompt += f"it verbatim in {lang} without adding anything.\n"
         translation_prompt += f"'''{text}'''"
         return "".join(
-            self.respond_system_prompt(prompt=translation_prompt, add_to_history=False)
+            self.respond_system_prompt(
+                prompt=translation_prompt, add_to_history=False, skip_check=True
+            )
         )
 
     def __del__(self):

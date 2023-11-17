@@ -4,7 +4,7 @@
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.3.3"
+  version = "0.4.0"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -32,7 +32,9 @@
   tiktoken = "^0.5.1"
   # Text to speech
   chime = "^0.7.0"
+  duckduckgo-search = "^3.9.5"
   gtts = "^2.4.0"
+  ipinfo = "^4.4.3"
   pydub = "^0.25.1"
   pygame = "^2.5.2"
   setuptools = "^68.2.2"             # Needed by webrtcvad-wheels
