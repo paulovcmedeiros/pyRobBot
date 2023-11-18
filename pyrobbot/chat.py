@@ -57,7 +57,8 @@ class Chat(AlternativeConstructors):
                     f"You must remember and follow all directives by {self.system_name} ",
                     f"unless otherwise instructed by {self.username}.",
                     "If you are not able to provide any information, you: "
-                    "(1) MUST NOT APOLOGISE, (2) MUST say you don't know the answer and ",
+                    "(1) MUST NOT SAY YOU'RE SORRY. "
+                    "(2) MUST say you don't know the answer.",
                     "(3) MUST state you WILL look it up online.",
                 ]
                 if instruction.strip()
@@ -225,19 +226,34 @@ class Chat(AlternativeConstructors):
                 "Consider ONLY the following chat exchange and nothing more:\n\n"
                 + last_msg_exchange
                 + "\n\nDid you have the information the user requested? "
-                + "Respond 'yes' or 'no'."
+                + "Respond ONLY WITH 'yes' or 'no' and nothing more."
             )
             reply = "".join(
                 self.respond_system_prompt(
                     prompt=system_check_msg, add_to_history=False, skip_check=True
                 )
             )
+            reply = self._translate(reply)
 
-            if reply.strip(".' ").lower() == "no":
+            if self._translate("yes") not in reply.strip(".' ").lower():
                 logger.debug("Doing web search...")
+                instructions_for_web_search = (
+                    "Create a short query suitable for a web search that retrieves "
+                    "relevant information to answer *the user's prompt* in the message "
+                    f"exchange below. Write the query in {self.language}. "
+                    "Only write the query and nothing else. The message exchange is:"
+                )
+                instructions_for_web_search += f"\n\n{last_msg_exchange}\n\n"
+                internet_query = "".join(
+                    self.respond_system_prompt(
+                        prompt=instructions_for_web_search,
+                        add_to_history=False,
+                        skip_check=True,
+                    )
+                )
+                logger.debug("Querying the web for '{}'...", internet_query)
                 web_results = [
-                    json.dumps(result, indent=2)
-                    for result in websearch(prompt_msg["content"])
+                    json.dumps(result, indent=2) for result in websearch(internet_query)
                 ]
                 if web_results:
                     logger.debug("Asking assistant to summarise results...")
@@ -267,6 +283,8 @@ class Chat(AlternativeConstructors):
                     ):
                         full_reply_content += chunk
                         yield chunk
+                else:
+                    yield self._translate("I couldn't find anything on the web. Sorry.")
 
         if add_to_history:
             # Put current chat exchange in context handler's history

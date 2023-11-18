@@ -104,6 +104,12 @@ def _openai_api_request_mockers(request, mocker):
         )
 
 
+@pytest.fixture(autouse=True)
+def _internet_search_mockers(mocker):
+    """Mockers for the internet search module."""
+    mocker.patch("duckduckgo_search.DDGS.text", return_value=lorem.get_paragraph())
+
+
 @pytest.fixture()
 def _input_builtin_mocker(mocker, user_input):
     """Mock the `input` builtin. Raise `KeyboardInterrupt` after the second call."""
