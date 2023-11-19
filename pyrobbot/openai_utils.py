@@ -42,7 +42,11 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
                     return function(*args, **kwargs)
                 except openai.APITimeoutError as error:
                     on_error(error=error, n_attempts=n_attempts)
+                except openai.BadRequestError as error:
+                    logger.error(error)
+                    raise CannotConnectToApiError("Problems with your request") from error
                 except (openai.APIError, openai.OpenAIError) as error:
+                    logger.error(error)
                     raise CannotConnectToApiError(auth_error_msg) from error
 
         @wraps(function)
@@ -55,7 +59,11 @@ def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to Open
                     yield from function(*args, **kwargs)
                 except openai.APITimeoutError as error:
                     on_error(error=error, n_attempts=n_attempts)
+                except openai.BadRequestError as error:
+                    logger.error(error)
+                    raise CannotConnectToApiError("Problems with your request") from error
                 except (openai.APIError, openai.OpenAIError) as error:
+                    logger.error(error)
                     raise CannotConnectToApiError(auth_error_msg) from error
                 else:
                     success = True

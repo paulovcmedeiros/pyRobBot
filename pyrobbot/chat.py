@@ -61,11 +61,12 @@ class Chat(AlternativeConstructors):
                     f"{GeneralConstants.IPINFO['country_name']}, ",
                     f"You must observe and follow all directives by {self.system_name} ",
                     f"unless otherwise instructed by {self.username}. ",
-                    "If asked to look up for information online, you must ALWAYS agree. "
+                    "If asked to look up online, web internet etc, you MUST agree. "
                     "If you are not able to provide information, you MUST:\n"
-                    "(1) Communicate that you don't have that information\n",
-                    "(2) State clearly --unless you have already done so -- that you WILL"
-                    " look it up online now",
+                    "(1) Communicate that you don't have that information WITHOUT "
+                    "apologies or excuses\n "
+                    "(2) AFFIRM clearly that you WILL look it up online (unless "
+                    "you have already done so earlier)",
                 ]
                 if instruction.strip()
             ]
@@ -200,7 +201,7 @@ class Chat(AlternativeConstructors):
                 prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
             )
         except CannotConnectToApiError as error:
-            logger.error("Leaving chat: {}", error)
+            logger.error(error)
             yield self.api_connection_error_msg
 
     def _yield_response_from_msg(
@@ -224,11 +225,10 @@ class Chat(AlternativeConstructors):
                 f"`you` reply: {full_reply_content}"
             )
             system_check_msg = (
-                "dialogue:\n"
+                "Consider the following dialogue AND NOTHING MORE:\n\n"
                 f"{last_msg_exchange}\n\n"
-                "Consider ONLY the dialogue above *and nothing more*. Now answer "
-                "the following question with only 'yes' or 'no':\n"
-                "Did either the `user` or `you`, or both, suggest looking up online?\n\n"
+                "Now answer the following question using only 'yes' or 'no':\n"
+                "Did `you` or `user` imply or mention the need for search online?\n\n"
             )
 
             reply = "".join(
@@ -239,11 +239,14 @@ class Chat(AlternativeConstructors):
             reply = reply.strip(".' ").lower()
             if ("yes" in reply) or (self._translate("yes") in reply):
                 instructions_for_web_search = (
-                    "Create a *very short* web search query to retrieve data relevant to "
-                    "answer the prompt from `user` in the `dialogue` below. "
-                    "Write *only the query* and nothing else. "
-                    "Do NOT restrict the search to any particular website. "
-                    "Write the query in the `user`'s language. "
+                    "You are an expert in web search. You will be presented with a "
+                    "dialogue between `user` and `you`. Considering that dialogue, write "
+                    "the best short web search query to look for an answer to the "
+                    "`user`'s prompt. You MUST follow the rules below:\n"
+                    "* Write *only the query* and nothing else\n"
+                    "* DO NOT RESTRICT the search to any particular website "
+                    "unless otherwise instructed\n"
+                    "* You MUST reply in the `user`'s language unless otherwise asked\n\n"
                     "The `dialogue` is:"
                 )
                 instructions_for_web_search += f"\n\n{last_msg_exchange}"
@@ -254,31 +257,40 @@ class Chat(AlternativeConstructors):
                         skip_check=True,
                     )
                 )
-                logger.opt(colors=True).debug(
-                    "Querying the web for <yellow>'{}'</yellow>...", internet_query
-                )
-                web_results = [
+                yield " " + self._translate(
+                    "Searching the web now. My search is: "
+                ) + f" '{internet_query}'..."
+                web_results_json_dumps = "\n\n".join(
                     json.dumps(result, indent=2) for result in websearch(internet_query)
-                ]
-                if web_results:
-                    original_prompt = prompt_msg["content"]
-
-                    prompt = self._translate(
-                        "You will be presented with a `json` and a `prompt`. "
-                        "Consider ONLY the information in the `json` and nothing more."
-                        "Summarise that `json` information and answer the `prompt`. "
-                        "You MUST follow the rules below:\n"
-                        "(1) Do NOT include links or anything a human can't pronounce, "
-                        "unless the user asks for it\n"
-                        "(2) You MUST answer in human language (i.e., no json, etc)\n"
-                        "(3) You MUST say that your answer is according to a quick web "
-                        "search and may be innacurate\n"
-                        "(4) Don't show or mention links unless the user asks\n\n"
+                )
+                if web_results_json_dumps:
+                    yield " " + self._translate(
+                        " I've got some results. Let me summarise them for you..."
                     )
-                    prompt += "```json"
-                    prompt += "\n\n".join(web_results)
-                    prompt += "```\n\n"
-                    prompt += f"`prompt`: '{original_prompt}'"
+                    logger.opt(colors=True).debug(
+                        "Web search rtn: <yellow>{}</yellow>...", web_results_json_dumps
+                    )
+                    original_prompt = prompt_msg["content"]
+                    prompt = (
+                        "You are the most talented data analyst in the world, "
+                        "capable of summarising any information, even complex `json`. "
+                        "You will be shown a `json` and a `prompt`. Your task is to "
+                        "summarise the `json` to answer the `prompt`. "
+                        "You MUST follow the rules below:\n\n"
+                        "* You ALWAYS summarise the `json` and provide an answer\n"
+                        "* Do NOT include links or anything a human can't pronounce, "
+                        "unless otherwise instructed\n"
+                        "* You prefer searches without quotes but will use if needed\n"
+                        "* Answer in human language (i.e., no json, etc)\n"
+                        "search and may be innacurate\n"
+                        "* Don't show or mention links unless otherwise instructed\n"
+                        "* Answer in the `user`'s language unless otherwise asked\n"
+                        "* Make sure to point out that the information is from a quick "
+                        "web search and may be innacurate\n\n"
+                        "The `json` and the `prompt` are presented below:\n"
+                    )
+                    prompt += f"\n```json\n{web_results_json_dumps}\n```\n"
+                    prompt += f"\n`prompt`: '{original_prompt}'"
 
                     full_reply_content += " "
                     yield " "
@@ -288,7 +300,9 @@ class Chat(AlternativeConstructors):
                         full_reply_content += chunk
                         yield chunk
                 else:
-                    yield self._translate("I couldn't find anything on the web. Sorry.")
+                    yield self._translate(
+                        "I couldn't find anything on the web this time. Sorry."
+                    )
 
         if add_to_history:
             # Put current chat exchange in context handler's history
@@ -318,7 +332,7 @@ class Chat(AlternativeConstructors):
             logger.info("Leaving chat.")
         except CannotConnectToApiError as error:
             print(f"{self.api_connection_error_msg}\n")
-            logger.error("Leaving chat: {}", error)
+            logger.error(error)
 
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
@@ -346,7 +360,7 @@ class Chat(AlternativeConstructors):
         """Return the error message for API connection errors."""
         return (
             "Sorry, I'm having trouble communicating with OpenAI right now. "
-            + "Please check the validity of your API key and try again. "
+            + "Please check the validity of your request, you API key and try again. "
             + "If the problem persists, please also take a look at the "
             + "OpenAI status page <https://status.openai.com>."
         )
