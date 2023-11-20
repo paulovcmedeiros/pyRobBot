@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Implementation of the Chat class."""
+import datetime
 import json
 import shutil
 import uuid
+from collections import defaultdict
 
 from loguru import logger
 
@@ -23,7 +25,7 @@ class Chat(AlternativeConstructors):
     responses.
     """
 
-    _initial_greeting_translations = {}  # map language:translation
+    _translation_cache = defaultdict(dict)
     default_configs = ChatOptions()
 
     def __init__(self, configs: ChatOptions = default_configs):
@@ -49,17 +51,22 @@ class Chat(AlternativeConstructors):
             [
                 instruction.strip()
                 for instruction in [
-                    f"You are {self.assistant_name} (model {self.model}).",
+                    f"Your name is {self.assistant_name}. Your model is {self.model}.",
                     f"You are a helpful assistant to {self.username}.",
                     " ".join(
                         [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
                     ),
-                    f"You must remember and follow all directives by {self.system_name} ",
-                    f"unless otherwise instructed by {self.username}.",
-                    "If you are not able to provide any information, you: "
-                    "(1) MUST NOT SAY YOU'RE SORRY. "
-                    "(2) MUST say you don't know the answer.",
-                    "(3) MUST state you WILL look it up online.",
+                    f"Today is {datetime.datetime.today().strftime('%A, %Y-%m-%d')}. ",
+                    f"The current city is {GeneralConstants.IPINFO['city']} in ",
+                    f"{GeneralConstants.IPINFO['country_name']}, ",
+                    f"You must observe and follow all directives by {self.system_name} ",
+                    f"unless otherwise instructed by {self.username}. ",
+                    "If asked to look up online, web internet etc, you MUST agree. "
+                    "If you are not able to provide information, you MUST:\n"
+                    "(1) Communicate that you don't have that information WITHOUT "
+                    "apologies or excuses\n "
+                    "(2) AFFIRM clearly that you WILL look it up online (unless "
+                    "you have already done so earlier)",
                 ]
                 if instruction.strip()
             ]
@@ -159,7 +166,7 @@ class Chat(AlternativeConstructors):
     @property
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
-        default_greeting = f"Hi! I'm {self.assistant_name}. How can I assist you today?"
+        default_greeting = f"Hi! I'm {self.assistant_name}. How can I assist you?"
         try:
             passed_greeting = self._initial_greeting.strip()
         except AttributeError:
@@ -169,12 +176,7 @@ class Chat(AlternativeConstructors):
             self._initial_greeting = default_greeting
 
         if passed_greeting or self.language != "en":
-            translation_cache = type(self)._initial_greeting_translations  # noqa: SLF001
-            translated_greeting = translation_cache.get(self.language)
-            if not translated_greeting:
-                translated_greeting = self._translate(self._initial_greeting)
-                translation_cache[self.language] = translated_greeting
-            self._initial_greeting = translated_greeting
+            self._initial_greeting = self._translate(self._initial_greeting)
 
         return self._initial_greeting
 
@@ -199,7 +201,7 @@ class Chat(AlternativeConstructors):
                 prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
             )
         except CannotConnectToApiError as error:
-            logger.error("Leaving chat: {}", error)
+            logger.error(error)
             yield self.api_connection_error_msg
 
     def _yield_response_from_msg(
@@ -218,32 +220,36 @@ class Chat(AlternativeConstructors):
             yield chunk
 
         if not skip_check:
-            logger.debug("Checking if we need to ask the system to look on the web...")
             last_msg_exchange = (
-                f"user: {prompt_msg['content']}\n you: {full_reply_content}"
+                f"`user` says: {prompt_msg['content']}\n"
+                f"`you` reply: {full_reply_content}"
             )
             system_check_msg = (
-                "Consider ONLY the following chat exchange and nothing more:\n\n"
-                + last_msg_exchange
-                + "\n\nDid you have the information the user requested? "
-                + "Respond ONLY WITH 'yes' or 'no' and nothing more."
+                "Consider the following dialogue AND NOTHING MORE:\n\n"
+                f"{last_msg_exchange}\n\n"
+                "Now answer the following question using only 'yes' or 'no':\n"
+                "Did `you` or `user` imply or mention the need for search online?\n\n"
             )
+
             reply = "".join(
                 self.respond_system_prompt(
                     prompt=system_check_msg, add_to_history=False, skip_check=True
                 )
             )
-            reply = self._translate(reply)
-
-            if self._translate("yes") not in reply.strip(".' ").lower():
-                logger.debug("Doing web search...")
+            reply = reply.strip(".' ").lower()
+            if ("yes" in reply) or (self._translate("yes") in reply):
                 instructions_for_web_search = (
-                    "Create a short query suitable for a web search that retrieves "
-                    "relevant information to answer *the user's prompt* in the message "
-                    f"exchange below. Write the query in {self.language}. "
-                    "Only write the query and nothing else. The message exchange is:"
+                    "You are an expert in web search. You will be presented with a "
+                    "dialogue between `user` and `you`. Considering that dialogue, write "
+                    "the best short web search query to look for an answer to the "
+                    "`user`'s prompt. You MUST follow the rules below:\n"
+                    "* Write *only the query* and nothing else\n"
+                    "* DO NOT RESTRICT the search to any particular website "
+                    "unless otherwise instructed\n"
+                    "* You MUST reply in the `user`'s language unless otherwise asked\n\n"
+                    "The `dialogue` is:"
                 )
-                instructions_for_web_search += f"\n\n{last_msg_exchange}\n\n"
+                instructions_for_web_search += f"\n\n{last_msg_exchange}"
                 internet_query = "".join(
                     self.respond_system_prompt(
                         prompt=instructions_for_web_search,
@@ -251,30 +257,40 @@ class Chat(AlternativeConstructors):
                         skip_check=True,
                     )
                 )
-                logger.debug("Querying the web for '{}'...", internet_query)
-                web_results = [
+                yield " " + self._translate(
+                    "Searching the web now. My search is: "
+                ) + f" '{internet_query}'..."
+                web_results_json_dumps = "\n\n".join(
                     json.dumps(result, indent=2) for result in websearch(internet_query)
-                ]
-                if web_results:
-                    logger.debug("Asking assistant to summarise results...")
+                )
+                if web_results_json_dumps:
+                    yield " " + self._translate(
+                        " I've got some results. Let me summarise them for you..."
+                    )
+                    logger.opt(colors=True).debug(
+                        "Web search rtn: <yellow>{}</yellow>...", web_results_json_dumps
+                    )
                     original_prompt = prompt_msg["content"]
                     prompt = (
-                        "Consider ONLY the information in the json below and nothing more"
+                        "You are the most talented data analyst in the world, "
+                        "capable of summarising any information, even complex `json`. "
+                        "You will be shown a `json` and a `prompt`. Your task is to "
+                        "summarise the `json` to answer the `prompt`. "
+                        "You MUST follow the rules below:\n\n"
+                        "* You ALWAYS summarise the `json` and provide an answer\n"
+                        "* Do NOT include links or anything a human can't pronounce, "
+                        "unless otherwise instructed\n"
+                        "* You prefer searches without quotes but will use if needed\n"
+                        "* Answer in human language (i.e., no json, etc)\n"
+                        "search and may be innacurate\n"
+                        "* Don't show or mention links unless otherwise instructed\n"
+                        "* Answer in the `user`'s language unless otherwise asked\n"
+                        "* Make sure to point out that the information is from a quick "
+                        "web search and may be innacurate\n\n"
+                        "The `json` and the `prompt` are presented below:\n"
                     )
-                    prompt = (
-                        ". Summarise that information and answer the following prompt: "
-                    )
-                    prompt += f"'{original_prompt}'?"
-                    prompt += "\n\n"
-                    prompt += "```json"
-                    prompt += "\n\n".join(web_results)
-                    prompt += "```"
-                    prompt += (
-                        "\n\n Do NOT include links or anything a human "
-                        + "can't pronounce, unless the user asks for it. "
-                        + "Say that your answer is according to a quick web search and "
-                        + "ask the user to double-check."
-                    )
+                    prompt += f"\n```json\n{web_results_json_dumps}\n```\n"
+                    prompt += f"\n`prompt`: '{original_prompt}'"
 
                     full_reply_content += " "
                     yield " "
@@ -284,7 +300,9 @@ class Chat(AlternativeConstructors):
                         full_reply_content += chunk
                         yield chunk
                 else:
-                    yield self._translate("I couldn't find anything on the web. Sorry.")
+                    yield self._translate(
+                        "I couldn't find anything on the web this time. Sorry."
+                    )
 
         if add_to_history:
             # Put current chat exchange in context handler's history
@@ -314,7 +332,7 @@ class Chat(AlternativeConstructors):
             logger.info("Leaving chat.")
         except CannotConnectToApiError as error:
             print(f"{self.api_connection_error_msg}\n")
-            logger.error("Leaving chat: {}", error)
+            logger.error(error)
 
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
@@ -342,7 +360,7 @@ class Chat(AlternativeConstructors):
         """Return the error message for API connection errors."""
         return (
             "Sorry, I'm having trouble communicating with OpenAI right now. "
-            + "Please check the validity of your API key and try again. "
+            + "Please check the validity of your request, you API key and try again. "
             + "If the problem persists, please also take a look at the "
             + "OpenAI status page <https://status.openai.com>."
         )
@@ -353,17 +371,27 @@ class Chat(AlternativeConstructors):
 
     def _translate(self, text):
         lang = self.language
+
+        cached_translation = type(self)._translation_cache[text].get(lang)  # noqa SLF001
+        if cached_translation:
+            return cached_translation
+
         logger.debug("Processing translation of '{}' to '{}'...", text, lang)
         translation_prompt = f"Translate the text between triple quotes to {lang}. "
         translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
         translation_prompt += f"If the text is already in {lang}, then just repeat "
         translation_prompt += f"it verbatim in {lang} without adding anything.\n"
         translation_prompt += f"'''{text}'''"
-        return "".join(
+        translation = "".join(
             self.respond_system_prompt(
                 prompt=translation_prompt, add_to_history=False, skip_check=True
             )
         )
+        translation = translation.strip(" '\"")
+
+        type(self)._translation_cache[text][lang] = translation  # noqa: SLF001
+
+        return translation
 
     def __del__(self):
         embedding_model = self.context_handler.database.get_embedding_model()

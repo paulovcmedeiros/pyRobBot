@@ -21,6 +21,8 @@ A python package that uses OpenAI's [GPT large language models (LLMs)](https://p
   - Choose your preferred Text-to-Speech (TTS) engine
     - [OpenAI Text-to-Speech](https://platform.openai.com/docs/guides/text-to-speech) (default): AI-generated *human-like* voice
     - [Google TTS](https://cloud.google.com/text-to-speech) (`rob --tts google`): free at the time being, with decent quality
+  - Choose your preferred Speech-to-Text (STT) engine
+    - Also between OpenAI (default) and Google
 - [x] Browser  UI (made with [Streamlit](https://pyrobbot.streamlit.app))
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title

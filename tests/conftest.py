@@ -1,7 +1,9 @@
+import io
 from unittest.mock import MagicMock
 
 import lorem
 import numpy as np
+import pydub
 import pygame
 import pytest
 from _pytest.logging import LogCaptureFixture
@@ -59,6 +61,15 @@ def _mocked_general_constants(tmp_path, mocker):
     )
 
 
+@pytest.fixture()
+def mock_wav_bytes_string():
+    """Mock a WAV file as a bytes string."""
+    return (
+        b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x00\x04\x00"
+        b"\x00\x00\x04\x00\x00\x01\x00\x08\x00data\x00\x00\x00\x00"
+    )
+
+
 @pytest.fixture(autouse=True)
 def _openai_api_request_mockers(request, mocker):
     """Mockers for OpenAI API requests. We don't want to consume our tokens in tests."""
@@ -69,6 +80,18 @@ def _openai_api_request_mockers(request, mocker):
         completion_chunk_choice = type("CompletionChunkChoice", (), {})
         completion_chunk_choice_delta = type("CompletionChunkChoiceDelta", (), {})
         for word in lorem.get_paragraph().split():
+            completion_chunk_choice_delta.content = word + " "
+            completion_chunk_choice.delta = completion_chunk_choice_delta
+            completion_chunk.choices = [completion_chunk_choice]
+            yield completion_chunk
+
+        # Yield some code as well, to test the code filtering
+        code_path = pyrobbot.GeneralConstants.PACKAGE_DIRECTORY / "__init__.py"
+        for word in [
+            "```python\n",
+            *code_path.read_text().splitlines(keepends=True)[:5],
+            "```\n",
+        ]:
             completion_chunk_choice_delta.content = word + " "
             completion_chunk_choice.delta = completion_chunk_choice_delta
             completion_chunk.choices = [completion_chunk_choice]
@@ -172,12 +195,43 @@ def default_voice_chat(default_voice_chat_configs):
 
 
 @pytest.fixture(autouse=True)
-def _voice_chat_mockers(mocker):
+def _voice_chat_mockers(mocker, mock_wav_bytes_string):
     """Mockers for the text-to-speech module."""
     mocker.patch(
         "pyrobbot.voice_chat.VoiceChat._assistant_still_talking", return_value=False
     )
-    mocker.patch("gtts.gTTS.write_to_fp")
+
+    mock_google_tts_obj = type("mock_gTTS", (), {})
+    mock_openai_tts_response = type("mock_openai_tts_response", (), {})
+
+    def _mock_write_to_fp(wav_buffer: io.BytesIO):
+        wav_buffer.write(mock_wav_bytes_string)
+
+    def _mock_iter_bytes(*args, **kwargs):  # noqa: ARG001
+        return [mock_wav_bytes_string]
+
+    mock_google_tts_obj.write_to_fp = _mock_write_to_fp
+    mock_openai_tts_response.iter_bytes = _mock_iter_bytes
+
+    mocker.patch(
+        "pydub.AudioSegment.from_mp3",
+        return_value=pydub.AudioSegment.from_wav(io.BytesIO(mock_wav_bytes_string)),
+    )
+    mocker.patch("gtts.gTTS", return_value=mock_google_tts_obj)
+    mocker.patch(
+        "openai.resources.audio.speech.Speech.create",
+        return_value=mock_openai_tts_response,
+    )
+    mock_transcription = type("MockTranscription", (), {})
+    mock_transcription.text = "patched"
+    mocker.patch(
+        "openai.resources.audio.transcriptions.Transcriptions.create",
+        return_value=mock_transcription,
+    )
+    mocker.patch(
+        "speech_recognition.Recognizer.recognize_google",
+        return_value=mock_transcription.text,
+    )
 
     orig_func = VoiceChat._wav_buffer_to_sound
 

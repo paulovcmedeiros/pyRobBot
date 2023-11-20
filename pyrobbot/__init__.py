@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from importlib.metadata import metadata, version
 from pathlib import Path
 
+import ipinfo
 from loguru import logger
 from openai import OpenAI, OpenAIError
 
@@ -42,6 +43,9 @@ class GeneralDefinitions:
     APP_DIR = PACKAGE_DIRECTORY / "app"
     APP_PATH = APP_DIR / "app.py"
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
+
+    # Location info
+    IPINFO = ipinfo.getHandler().getDetails().all
 
     @staticmethod
     def openai_key_hash():
