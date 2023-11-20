@@ -24,6 +24,7 @@ PRICE_PER_K_TOKENS = {
     "tts-1": {"input": 0.015, "output": 0.0},
     "tts-1-hd": {"input": 0.03, "output": 0.0},
     "full-history": {"input": 0.0, "output": 0.0},
+    "whisper-1": {"input": 0.006, "output": 0.0},
 }
 
 

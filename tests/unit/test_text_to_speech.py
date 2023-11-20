@@ -1,4 +1,5 @@
 import contextlib
+import io
 
 import pytest
 from pydantic import ValidationError
@@ -26,3 +27,12 @@ def test_listen(default_voice_chat):
     """Test the listen method."""
     with contextlib.suppress(PortAudioError, pytest.PytestUnraisableExceptionWarning):
         default_voice_chat.listen()
+
+
+@pytest.mark.parametrize("stt_engine", ["google", "openai"])
+def test_stt(default_voice_chat, stt_engine, mock_wav_bytes_string):
+    """Test the speech-to-text method."""
+    default_voice_chat.stt_engine = stt_engine
+    rtn = default_voice_chat._wav_buffer_to_text(io.BytesIO(mock_wav_bytes_string))
+
+    assert rtn == "patched"

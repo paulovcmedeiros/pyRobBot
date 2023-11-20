@@ -3,6 +3,7 @@ import contextlib
 import io
 import queue
 import re
+import socket
 import threading
 from collections import deque
 from datetime import datetime
@@ -170,29 +171,37 @@ class VoiceChat(Chat):
     def get_tts(self, text_queue: queue.Queue):
         """Convert text to a pygame Sound object."""
         while True:
-            text = text_queue.get()
-            logger.debug("Received for TTS: '{}'", text)
+            try:
+                text = text_queue.get()
+                logger.debug("Received for {} TTS: '{}'", self.tts_engine, text)
 
-            if self.tts_engine == "openai" and _pydub_imported:
-                tts_wav_buffer = self._tts_openai(text)
-            else:
-                tts_wav_buffer = self._tts_google(text)
+                if self.tts_engine == "openai" and _pydub_imported:
+                    tts_wav_buffer = self._tts_openai(text)
+                else:
+                    tts_wav_buffer = self._tts_google(text)
 
-            # Convert wav buffer to sound
-            speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
-            self.play_speech_queue.put(speech_sound)
+                # Convert wav buffer to sound
+                speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
+                self.play_speech_queue.put(speech_sound)
 
-            logger.debug("Done with TTS for '{}'", text)
-            text_queue.task_done()
+                logger.debug("Done with TTS for '{}'", text)
+            except Exception as error:  # noqa: PERF203, BLE001
+                logger.exception(error)
+            finally:
+                text_queue.task_done()
 
     def speak(self, sound_obj_queue: queue.Queue):
         """Reproduce audio from a pygame Sound object."""
         while True:
-            sound = sound_obj_queue.get()
-            _channel = sound.play()
-            while self._assistant_still_talking():
-                self.pygame.time.wait(100)
-            sound_obj_queue.task_done()
+            try:
+                sound = sound_obj_queue.get()
+                _channel = sound.play()
+                while self._assistant_still_talking():
+                    self.pygame.time.wait(100)
+            except Exception as error:  # noqa: PERF203, BLE001
+                logger.exception(error)
+            finally:
+                sound_obj_queue.task_done()
 
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
@@ -220,7 +229,7 @@ class VoiceChat(Chat):
             blocksize=stream_block_size,
             channels=1,
             callback=callback,
-            dtype="int16",
+            dtype="int16",  # int16, i.e., 2 bytes per sample
         ):
             # Recording will stop after self.inactivity_timeout_seconds of silence
             voice_activity_detected = deque(
@@ -266,32 +275,30 @@ class VoiceChat(Chat):
             logger.debug("No speech detected")
             return ""
 
-        logger.debug("Converting audio to text...")
-        text = self._wav_buffer_to_text(wav_buffer=raw_buffer)
-        logger.debug("Done converting audio to text.")
-
-        return text
+        return self._wav_buffer_to_text(wav_buffer=raw_buffer)
 
     def _assistant_still_talking(self):
         """Check if the assistant is still talking."""
         return self.mixer.get_busy()
 
-    @retry_api_call()
     def _tts_openai(self, text):
         """Convert text to speech using OpenAI's TTS."""
         logger.debug("OpenAI TTS received: '{}'", text)
         text = text.strip()
-        client = OpenAI()
+        client = OpenAI(timeout=self.timeout)
 
         openai_tts_model = "tts-1"
 
-        for db in [
-            self.general_token_usage_db,
-            self.token_usage_db,
-        ]:
-            db.insert_data(model=openai_tts_model, n_input_tokens=len(text))
+        @retry_api_call()
+        def _create_speech(*args, **kwargs):
+            for db in [
+                self.general_token_usage_db,
+                self.token_usage_db,
+            ]:
+                db.insert_data(model=openai_tts_model, n_input_tokens=len(text))
+            return client.audio.speech.create(*args, **kwargs)
 
-        response = client.audio.speech.create(
+        response = _create_speech(
             input=text,
             model=openai_tts_model,
             voice=self.openai_tts_voice,
@@ -327,18 +334,64 @@ class VoiceChat(Chat):
         """Create a pygame sound object from a BytesIO object."""
         return self.mixer.Sound(wav_buffer)
 
-    def _wav_buffer_to_text(self, wav_buffer):
+    def _wav_buffer_to_text(self, wav_buffer) -> str:
         """Use SpeechRecognition to convert the audio to text."""
+        logger.debug("Converting audio to text...")
         wav_buffer.seek(0)  # Reset the file pointer to the beginning of the file
         r = sr.Recognizer()
+        r.operation_timeout = self.timeout
         with sr.AudioFile(wav_buffer) as source:
             audio_data = r.listen(source)
 
-        try:
-            return r.recognize_google(audio_data, language=self.language)
-        except sr.exceptions.UnknownValueError:
+        if self.stt_engine == "openai":
+            rtn = self._speech_to_text_openai(audio_data)
+        else:
+            try:
+                rtn = r.recognize_google(audio_data, language=self.language)
+            except (ConnectionResetError, socket.timeout) as error:
+                logger.error(error)
+                logger.error(
+                    "Can't communicate with Google's speech recognition API right now. "
+                    "Please try again later or use `openai` as the STT engine."
+                )
+                rtn = self._speech_to_text_openai(audio_data)
+            except sr.exceptions.UnknownValueError:
+                rtn = ""
+
+        rtn = rtn.strip()
+        if rtn:
+            logger.debug("Heard: '{}'", rtn)
+        else:
             logger.debug("Could not understand audio")
-            return ""
+
+        return rtn
+
+    @retry_api_call()
+    def _speech_to_text_openai(self, audio_data: sr.AudioData):
+        """Convert audio data to text using OpenAI's API."""
+        new_buffer = io.BytesIO(audio_data.get_wav_data())
+        new_buffer.name = "audio.wav"
+        with new_buffer as audio_file_buffer:
+            transcript = OpenAI(timeout=self.timeout).audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file_buffer,
+                language=self.language.split("-")[0],  # put in ISO-639-1 format
+            )
+
+        # Register the number of audio minutes used for the transcription
+        sound_length_in_seconds = len(audio_data.get_raw_data()) / (
+            audio_data.sample_width * audio_data.sample_rate
+        )
+        for db in [
+            self.general_token_usage_db,
+            self.token_usage_db,
+        ]:
+            db.insert_data(
+                model="whisper-1",
+                n_input_tokens=int(np.ceil(sound_length_in_seconds)),
+            )
+
+        return transcript.text
 
 
 def _np_array_to_wav_in_memory(array: np.ndarray, sample_rate: int):
