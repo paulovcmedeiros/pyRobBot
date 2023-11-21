@@ -159,9 +159,8 @@ class ChatOptions(OpenAiApiCallOptions):
     )
     language: str = Field(
         default="en",
-        description="Initial language adopted by the assistant. Use the ISO-639-1 format "
-        "(e.g. 'pt'), optionally followed by hyphen and an ISO-3166-1 alpha-2 country "
-        "code (e.g. 'pt-br')",
+        description="Initial language adopted by the assistant. Use either the ISO-639-1 "
+        "format (e.g. 'pt'), or an RFC5646 language tag (e.g. 'pt-br').",
     )
 
 
@@ -175,9 +174,9 @@ class VoiceAssistantConfigs(BaseConfigModel):
         "API credits) sounds more natural.",
     )
     stt_engine: Literal["openai", "google"] = Field(
-        default="openai",
-        description="The speech-to-text engine to use. The `google` engine is free "
-        "(for now, at least), but the `openai` engine is less succeptible to outages.",
+        default="google",
+        description="The preferred speech-to-text engine to use. The `google` engine is "
+        "free (for now, at least); the `openai` engine is less succeptible to outages.",
     )
     openai_tts_voice: Literal[
         "alloy", "echo", "fable", "onyx", "nova", "shimmer"

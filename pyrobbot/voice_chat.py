@@ -7,6 +7,7 @@ import socket
 import threading
 from collections import deque
 from datetime import datetime
+from functools import partial
 
 import chime
 import numpy as np
@@ -103,6 +104,7 @@ class VoiceChat(Chat):
                 question = self.listen().strip()
                 if not question:
                     continue
+                logger.debug(f"{self.assistant_name}> Heard: '{question}'")
 
                 # Check for the exit expressions
                 if any(
@@ -336,27 +338,37 @@ class VoiceChat(Chat):
 
     def _wav_buffer_to_text(self, wav_buffer) -> str:
         """Use SpeechRecognition to convert the audio to text."""
-        logger.debug("Converting audio to text...")
-        wav_buffer.seek(0)  # Reset the file pointer to the beginning of the file
         r = sr.Recognizer()
         r.operation_timeout = self.timeout
+
+        get_stt_openai = self._speech_to_text_openai
+        get_stt_google = partial(r.recognize_google, language=self.language)
+        if self.stt_engine == "openai":
+            stt_function = get_stt_openai
+            fallback_stt_function = get_stt_google
+            fallback_name = "google"
+        else:
+            stt_function = get_stt_google
+            fallback_stt_function = get_stt_openai
+            fallback_name = "openai"
+
+        logger.debug("Converting audio to text ({} STT)...", self.stt_engine)
+        wav_buffer.seek(0)
         with sr.AudioFile(wav_buffer) as source:
             audio_data = r.listen(source)
 
-        if self.stt_engine == "openai":
-            rtn = self._speech_to_text_openai(audio_data)
-        else:
-            try:
-                rtn = r.recognize_google(audio_data, language=self.language)
-            except (ConnectionResetError, socket.timeout) as error:
-                logger.error(error)
-                logger.error(
-                    "Can't communicate with Google's speech recognition API right now. "
-                    "Please try again later or use `openai` as the STT engine."
-                )
-                rtn = self._speech_to_text_openai(audio_data)
-            except sr.exceptions.UnknownValueError:
-                rtn = ""
+        try:
+            rtn = stt_function(audio_data)
+        except (ConnectionResetError, socket.timeout) as error:
+            logger.error(error)
+            logger.error(
+                "Can't communicate with `{}` speech-to-text API right now",
+                self.stt_engine,
+            )
+            logger.warning("Trying to use `{}` STT instead", fallback_name)
+            rtn = fallback_stt_function(audio_data)
+        except sr.exceptions.UnknownValueError:
+            rtn = ""
 
         rtn = rtn.strip()
         if rtn:
@@ -376,6 +388,7 @@ class VoiceChat(Chat):
                 model="whisper-1",
                 file=audio_file_buffer,
                 language=self.language.split("-")[0],  # put in ISO-639-1 format
+                prompt=f"The language is {self.language}. ",
             )
 
         # Register the number of audio minutes used for the transcription
