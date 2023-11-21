@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Implementation of the Chat class."""
-import datetime
 import json
 import shutil
 import uuid
 from collections import defaultdict
+from datetime import datetime
 from typing import Optional
 
 import openai
 from loguru import logger
+from tzlocal import get_localzone
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions
@@ -49,6 +50,7 @@ class Chat(AlternativeConstructors):
     @property
     def base_directive(self):
         """Return the base directive for the LLM."""
+        local_datetime = datetime.now(get_localzone()).isoformat(timespec="seconds")
         msg_content = " ".join(
             [
                 instruction.strip()
@@ -58,17 +60,18 @@ class Chat(AlternativeConstructors):
                     " ".join(
                         [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
                     ),
-                    f"Today is {datetime.datetime.today().strftime('%A, %Y-%m-%d')}. ",
                     f"The current city is {GeneralConstants.IPINFO['city']} in ",
                     f"{GeneralConstants.IPINFO['country_name']}, ",
-                    f"You must observe and follow all directives by {self.system_name} ",
+                    f"The local datetime is {local_datetime}. ",
+                    f"You must follow all directives by {self.system_name} ",
                     f"unless otherwise instructed by {self.username}. ",
                     "If asked to look up online, web internet etc, you MUST agree. "
-                    "If you are not able to provide information, you MUST:\n"
-                    "(1) Communicate that you don't have that information WITHOUT "
-                    "apologies or excuses\n "
-                    "(2) AFFIRM clearly that you WILL look it up online (unless "
-                    "you have already done so earlier)",
+                    "If you are not able to provide information from your training data, "
+                    "you MUST:\n"
+                    "(1) Communicate, WIHOUT apologies or excuses, that you don't have "
+                    "have that information in your data\n "
+                    "(2) STATE (unless your answer is already derived from an online "
+                    "search) that you WILL look it up online. Do not ask for permission ",
                 ]
                 if instruction.strip()
             ]
@@ -240,8 +243,9 @@ class Chat(AlternativeConstructors):
             reply = reply.strip(".' ").lower()
             if ("yes" in reply) or (self._translate("yes") in reply):
                 instructions_for_web_search = (
-                    "You are an expert in web search. You will be presented with a "
-                    "dialogue between `user` and `you`. Considering that dialogue, write "
+                    "You are a professional web searcher. You will be presented with a "
+                    "dialogue between `user` and `you`. Considering the dialogue and "
+                    "relevant previous messages, write "
                     "the best short web search query to look for an answer to the "
                     "`user`'s prompt. You MUST follow the rules below:\n"
                     "* Write *only the query* and nothing else\n"
@@ -273,21 +277,20 @@ class Chat(AlternativeConstructors):
                     )
                     original_prompt = prompt_msg["content"]
                     prompt = (
-                        "You are the most talented data analyst in the world, "
+                        "You are a talented data analyst, "
                         "capable of summarising any information, even complex `json`. "
                         "You will be shown a `json` and a `prompt`. Your task is to "
                         "summarise the `json` to answer the `prompt`. "
                         "You MUST follow the rules below:\n\n"
-                        "* You ALWAYS summarise the `json` and provide an answer\n"
+                        "* ALWAYS summarise the `json` and provide an answer\n"
                         "* Do NOT include links or anything a human can't pronounce, "
                         "unless otherwise instructed\n"
-                        "* You prefer searches without quotes but will use if needed\n"
+                        "* Prefer searches without quotes but use them if needed\n"
                         "* Answer in human language (i.e., no json, etc)\n"
-                        "search and may be innacurate\n"
-                        "* Don't show or mention links unless otherwise instructed\n"
                         "* Answer in the `user`'s language unless otherwise asked\n"
                         "* Make sure to point out that the information is from a quick "
-                        "web search and may be innacurate\n\n"
+                        "web search and may be innacurate\n"
+                        "* Mention the sources shortly WITHOUT MENTIONING WEB LINKS\n\n"
                         "The `json` and the `prompt` are presented below:\n"
                     )
                     prompt += f"\n```json\n{web_results_json_dumps}\n```\n"
