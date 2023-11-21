@@ -1,8 +1,67 @@
 """General utility functions and classes."""
+import inspect
 import json
+import time
+from functools import wraps
 from pathlib import Path
+from typing import Optional
 
+import httpx
+import openai
 from loguru import logger
+
+
+class ReachedMaxNumberOfAttemptsError(Exception):
+    """Error raised when the max number of attempts has been reached."""
+
+
+def retry(
+    max_n_attempts: int = 5,
+    handled_errors: tuple[Exception, ...] = (openai.APITimeoutError, httpx.HTTPError),
+    error_msg: Optional[str] = None,
+):
+    """Retry executing the decorated function/generator."""
+
+    def retry_or_fail(error):
+        """Decide whether to retry or fail based on the number of attempts."""
+        retry_or_fail.execution_count = getattr(retry_or_fail, "execution_count", 0) + 1
+
+        if retry_or_fail.execution_count < max_n_attempts:
+            logger.warning(
+                "{}. Making new attempt ({}/{})...",
+                error,
+                retry_or_fail.execution_count + 1,
+                max_n_attempts,
+            )
+            time.sleep(1)
+        else:
+            raise ReachedMaxNumberOfAttemptsError(error_msg) from error
+
+    def retry_decorator(function):
+        """Wrap `function`."""
+
+        @wraps(function)
+        def wrapper_f(*args, **kwargs):
+            while True:
+                try:
+                    return function(*args, **kwargs)
+                except handled_errors as error:  # noqa: PERF203
+                    retry_or_fail(error=error)
+
+        @wraps(function)
+        def wrapper_generator_f(*args, **kwargs):
+            success = False
+            while not success:
+                try:
+                    yield from function(*args, **kwargs)
+                except handled_errors as error:  # noqa: PERF203
+                    retry_or_fail(error=error)
+                else:
+                    success = True
+
+        return wrapper_generator_f if inspect.isgeneratorfunction(function) else wrapper_f
+
+    return retry_decorator
 
 
 class AlternativeConstructors:

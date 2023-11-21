@@ -1,76 +1,14 @@
 """Utils for using the OpenAI API."""
-import inspect
-import time
-from functools import wraps
 from typing import TYPE_CHECKING
 
 import openai
-from loguru import logger
 
 from .chat_configs import OpenAiApiCallOptions
+from .general_utils import retry
 from .tokens import get_n_tokens_from_msgs
 
 if TYPE_CHECKING:
     from .chat import Chat
-
-
-class CannotConnectToApiError(Exception):
-    """Error raised when the package cannot connect to the OpenAI API."""
-
-
-def retry_api_call(max_n_attempts=5, auth_error_msg="Problems connecting to OpenAI API."):
-    """Retry connecting to the API up to a maximum number of times."""
-
-    def on_error(error, n_attempts):
-        if n_attempts < max_n_attempts:
-            logger.warning(
-                "{}. Making new attempt ({}/{})...", error, n_attempts + 1, max_n_attempts
-            )
-            time.sleep(1)
-        else:
-            raise CannotConnectToApiError(auth_error_msg) from error
-
-    def retry_api_call_decorator(function):
-        """Wrap `function` and log beginning, exit and elapsed time."""
-
-        @wraps(function)
-        def wrapper_f(*args, **kwargs):
-            n_attempts = 0
-            while True:
-                n_attempts += 1
-                try:
-                    return function(*args, **kwargs)
-                except openai.APITimeoutError as error:
-                    on_error(error=error, n_attempts=n_attempts)
-                except openai.BadRequestError as error:
-                    logger.error(error)
-                    raise CannotConnectToApiError("Problems with your request") from error
-                except (openai.APIError, openai.OpenAIError) as error:
-                    logger.error(error)
-                    raise CannotConnectToApiError(auth_error_msg) from error
-
-        @wraps(function)
-        def wrapper_generator_f(*args, **kwargs):
-            n_attempts = 0
-            success = False
-            while not success:
-                n_attempts += 1
-                try:
-                    yield from function(*args, **kwargs)
-                except openai.APITimeoutError as error:
-                    on_error(error=error, n_attempts=n_attempts)
-                except openai.BadRequestError as error:
-                    logger.error(error)
-                    raise CannotConnectToApiError("Problems with your request") from error
-                except (openai.APIError, openai.OpenAIError) as error:
-                    logger.error(error)
-                    raise CannotConnectToApiError(auth_error_msg) from error
-                else:
-                    success = True
-
-        return wrapper_generator_f if inspect.isgeneratorfunction(function) else wrapper_f
-
-    return retry_api_call_decorator
 
 
 def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
@@ -88,7 +26,7 @@ def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
         if getattr(chat_obj, field) is not None:
             api_call_args[field] = getattr(chat_obj, field)
 
-    @retry_api_call(auth_error_msg=chat_obj.api_connection_error_msg)
+    @retry(error_msg="Problems connecting to OpenAI API")
     def stream_reply(conversation, **api_call_args):
         # Update the chat's token usage database with tokens used in chat input
         # Do this here because every attempt consumes tokens, even if it fails

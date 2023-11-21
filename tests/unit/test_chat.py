@@ -11,7 +11,7 @@ from pyrobbot.chat import Chat
 @pytest.mark.parametrize("user_input", ["regular-input"])
 def testbed_doesnt_actually_connect_to_openai(default_chat, caplog):
     default_chat.start()
-    success = default_chat.api_connection_error_msg in caplog.text
+    success = default_chat.response_failure_message() in caplog.text
 
     err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
     err_msg += f"\nThis is what the logger says:\n{caplog.text}"
@@ -58,7 +58,7 @@ def test_request_timeout_retry(mocker, default_chat, caplog):
     )
     mocker.patch("time.sleep")  # Don't waste time sleeping in tests
     default_chat.start()
-    assert default_chat.api_connection_error_msg in caplog.text
+    assert "APITimeoutError" in caplog.text
 
 
 def test_can_read_chat_from_cache(default_chat):

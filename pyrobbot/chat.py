@@ -5,15 +5,17 @@ import json
 import shutil
 import uuid
 from collections import defaultdict
+from typing import Optional
 
+import openai
 from loguru import logger
 
 from . import GeneralConstants
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
-from .general_utils import AlternativeConstructors
-from .internet_search import websearch
-from .openai_utils import CannotConnectToApiError, make_api_chat_completion_call
+from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
+from .internet_utils import websearch
+from .openai_utils import make_api_chat_completion_call
 from .tokens import TokenUsageDatabase
 
 
@@ -200,9 +202,8 @@ class Chat(AlternativeConstructors):
             yield from self._yield_response_from_msg(
                 prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
             )
-        except CannotConnectToApiError as error:
-            logger.error(error)
-            yield self.api_connection_error_msg
+        except (ReachedMaxNumberOfAttemptsError, openai.OpenAIError) as error:
+            yield self.response_failure_message(error=error)
 
     def _yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
@@ -330,9 +331,6 @@ class Chat(AlternativeConstructors):
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
             logger.info("Leaving chat.")
-        except CannotConnectToApiError as error:
-            print(f"{self.api_connection_error_msg}\n")
-            logger.error(error)
 
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
@@ -355,15 +353,13 @@ class Chat(AlternativeConstructors):
                 print()
             print(df.attrs["disclaimer"])
 
-    @property
-    def api_connection_error_msg(self):
-        """Return the error message for API connection errors."""
-        return (
-            "Sorry, I'm having trouble communicating with OpenAI right now. "
-            + "Please check the validity of your request, you API key and try again. "
-            + "If the problem persists, please also take a look at the "
-            + "OpenAI status page <https://status.openai.com>."
-        )
+    def response_failure_message(self, error: Optional[Exception] = None):
+        """Return the error message errors getting a response."""
+        msg = "Could not get a response right now."
+        if error is not None:
+            msg += f" The reason seems to be: {error}"
+            logger.opt(exception=True).debug(error)
+        return msg
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
         prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}

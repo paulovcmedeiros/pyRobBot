@@ -7,18 +7,12 @@ from loguru import logger
 from . import GeneralConstants
 from .chat import Chat
 from .chat_configs import ChatOptions
-from .openai_utils import CannotConnectToApiError
 from .voice_chat import VoiceChat
 
 
 def voice_chat(args):
-    """Run the chat on the terminal."""
-    chat = VoiceChat.from_cli_args(cli_args=args)
-    try:
-        chat.start()
-    except CannotConnectToApiError as error:
-        logger.error("API connection problems: {}\nExiting.", error)
-        raise SystemExit(1) from error
+    """Start a voice-based chat."""
+    VoiceChat.from_cli_args(cli_args=args).start()
 
 
 def browser_chat(args):

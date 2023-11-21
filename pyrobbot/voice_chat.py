@@ -7,6 +7,7 @@ import socket
 import threading
 from collections import deque
 from datetime import datetime
+from functools import partial
 
 import chime
 import numpy as np
@@ -21,7 +22,7 @@ from openai import OpenAI
 
 from .chat import Chat
 from .chat_configs import VoiceChatConfigs
-from .openai_utils import CannotConnectToApiError, retry_api_call
+from .general_utils import retry
 
 try:
     import sounddevice as sd
@@ -103,6 +104,7 @@ class VoiceChat(Chat):
                 question = self.listen().strip()
                 if not question:
                     continue
+                logger.debug(f"{self.assistant_name}> Heard: '{question}'")
 
                 # Check for the exit expressions
                 if any(
@@ -161,12 +163,8 @@ class VoiceChat(Chat):
 
         except (KeyboardInterrupt, EOFError):
             chime.info()
-            print("", end="\r")
-            logger.debug("Leaving chat.")
-        except CannotConnectToApiError as error:
-            chime.error()
-            print(f"{self.api_connection_error_msg}\n")
-            logger.error("Leaving chat: {}", error)
+        finally:
+            logger.debug("Leaving chat: {}")
 
     def get_tts(self, text_queue: queue.Queue):
         """Convert text to a pygame Sound object."""
@@ -186,7 +184,8 @@ class VoiceChat(Chat):
 
                 logger.debug("Done with TTS for '{}'", text)
             except Exception as error:  # noqa: PERF203, BLE001
-                logger.exception(error)
+                logger.opt(exception=True).debug(error)
+                logger.error(error)
             finally:
                 text_queue.task_done()
 
@@ -289,7 +288,7 @@ class VoiceChat(Chat):
 
         openai_tts_model = "tts-1"
 
-        @retry_api_call()
+        @retry()
         def _create_speech(*args, **kwargs):
             for db in [
                 self.general_token_usage_db,
@@ -336,27 +335,37 @@ class VoiceChat(Chat):
 
     def _wav_buffer_to_text(self, wav_buffer) -> str:
         """Use SpeechRecognition to convert the audio to text."""
-        logger.debug("Converting audio to text...")
-        wav_buffer.seek(0)  # Reset the file pointer to the beginning of the file
         r = sr.Recognizer()
         r.operation_timeout = self.timeout
+
+        get_stt_openai = self._speech_to_text_openai
+        get_stt_google = partial(r.recognize_google, language=self.language)
+        if self.stt_engine == "openai":
+            stt_function = get_stt_openai
+            fallback_stt_function = get_stt_google
+            fallback_name = "google"
+        else:
+            stt_function = get_stt_google
+            fallback_stt_function = get_stt_openai
+            fallback_name = "openai"
+
+        logger.debug("Converting audio to text ({} STT)...", self.stt_engine)
+        wav_buffer.seek(0)
         with sr.AudioFile(wav_buffer) as source:
             audio_data = r.listen(source)
 
-        if self.stt_engine == "openai":
-            rtn = self._speech_to_text_openai(audio_data)
-        else:
-            try:
-                rtn = r.recognize_google(audio_data, language=self.language)
-            except (ConnectionResetError, socket.timeout) as error:
-                logger.error(error)
-                logger.error(
-                    "Can't communicate with Google's speech recognition API right now. "
-                    "Please try again later or use `openai` as the STT engine."
-                )
-                rtn = self._speech_to_text_openai(audio_data)
-            except sr.exceptions.UnknownValueError:
-                rtn = ""
+        try:
+            rtn = stt_function(audio_data)
+        except (ConnectionResetError, socket.timeout) as error:
+            logger.error(error)
+            logger.error(
+                "Can't communicate with `{}` speech-to-text API right now",
+                self.stt_engine,
+            )
+            logger.warning("Trying to use `{}` STT instead", fallback_name)
+            rtn = fallback_stt_function(audio_data)
+        except sr.exceptions.UnknownValueError:
+            rtn = ""
 
         rtn = rtn.strip()
         if rtn:
@@ -366,7 +375,7 @@ class VoiceChat(Chat):
 
         return rtn
 
-    @retry_api_call()
+    @retry()
     def _speech_to_text_openai(self, audio_data: sr.AudioData):
         """Convert audio data to text using OpenAI's API."""
         new_buffer = io.BytesIO(audio_data.get_wav_data())
@@ -376,6 +385,8 @@ class VoiceChat(Chat):
                 model="whisper-1",
                 file=audio_file_buffer,
                 language=self.language.split("-")[0],  # put in ISO-639-1 format
+                prompt=f"The language is {self.language}. "
+                "Do not transcribe if you think it is noise.",
             )
 
         # Register the number of audio minutes used for the transcription

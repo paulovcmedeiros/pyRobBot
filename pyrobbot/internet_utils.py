@@ -7,11 +7,13 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Comment
 from duckduckgo_search import DDGS
+from loguru import logger
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from unidecode import unidecode
 
-from pyrobbot import GeneralConstants
+from . import GeneralConstants
+from .general_utils import retry
 
 
 def cosine_similarity_sentences(sentence1, sentence2):
@@ -78,6 +80,9 @@ def raw_websearch(
             max_results=max_results,
             backend="html",
         ):
+            if not isinstance(result, dict):
+                logger.error("Expected a `dict`, got type {}: {}", type(result), result)
+
             if result["body"] is None:
                 continue
 
@@ -106,6 +111,7 @@ def raw_websearch(
             }
 
 
+@retry(error_msg="Error performing web search")
 def websearch(query, **kwargs):
     """Search the web using DuckDuckGo Search API."""
     raw_results = list(raw_websearch(query, **kwargs))
