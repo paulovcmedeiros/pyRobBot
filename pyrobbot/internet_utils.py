@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Comment
 from duckduckgo_search import DDGS
+from loguru import logger
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from unidecode import unidecode
@@ -79,6 +80,9 @@ def raw_websearch(
             max_results=max_results,
             backend="html",
         ):
+            if not isinstance(result, dict):
+                logger.error("Expected a `dict`, got type {}: {}", type(result), result)
+
             if result["body"] is None:
                 continue
 

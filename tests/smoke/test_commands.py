@@ -1,11 +1,9 @@
 import subprocess
 
 import pytest
-import sounddevice
 
 from pyrobbot.__main__ import main
 from pyrobbot.argparse_wrapper import get_parsed_args
-from pyrobbot.voice_chat import VoiceChat
 
 
 def test_default_command():
@@ -45,19 +43,14 @@ def test_ui_command(mocker, caplog):
 def test_voice_chat(mocker, tts, stt):
     # We allow even number of calls in order to let the function be tested first and
     # then terminate the chat
-    original_listen = VoiceChat.listen
-
-    def _mock_listen(*args, **kwargs):
+    def _mock_listen(*args, **kwargs):  # noqa: ARG001
         try:
             _mock_listen.execution_counter += 1
         except AttributeError:
             _mock_listen.execution_counter = 0
         if _mock_listen.execution_counter % 2:
             raise KeyboardInterrupt
-        try:
-            return original_listen(*args, **kwargs)
-        except sounddevice.PortAudioError:
-            return "sounddevice.PortAudioError"
+        return "foobar"
 
     mocker.patch("pyrobbot.voice_chat.VoiceChat.listen", _mock_listen)
     main(["voice", "--tts", tts, "--stt", stt])
