@@ -22,7 +22,7 @@ from openai import OpenAI
 
 from .chat import Chat
 from .chat_configs import VoiceChatConfigs
-from .openai_utils import CannotConnectToApiError, retry_api_call
+from .general_utils import retry
 
 try:
     import sounddevice as sd
@@ -163,12 +163,8 @@ class VoiceChat(Chat):
 
         except (KeyboardInterrupt, EOFError):
             chime.info()
-            print("", end="\r")
-            logger.debug("Leaving chat.")
-        except CannotConnectToApiError as error:
-            chime.error()
-            print(f"{self.api_connection_error_msg}\n")
-            logger.error("Leaving chat: {}", error)
+        finally:
+            logger.debug("Leaving chat: {}")
 
     def get_tts(self, text_queue: queue.Queue):
         """Convert text to a pygame Sound object."""
@@ -188,7 +184,8 @@ class VoiceChat(Chat):
 
                 logger.debug("Done with TTS for '{}'", text)
             except Exception as error:  # noqa: PERF203, BLE001
-                logger.exception(error)
+                logger.opt(exception=True).debug(error)
+                logger.error(error)
             finally:
                 text_queue.task_done()
 
@@ -291,7 +288,7 @@ class VoiceChat(Chat):
 
         openai_tts_model = "tts-1"
 
-        @retry_api_call()
+        @retry()
         def _create_speech(*args, **kwargs):
             for db in [
                 self.general_token_usage_db,
@@ -378,7 +375,7 @@ class VoiceChat(Chat):
 
         return rtn
 
-    @retry_api_call()
+    @retry()
     def _speech_to_text_openai(self, audio_data: sr.AudioData):
         """Convert audio data to text using OpenAI's API."""
         new_buffer = io.BytesIO(audio_data.get_wav_data())
@@ -388,7 +385,8 @@ class VoiceChat(Chat):
                 model="whisper-1",
                 file=audio_file_buffer,
                 language=self.language.split("-")[0],  # put in ISO-639-1 format
-                prompt=f"The language is {self.language}. ",
+                prompt=f"The language is {self.language}. "
+                "Do not transcribe if you think it is noise.",
             )
 
         # Register the number of audio minutes used for the transcription

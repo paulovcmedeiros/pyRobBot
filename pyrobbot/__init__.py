@@ -10,8 +10,8 @@ from importlib.metadata import metadata, version
 from pathlib import Path
 
 import ipinfo
+import openai
 from loguru import logger
-from openai import OpenAI, OpenAIError
 
 logger.remove()
 logger.add(
@@ -51,8 +51,8 @@ class GeneralDefinitions:
     def openai_key_hash():
         """Return a hash of the OpenAI API key."""
         try:
-            client = OpenAI()
-        except OpenAIError:
+            client = openai.OpenAI()
+        except openai.OpenAIError:
             api_key = None
         else:
             api_key = client.api_key

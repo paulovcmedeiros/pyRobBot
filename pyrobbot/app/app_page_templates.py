@@ -14,7 +14,6 @@ from PIL import Image
 from pyrobbot import GeneralConstants
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
-from pyrobbot.openai_utils import CannotConnectToApiError
 
 if TYPE_CHECKING:
     from pyrobbot.app.multipage import MultipageChatbotApp
@@ -240,15 +239,11 @@ class ChatBotPage(AppPage):
             ), st.empty():
                 st.markdown("▌")
                 full_response = ""
-                try:
-                    for chunk in self.chat_obj.respond_user_prompt(prompt):
-                        full_response += chunk
-                        st.markdown(full_response + "▌")
-                except CannotConnectToApiError:
-                    full_response = self.chat_obj.api_connection_error_msg
-                finally:
-                    st.caption(datetime.datetime.now().replace(microsecond=0))
-                    st.markdown(full_response)
+                for chunk in self.chat_obj.respond_user_prompt(prompt):
+                    full_response += chunk
+                    st.markdown(full_response + "▌")
+                st.caption(datetime.datetime.now().replace(microsecond=0))
+                st.markdown(full_response)
 
             self.chat_history.append(
                 {
@@ -264,9 +259,7 @@ class ChatBotPage(AppPage):
                 "page_title" not in self.state
                 and len(self.chat_history) > min_history_len_for_summary
             ):
-                with st.spinner("Working out conversation topic..."), contextlib.suppress(
-                    CannotConnectToApiError
-                ):
+                with st.spinner("Working out conversation topic..."):
                     prompt = "Summarize the messages in max 4 words.\n"
                     title = "".join(
                         self.chat_obj.respond_system_prompt(prompt, add_to_history=False)

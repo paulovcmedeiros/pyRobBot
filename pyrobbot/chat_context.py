@@ -11,7 +11,7 @@ from openai import OpenAI
 from scipy.spatial.distance import cosine as cosine_similarity
 
 from .embeddings_database import EmbeddingsDatabase
-from .openai_utils import retry_api_call
+from .general_utils import retry
 
 if TYPE_CHECKING:
     from .chat import Chat
@@ -134,7 +134,7 @@ class EmbeddingBasedChatContext(ChatContext):
         )
 
 
-@retry_api_call()
+@retry()
 def request_embedding_from_openai(text: str, model: str):
     """Request embedding for `text` according to context model `model` from OpenAI."""
     text = text.strip()

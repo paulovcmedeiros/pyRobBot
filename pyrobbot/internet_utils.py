@@ -11,7 +11,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from unidecode import unidecode
 
-from pyrobbot import GeneralConstants
+from . import GeneralConstants
+from .general_utils import retry
 
 
 def cosine_similarity_sentences(sentence1, sentence2):
@@ -106,6 +107,7 @@ def raw_websearch(
             }
 
 
+@retry(error_msg="Error performing web search")
 def websearch(query, **kwargs):
     """Search the web using DuckDuckGo Search API."""
     raw_results = list(raw_websearch(query, **kwargs))
