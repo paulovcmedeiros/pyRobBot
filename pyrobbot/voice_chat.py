@@ -164,7 +164,7 @@ class VoiceChat(Chat):
         except (KeyboardInterrupt, EOFError):
             chime.info()
         finally:
-            logger.debug("Leaving chat: {}")
+            logger.debug("Leaving chat")
 
     def get_tts(self, text_queue: queue.Queue):
         """Convert text to a pygame Sound object."""

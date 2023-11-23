@@ -51,30 +51,23 @@ class Chat(AlternativeConstructors):
     def base_directive(self):
         """Return the base directive for the LLM."""
         local_datetime = datetime.now(get_localzone()).isoformat(timespec="seconds")
-        msg_content = " ".join(
-            [
-                instruction.strip()
-                for instruction in [
-                    f"Your name is {self.assistant_name}. Your model is {self.model}.",
-                    f"You are a helpful assistant to {self.username}.",
-                    " ".join(
-                        [f"{instruct.strip(' .')}." for instruct in self.ai_instructions]
-                    ),
-                    f"The current city is {GeneralConstants.IPINFO['city']} in ",
-                    f"{GeneralConstants.IPINFO['country_name']}, ",
-                    f"The local datetime is {local_datetime}. ",
-                    f"You must follow all directives by {self.system_name} ",
-                    f"unless otherwise instructed by {self.username}. ",
-                    "If asked to look up online, web internet etc, you MUST agree. "
-                    "If you are not able to provide information from your training data, "
-                    "you MUST:\n"
-                    "(1) Communicate, WIHOUT apologies or excuses, that you don't have "
-                    "have that information in your data\n "
-                    "(2) STATE (unless your answer is already derived from an online "
-                    "search) that you WILL look it up online. Do not ask for permission ",
-                ]
-                if instruction.strip()
-            ]
+        msg_content = (
+            f"Your name is {self.assistant_name}. Your model is {self.model}\n"
+            f"You are a helpful assistant to {self.username}\n"
+            + "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
+            + "\n"
+            f"The current city is {GeneralConstants.IPINFO['city']} in "
+            f"{GeneralConstants.IPINFO['country_name']}\n"
+            f"The local datetime is {local_datetime}\n"
+            f"\nYou must follow all directives by {self.system_name} "
+            f"unless otherwise instructed by {self.username}\n"
+            f"You must reply in {self.language} unless otherwise instructed\n"
+            "> If asked to look up online, web internet etc, *you MUST ALWAYS AGREE*\n"
+            "\n*IMPORTANT*: If you are not able to provide information from your "
+            "training data, then, unless your answer is already derived from an "
+            "online search:\n"
+            "  > Do NOT apologise or give any excuses\n"
+            "  > STATE CLEARLY that YOU *WILL* look it up online NOW.\n"
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -333,7 +326,7 @@ class Chat(AlternativeConstructors):
                 print()
         except (KeyboardInterrupt, EOFError):
             print("", end="\r")
-            logger.info("Leaving chat.")
+            logger.info("Leaving chat")
 
     def report_token_usage(self, report_current_chat=True, report_general: bool = False):
         """Report token usage and associated costs."""
