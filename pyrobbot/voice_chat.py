@@ -194,7 +194,7 @@ class VoiceChat(Chat):
         while True:
             try:
                 wav_buffer = wav_buffer_queue.get()
-                pygame_mixer_sound = self.mixer.Sound(wav_buffer=wav_buffer)
+                pygame_mixer_sound = self.mixer.Sound(file=wav_buffer)
                 _channel = pygame_mixer_sound.play()
                 while self._assistant_still_talking():
                     pygame.time.wait(100)
