@@ -12,6 +12,7 @@ from functools import partial
 import chime
 import numpy as np
 import pydub
+import pygame
 import scipy.io.wavfile as wav
 import soundfile as sf
 import speech_recognition as sr
@@ -60,15 +61,15 @@ class VoiceChat(Chat):
             raise ImportError(
                 "Module `sounddevice`, needed for audio recording, is not available."
             )
-        # Import it here to prevent the hello message from being printed when not needed
-        import pygame
 
         super().__init__(configs=configs)
 
-        self.pygame = pygame
+        self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
+
         self.mixer = pygame.mixer
+        self.mixer.init(frequency=self.sample_rate, channels=1, buffer=self.block_size)
+
         self.vad = webrtcvad.Vad(2)
-        self.mixer.init()
         chime.theme("big-sur")
 
         # Create queues for TTS processing and speech playing
@@ -178,9 +179,8 @@ class VoiceChat(Chat):
                 else:
                     tts_wav_buffer = self._tts_google(text)
 
-                # Convert wav buffer to sound
-                speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
-                self.play_speech_queue.put(speech_sound)
+                # Dispatch the wav buffer tp be played
+                self.play_speech_queue.put(tts_wav_buffer)
 
                 logger.debug("Done with TTS for '{}'", text)
             except Exception as error:  # noqa: PERF203, BLE001
@@ -189,18 +189,19 @@ class VoiceChat(Chat):
             finally:
                 text_queue.task_done()
 
-    def speak(self, sound_obj_queue: queue.Queue):
+    def speak(self, wav_buffer_queue: queue.Queue[io.BytesIO]):
         """Reproduce audio from a pygame Sound object."""
         while True:
             try:
-                sound = sound_obj_queue.get()
-                _channel = sound.play()
+                wav_buffer = wav_buffer_queue.get()
+                pygame_mixer_sound = self.mixer.Sound(wav_buffer=wav_buffer)
+                _channel = pygame_mixer_sound.play()
                 while self._assistant_still_talking():
-                    self.pygame.time.wait(100)
+                    pygame.time.wait(100)
             except Exception as error:  # noqa: PERF203, BLE001
                 logger.exception(error)
             finally:
-                sound_obj_queue.task_done()
+                wav_buffer_queue.task_done()
 
     def listen(self):
         """Record audio from the microphone, until user stops, and convert it to text."""
@@ -214,7 +215,6 @@ class VoiceChat(Chat):
             """This is called (from a separate thread) for each audio block."""
             q.put(indata.copy())
 
-        stream_block_size = int((self.sample_rate * self.frame_duration) / 1000)
         raw_buffer = io.BytesIO()
         with sf.SoundFile(
             raw_buffer,
@@ -225,7 +225,7 @@ class VoiceChat(Chat):
             subtype="PCM_16",
         ) as audio_file, sd.InputStream(
             samplerate=self.sample_rate,
-            blocksize=stream_block_size,
+            blocksize=self.block_size,
             channels=1,
             callback=callback,
             dtype="int16",  # int16, i.e., 2 bytes per sample
@@ -281,8 +281,7 @@ class VoiceChat(Chat):
         return self.mixer.get_busy()
 
     def _tts_openai(self, text):
-        """Convert text to speech using OpenAI's TTS."""
-        logger.debug("OpenAI TTS received: '{}'", text)
+        """Convert text to speech using OpenAI's TTS. Return a wav BytesIO object."""
         text = text.strip()
         client = OpenAI(timeout=self.timeout)
 
@@ -310,28 +309,15 @@ class VoiceChat(Chat):
             mp3_buffer.write(mp3_stream_chunk)
         mp3_buffer.seek(0)
 
-        wav_buffer = io.BytesIO()
-        sound = pydub.AudioSegment.from_mp3(mp3_buffer)
-        # Increase the default volume, the default is a bit to quiet
-        volume_increase_db = 8
-        sound += volume_increase_db
-        sound.export(wav_buffer, format="wav")
-        wav_buffer.seek(0)
-
-        logger.debug("OpenAI TTS done for '{}'", text)
-        return wav_buffer
+        return mp3_ro_wav(mp3_buffer, volume_increase_db=8)
 
     def _tts_google(self, text):
-        """Convert text to speech using Google's TTS."""
+        """Convert text to speech using Google's TTS. Return a wav BytesIO object."""
         tts = gTTS(text.strip(), lang=self.language)
-        wav_buffer = io.BytesIO()
-        tts.write_to_fp(wav_buffer)
-        wav_buffer.seek(0)
+        mp3_buffer = io.BytesIO()
+        tts.write_to_fp(mp3_buffer)
+        wav_buffer = mp3_ro_wav(mp3_buffer)
         return wav_buffer
-
-    def _wav_buffer_to_sound(self, wav_buffer):
-        """Create a pygame sound object from a BytesIO object."""
-        return self.mixer.Sound(wav_buffer)
 
     def _wav_buffer_to_text(self, wav_buffer) -> str:
         """Use SpeechRecognition to convert the audio to text."""
@@ -413,6 +399,105 @@ def _np_array_to_wav_in_memory(array: np.ndarray, sample_rate: int):
     return byte_io.read()
 
 
+def mp3_ro_wav(mp3_buffer: io.BytesIO, volume_increase_db: int = 0):
+    """Convert an mp3 buffer to a wav buffer."""
+    mp3_buffer.seek(0)
+    sound = pydub.AudioSegment.from_mp3(mp3_buffer)
+    if volume_increase_db:
+        sound += volume_increase_db
+
+    wav_buffer = io.BytesIO()
+    sound.export(wav_buffer, format="wav")
+    wav_buffer.seek(0)
+
+    return wav_buffer
+
+
 def _get_lower_alphanumeric(string: str):
     """Return a string with only lowercase alphanumeric characters."""
     return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
+
+
+def _np_array_to_wav_bytes(array: np.ndarray, sample_rate: int):
+    """Convert the recorded array to an in-memory wav file."""
+    byte_io = io.BytesIO()
+    wav.write(byte_io, rate=sample_rate, data=array)
+    byte_io.seek(44)  # Skip the WAV header
+    return byte_io.read()
+
+
+def _get_lower_alphanumeric(string: str):
+    """Return a string with only lowercase alphanumeric characters."""
+    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
+
+
+def bytestring_to_wav_buffer(self, bytestring):
+    """Convert a bytestring to a wav buffer."""
+    import wave
+
+    wav_buffer = io.BytesIO()
+
+    with wave.open(wav_buffer, "wb") as wav_file:
+        wav_file.setsampwidth(2)
+        wav_file.setnchannels(1)
+        wav_file.setframerate(self.sample_rate)
+        wav_file.writeframes(bytestring)
+
+    wav_buffer.seek(0)  # Reset the buffer position to the beginning
+    return wav_buffer
+
+
+def pygame_sound_to_wav(sound, frame_rate):
+    """Convert a Pygame mixer sound to a wav buffer."""
+    import wave
+
+    # Get the raw audio data from the Pygame mixer sound
+    raw_data = sound.get_raw()
+
+    # Convert the raw data to a bytes array
+    audio_data = io.BytesIO(raw_data)
+
+    output_file = io.BytesIO()
+    # Open a WAV file and write the audio data
+    with wave.open(output_file, "w") as wav_file:
+        wav_file.setnchannels(1)  # Set the number of channels (1 for mono, 2 for stereo)
+        wav_file.setsampwidth(2)  # Set the sample width in bytes (2 for 16-bit audio)
+        wav_file.setframerate(frame_rate)  # Set the sample rate
+        wav_file.writeframesraw(audio_data.getbuffer())
+
+    output_file.seek(0)  # Reset the buffer position to the beginning
+    return output_file
+
+
+def subtract_similar_data(signal1, signal_to_be_removed):
+    """Subtract similar data from two signals."""
+    logger.error("SUBTRACTING SIGNAL: {}, {}", len(signal1), len(signal_to_be_removed))
+    if len(signal1) > len(signal_to_be_removed):
+        signal1, signal_to_be_removed = signal_to_be_removed, signal1
+    logger.error("SUBTRACTING SIGNAL: {}, {}", len(signal1), len(signal_to_be_removed))
+
+    # Pad the shorter signal with zeros to match the length of the longer signal
+    len_diff = len(signal_to_be_removed) - len(signal1)
+    signal1_padded = np.pad(signal1, (0, len_diff), "constant")
+
+    # Compute cross-correlation
+    import scipy
+
+    cross_correlation = scipy.signal.correlate(
+        signal1_padded, signal_to_be_removed, mode="full"
+    )
+
+    # Find the time offset
+    offset = np.argmax(cross_correlation) - len(signal1_padded) + 1
+
+    # Adjust the offset to make it non-negative
+    offset = max(0, offset)
+
+    # Subtract similar data
+    result_signal = (
+        signal1_padded[offset:] - signal_to_be_removed[: len(signal1_padded) - offset]
+    )
+
+    logger.error("DONE SUBTRACTING SIGNAL: {}", len(result_signal))
+
+    return result_signal

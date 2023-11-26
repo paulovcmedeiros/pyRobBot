@@ -19,6 +19,8 @@ logger.add(
     level=os.environ.get("LOGLEVEL", os.environ.get("LOGURU_LEVEL", "INFO")),
 )
 
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
+
 
 @dataclass
 class GeneralDefinitions:
