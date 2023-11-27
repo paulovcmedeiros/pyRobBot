@@ -76,8 +76,10 @@ class VoiceChat(Chat):
         chime.theme("big-sur")
 
         # Create queues for TTS processing and speech playing
+        self.questions_queue = queue.Queue()
         self.tts_conversion_queue = queue.Queue()
         self.play_speech_queue = queue.Queue()
+
         # Create threads to watch the TTS and speech playing queues
         self.tts_conversion_watcher_thread = threading.Thread(
             target=self.handle_tts_queue, args=(self.tts_conversion_queue,), daemon=True
@@ -88,7 +90,7 @@ class VoiceChat(Chat):
         self.tts_conversion_watcher_thread.start()
         self.play_speech_thread.start()
 
-    def start(self):  # noqa: PLR0912, PLR0915
+    def start(self):
         """Start the chat."""
         # ruff: noqa: T201
         if not self.skip_initial_greeting:
@@ -100,68 +102,17 @@ class VoiceChat(Chat):
                 # Wait for all items in the queue to be processed
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
+
                 if previous_question_answered:
                     chime.warning()
                     previous_question_answered = False
                     logger.debug(f"{self.assistant_name}> Listening...")
 
                 question = self.stt(self.listen()).strip()
+
                 if not question:
                     continue
-                logger.debug(f"{self.assistant_name}> Heard: '{question}'")
-
-                # Check for the exit expressions
-                if any(
-                    _get_lower_alphanumeric(question).startswith(
-                        _get_lower_alphanumeric(expr)
-                    )
-                    for expr in self.exit_expressions
-                ):
-                    chime.theme("material")
-                    chime.error()
-                    logger.debug(f"{self.assistant_name}> Goodbye!")
-                    break
-
-                chime.success()
-                logger.debug(f"{self.assistant_name}> Getting response...")
-                sentence = ""
-                inside_code_block = False
-                at_least_one_code_line_written = False
-                for answer_chunk in self.respond_user_prompt(prompt=question):
-                    fmtd_chunk = answer_chunk.strip(" \n")
-                    code_block_start_detected = fmtd_chunk.startswith("``")
-
-                    if code_block_start_detected and not inside_code_block:
-                        # Toggle the code block state
-                        inside_code_block = True
-
-                    if inside_code_block:
-                        code_chunk = answer_chunk
-                        if at_least_one_code_line_written:
-                            inside_code_block = not fmtd_chunk.endswith("``")  # Code ends
-                            if not inside_code_block:
-                                code_chunk = answer_chunk.rstrip("`") + "```\n"
-                        print(
-                            code_chunk,
-                            end="" if inside_code_block else "\n",
-                            flush=True,
-                        )
-                        at_least_one_code_line_written = True
-                    else:
-                        # The answer chunk is to be spoken
-                        sentence += answer_chunk
-                        if answer_chunk.strip().endswith(("?", "!", ".")):
-                            # Send sentence for TTS even if the request hasn't finished
-                            self.tts_conversion_queue.put(sentence)
-                            sentence = ""
-
-                if sentence:
-                    self.tts_conversion_queue.put(sentence)
-
-                if at_least_one_code_line_written:
-                    spoken_info_to_user = "The code has been written to the console"
-                    spoken_info_to_user = self._translate(spoken_info_to_user)
-                    self.tts_conversion_queue.put(spoken_info_to_user)
+                self.answer_question(question)
 
                 previous_question_answered = True
 
@@ -169,6 +120,58 @@ class VoiceChat(Chat):
             chime.info()
         finally:
             logger.debug("Leaving chat")
+
+    def answer_question(self, question):
+        """Answer a question."""
+        logger.debug(f"{self.assistant_name}> Heard: '{question}'")
+        # Check for the exit expressions
+        if any(
+            _get_lower_alphanumeric(question).startswith(_get_lower_alphanumeric(expr))
+            for expr in self.exit_expressions
+        ):
+            chime.theme("material")
+            chime.error()
+            logger.debug(f"{self.assistant_name}> Goodbye!")
+            return
+
+        chime.success()
+        logger.debug(f"{self.assistant_name}> Getting response...")
+        sentence = ""
+        inside_code_block = False
+        at_least_one_code_line_written = False
+        for answer_chunk in self.respond_user_prompt(prompt=question):
+            fmtd_chunk = answer_chunk.strip(" \n")
+            code_block_start_detected = fmtd_chunk.startswith("``")
+
+            if code_block_start_detected and not inside_code_block:
+                # Toggle the code block state
+                inside_code_block = True
+
+            if inside_code_block:
+                code_chunk = answer_chunk
+                if at_least_one_code_line_written:
+                    inside_code_block = not fmtd_chunk.endswith("``")  # Code ends
+                    if not inside_code_block:
+                        code_chunk = answer_chunk.rstrip("`") + "```\n"
+                print(
+                    code_chunk,
+                    end="" if inside_code_block else "\n",
+                    flush=True,
+                )
+                at_least_one_code_line_written = True
+            else:
+                # The answer chunk is to be spoken
+                sentence += answer_chunk
+                if answer_chunk.strip().endswith(("?", "!", ".")):
+                    # Send sentence for TTS even if the request hasn't finished
+                    self.tts_conversion_queue.put(sentence)
+                    sentence = ""
+        if sentence:
+            self.tts_conversion_queue.put(sentence)
+        if at_least_one_code_line_written:
+            spoken_info_to_user = "The code has been written to the console"
+            spoken_info_to_user = self._translate(spoken_info_to_user)
+            self.tts_conversion_queue.put(spoken_info_to_user)
 
     def speak(self, wav_buffer: io.BytesIO):
         """Reproduce audio from a pygame Sound object."""
@@ -320,6 +323,7 @@ class VoiceChat(Chat):
         return io.BytesIO(audio_data.get_wav_data())
 
     def get_sound_file(self, wav_buffer: io.BytesIO, mode: str = "r"):
+        """Return a sound file object."""
         return sf.SoundFile(
             wav_buffer,
             mode=mode,
