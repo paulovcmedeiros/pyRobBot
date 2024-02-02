@@ -1,6 +1,8 @@
 """General utility functions and classes."""
+import difflib
 import inspect
 import json
+import re
 import time
 from functools import wraps
 from pathlib import Path
@@ -13,6 +15,18 @@ from loguru import logger
 
 class ReachedMaxNumberOfAttemptsError(Exception):
     """Error raised when the max number of attempts has been reached."""
+
+
+def _get_lower_alphanumeric(string: str):
+    """Return a string with only lowercase alphanumeric characters."""
+    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
+
+
+def str2_minus_str1(str1: str, str2: str):
+    """Return the words in str2 that are not in str1."""
+    output_list = [diff for diff in difflib.ndiff(str1, str2) if diff[0] == "+"]
+    str_diff = "".join(el.replace("+ ", "") for el in output_list if el.startswith("+"))
+    return str_diff
 
 
 def retry(

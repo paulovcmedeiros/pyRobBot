@@ -92,7 +92,7 @@ def raw_websearch(
                 continue
             else:
                 content_type = response.headers.get("content-type")
-                if "text/html" not in content_type:
+                if (not content_type) or ("text/html" not in content_type):
                     continue
                 html = unidecode(extract_text_from_html(response.text))
 

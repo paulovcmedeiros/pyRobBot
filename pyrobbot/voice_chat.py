@@ -2,12 +2,10 @@
 import contextlib
 import io
 import queue
-import re
 import threading
 import time
 from collections import deque
 from datetime import datetime
-from difflib import SequenceMatcher
 
 import chime
 import numpy as np
@@ -20,6 +18,7 @@ from pydub import AudioSegment
 
 from .chat import Chat
 from .chat_configs import VoiceChatConfigs
+from .general_utils import _get_lower_alphanumeric, str2_minus_str1
 from .sst_and_tts import SpeechToText, TextToSpeech
 
 try:
@@ -189,11 +188,13 @@ class VoiceChat(Chat):
             duration_seconds=tts.speech.duration_seconds
         )
 
+        while self.mixer.get_busy():
+            pygame.time.wait(100)
+
         to_check_for_cancel_expressions = {
             "assistant": tts,
             "recording_while_assistant_speaks": recording_while_assistant_speaks,
         }
-
         self.check_for_cancel_expressions_queue.put(to_check_for_cancel_expressions)
 
     def listen(self, duration_seconds: float = np.inf) -> AudioSegment:
@@ -305,14 +306,11 @@ class VoiceChat(Chat):
     def handle_speech_queue(self, speech_queue: queue.Queue[TextToSpeech]):
         """Handle the queue of audio segments to be played."""
         while True:
-            if self.mixer.get_busy():
-                time.sleep(0.1)
-                continue
             try:
                 speech = speech_queue.get()
                 if speech and not self.interrupt_reply.is_set():
                     self.speak(speech)
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:  # noqa: BLE001, PERF203
                 logger.exception(error)
             finally:
                 speech_queue.task_done()
@@ -349,7 +347,7 @@ class VoiceChat(Chat):
     ):
         """Handle the queue that checks for expressions that cancel the reply."""
         while True:
-            user_words = []
+            user_words = ""
             try:
                 msgs_to_check = check_for_cancel_expressions_queue.get()
                 if self.interrupt_reply.is_set():
@@ -365,13 +363,8 @@ class VoiceChat(Chat):
                 )
 
                 recorded_msg = _get_lower_alphanumeric(user_stt.text)
-                spoken_msg = _get_lower_alphanumeric(msgs_to_check["assistant"].text)
-
-                recorded_msg_words = recorded_msg.split()
-                spoken_msg_words = spoken_msg.split()
-                for iword, word in enumerate(recorded_msg_words):
-                    if iword >= len(spoken_msg_words) or word != spoken_msg_words[iword]:
-                        user_words.append(word)
+                assistant_msg = _get_lower_alphanumeric(msgs_to_check["assistant"].text)
+                user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_msg)
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
@@ -380,8 +373,13 @@ class VoiceChat(Chat):
                     logger.debug(
                         "Detected user words while assistant was speaking: {}", user_words
                     )
-                    if any(word in user_words for word in self.cancel_expressions):
-                        logger.debug("Signalling for reply to be cancelled...")
+                    if any(
+                        cancel_cmd in user_words for cancel_cmd in self.cancel_expressions
+                    ):
+                        logger.debug(
+                            "Heard '{}'. Signalling for reply to be cancelled...",
+                            user_words,
+                        )
                         self.interrupt_reply.set()
 
                 check_for_cancel_expressions_queue.task_done()
@@ -429,65 +427,3 @@ def _np_array_to_wav_in_memory(
     sf.write(wav_buffer, sound_data, sample_rate, subtype=subtype)
     wav_buffer.seek(44)  # Skip the WAV header
     return wav_buffer.read()
-
-
-def _get_lower_alphanumeric(string: str):
-    """Return a string with only lowercase alphanumeric characters."""
-    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
-
-
-def readable_buffer_to_wav_buffer(readable_buffer, sample_rate):
-    """Convert a bytestring to a wav buffer."""
-    import wave
-
-    wav_buffer = io.BytesIO()
-
-    with wave.open(wav_buffer, "wb") as wav_file:
-        wav_file.setsampwidth(2)  # Set the sample width in bytes (2 for 16-bit audio)
-        wav_file.setnchannels(1)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(readable_buffer)
-
-    wav_buffer.seek(0)  # Reset the buffer position to the beginning
-    return wav_buffer
-
-
-def pygame_sound_to_wav(sound, frame_rate):
-    """Convert a Pygame mixer sound to a wav buffer."""
-    import wave
-
-    # Get the raw audio data from the Pygame mixer sound
-    raw_data = sound.get_raw()
-
-    # Convert the raw data to a bytes array
-    audio_data = io.BytesIO(raw_data)
-
-    output_file = io.BytesIO()
-    # Open a WAV file and write the audio data
-    with wave.open(output_file, "w") as wav_file:
-        wav_file.setnchannels(1)  # Set the number of channels (1 for mono, 2 for stereo)
-        wav_file.setsampwidth(2)  # Set the sample width in bytes (2 for 16-bit audio)
-        wav_file.setframerate(frame_rate)  # Set the sample rate
-        wav_file.writeframesraw(audio_data.getbuffer())
-
-    output_file.seek(0)  # Reset the buffer position to the beginning
-    return output_file
-
-
-def string_diff(str1: str, str2: str):
-    """Return the differences between two strings."""
-    matcher = SequenceMatcher(None, str1, str2)
-    diff = list(matcher.get_opcodes())
-    return diff
-
-
-def get_different_words(str1: str, str2: str):
-    """Return the parts of `str1` that are not in `str2`."""
-    differences = string_diff(str1, str2)
-    result = []
-
-    for opcode, i1, i2, _j1, _j2 in differences:
-        if opcode in ("delete", "replace"):
-            result.append(str1[i1:i2])
-
-    return result
