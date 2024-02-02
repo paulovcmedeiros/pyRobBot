@@ -51,7 +51,7 @@ class GeneralDefinitions:
     # Location info
     try:
         IPINFO = ipinfo.getHandler().getDetails().all
-    except requests.exceptions.ReadTimeout:
+    except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
         IPINFO = defaultdict(lambda: "unknown")
 
     @staticmethod

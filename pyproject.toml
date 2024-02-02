@@ -163,6 +163,7 @@
   _ruff = "ruff check ."
   # Test-related tasks
   pytest = "pytest"
+  test = ["pytest"]
   # Tasks to be run as pre-push checks
   pre-push-checks = ["lint", "pytest"]
 

@@ -198,7 +198,7 @@ def default_voice_chat(default_voice_chat_configs):
 def _voice_chat_mockers(mocker, mock_wav_bytes_string):
     """Mockers for the text-to-speech module."""
     mocker.patch(
-        "pyrobbot.voice_chat.VoiceChat._assistant_still_talking", return_value=False
+        "pyrobbot.voice_chat.VoiceChat._assistant_still_replying", return_value=False
     )
 
     mock_google_tts_obj = type("mock_gTTS", (), {})
