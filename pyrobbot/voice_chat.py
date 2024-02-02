@@ -68,8 +68,14 @@ class VoiceChat(Chat):
         # Create queues and threads for handling the chat
         # 1. Watching for questions from the user
         self.questions_queue = queue.Queue()
-        self.questions_queue_watcher_thread = threading.Thread(
-            target=self.handle_questions_queue, args=(self.questions_queue,), daemon=True
+        self.check_for_cancel_expressions_queue = queue.Queue()
+        self.listening_watcher_thread = threading.Thread(
+            target=self.handle_listening,
+            args=(
+                self.questions_queue,
+                self.check_for_cancel_expressions_queue,
+            ),
+            daemon=True,
         )
         # 2. Converting assistant's text reply to speech and playing it
         self.tts_conversion_queue = queue.Queue()
@@ -81,12 +87,6 @@ class VoiceChat(Chat):
             target=self.handle_speech_queue, args=(self.play_speech_queue,), daemon=True
         )
         # 3. Watching for expressions that cancel the reply or exit the chat
-        self.check_for_cancel_expressions_queue = queue.Queue()
-        self.exit_expressions_watcher_thread = threading.Thread(
-            target=self.handle_exit_expressions_queue,
-            args=(self.check_for_cancel_expressions_queue,),
-            daemon=True,
-        )
         self.interrupt_reply = threading.Event()
 
     def start(self):
@@ -96,15 +96,14 @@ class VoiceChat(Chat):
         self.play_speech_thread.start()
         if not self.skip_initial_greeting:
             self.tts_conversion_queue.put(self.initial_greeting)
-            self.play_speech_queue.join()
-        self.exit_expressions_watcher_thread.start()
-        self.questions_queue_watcher_thread.start()
+            while self._assistant_still_replying():
+                pygame.time.wait(100)
+        self.listening_watcher_thread.start()
 
         while True:
             try:
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
-                self.check_for_cancel_expressions_queue.join()
 
                 if self.interrupt_reply.is_set():
                     logger.opt(colors=True).debug(
@@ -182,20 +181,9 @@ class VoiceChat(Chat):
         """Reproduce audio from a pygame Sound object."""
         tts.set_sample_rate(self.sample_rate)
         self.mixer.Sound(tts.speech.raw_data).play()
-
-        logger.debug("Listening while assistent speaks")
-        recording_while_assistant_speaks = self.listen(
-            duration_seconds=tts.speech.duration_seconds
-        )
-
         while self.mixer.get_busy():
             pygame.time.wait(100)
-
-        to_check_for_cancel_expressions = {
-            "assistant": tts,
-            "recording_while_assistant_speaks": recording_while_assistant_speaks,
-        }
-        self.check_for_cancel_expressions_queue.put(to_check_for_cancel_expressions)
+        self.check_for_cancel_expressions_queue.put(tts)
 
     def listen(self, duration_seconds: float = np.inf) -> AudioSegment:
         """Record audio from the microphone until user stops."""
@@ -268,17 +256,17 @@ class VoiceChat(Chat):
             return AudioSegment.from_wav(raw_buffer)
         return AudioSegment.empty()
 
-    def handle_questions_queue(self, questions_queue: queue.Queue):
+    def handle_listening(
+        self,
+        questions_queue: queue.Queue,
+        check_for_cancel_expressions_queue: queue.Queue,
+    ):
         """Handle the queue of questions to be answered."""
-        minimum_question_duration_seconds = 0.1
+        minimum_prompt_duration_seconds = 0.1
         while True:
             try:
-                if self._assistant_still_replying():
-                    time.sleep(0.1)
-                    continue
-
                 audio = self.listen()
-                if audio.duration_seconds < minimum_question_duration_seconds:
+                if audio.duration_seconds < minimum_prompt_duration_seconds:
                     continue
 
                 question = SpeechToText(
@@ -290,18 +278,41 @@ class VoiceChat(Chat):
                     token_usage_db=self.token_usage_db,
                 ).text
 
-                # Check for the exit expressions
-                if any(
-                    _get_lower_alphanumeric(question).startswith(
-                        _get_lower_alphanumeric(expr)
-                    )
-                    for expr in self.exit_expressions
-                ):
-                    questions_queue.put(None)
-                elif question:
-                    questions_queue.put(question)
+                if self._assistant_still_replying():
+                    recorded_prompt = _get_lower_alphanumeric(question)
+                    assistant_msg_tts = check_for_cancel_expressions_queue.get()
+                    assistant_msg = assistant_msg_tts.text
+                    user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_prompt)
+                    if user_words:
+                        logger.debug(
+                            "Detected user words while assistant was speaking: {}",
+                            user_words,
+                        )
+                        if any(
+                            cancel_cmd in user_words
+                            for cancel_cmd in self.cancel_expressions
+                        ):
+                            logger.debug(
+                                "Heard '{}'. Signalling for reply to be cancelled...",
+                                user_words,
+                            )
+                            self.interrupt_reply.set()
+                    check_for_cancel_expressions_queue.task_done()
+
+                else:
+                    # Check for the exit expressions
+                    if any(
+                        _get_lower_alphanumeric(question).startswith(
+                            _get_lower_alphanumeric(expr)
+                        )
+                        for expr in self.exit_expressions
+                    ):
+                        questions_queue.put(None)
+                    elif question:
+                        questions_queue.put(question)
             except Exception as error:  # noqa: BLE001
-                logger.exception(error)
+                logger.opt(exception=True).debug(error)
+                logger.error(error)
 
     def handle_speech_queue(self, speech_queue: queue.Queue[TextToSpeech]):
         """Handle the queue of audio segments to be played."""
@@ -341,48 +352,6 @@ class VoiceChat(Chat):
                 logger.error(error)
             finally:
                 text_queue.task_done()
-
-    def handle_exit_expressions_queue(
-        self, check_for_cancel_expressions_queue: queue.Queue
-    ):
-        """Handle the queue that checks for expressions that cancel the reply."""
-        while True:
-            user_words = ""
-            try:
-                msgs_to_check = check_for_cancel_expressions_queue.get()
-                if self.interrupt_reply.is_set():
-                    continue
-
-                user_stt = SpeechToText(
-                    speech=msgs_to_check["recording_while_assistant_speaks"],
-                    engine=self.stt_engine,
-                    language=self.language,
-                    timeout=self.timeout,
-                    general_token_usage_db=self.general_token_usage_db,
-                    token_usage_db=self.token_usage_db,
-                )
-
-                recorded_msg = _get_lower_alphanumeric(user_stt.text)
-                assistant_msg = _get_lower_alphanumeric(msgs_to_check["assistant"].text)
-                user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_msg)
-            except Exception as error:  # noqa: BLE001
-                logger.opt(exception=True).debug(error)
-                logger.error(error)
-            finally:
-                if user_words:
-                    logger.debug(
-                        "Detected user words while assistant was speaking: {}", user_words
-                    )
-                    if any(
-                        cancel_cmd in user_words for cancel_cmd in self.cancel_expressions
-                    ):
-                        logger.debug(
-                            "Heard '{}'. Signalling for reply to be cancelled...",
-                            user_words,
-                        )
-                        self.interrupt_reply.set()
-
-                check_for_cancel_expressions_queue.task_done()
 
     def get_sound_file(self, wav_buffer: io.BytesIO, mode: str = "r"):
         """Return a sound file object."""
