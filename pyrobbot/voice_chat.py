@@ -266,6 +266,9 @@ class VoiceChat(Chat):
         while True:
             try:
                 audio = self.listen()
+                if audio is None:
+                    raise EOFError
+
                 if audio.duration_seconds < minimum_prompt_duration_seconds:
                     continue
 
@@ -310,6 +313,8 @@ class VoiceChat(Chat):
                         questions_queue.put(None)
                     elif question:
                         questions_queue.put(question)
+            except EOFError:
+                questions_queue.put(None)
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)

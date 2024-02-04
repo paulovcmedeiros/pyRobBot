@@ -1,6 +1,8 @@
+import io
 import subprocess
 
 import pytest
+from pydub import AudioSegment
 
 from pyrobbot.__main__ import main
 from pyrobbot.argparse_wrapper import get_parsed_args
@@ -40,7 +42,7 @@ def test_ui_command(mocker, caplog):
 
 @pytest.mark.parametrize("stt", ["google", "openai"])
 @pytest.mark.parametrize("tts", ["google", "openai"])
-def test_voice_chat(mocker, tts, stt):
+def test_voice_chat(mocker, mock_wav_bytes_string, tts, stt):
     # We allow even number of calls in order to let the function be tested first and
     # then terminate the chat
     def _mock_listen(*args, **kwargs):  # noqa: ARG001
@@ -49,8 +51,8 @@ def test_voice_chat(mocker, tts, stt):
         except AttributeError:
             _mock_listen.execution_counter = 0
         if _mock_listen.execution_counter % 2:
-            raise KeyboardInterrupt
-        return "foobar"
+            return None
+        return AudioSegment.from_wav(io.BytesIO(mock_wav_bytes_string))
 
     mocker.patch("pyrobbot.voice_chat.VoiceChat.listen", _mock_listen)
     main(["voice", "--tts", tts, "--stt", stt])

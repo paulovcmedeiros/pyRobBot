@@ -3,9 +3,11 @@ import io
 
 import pytest
 from pydantic import ValidationError
+from pydub import AudioSegment
 from sounddevice import PortAudioError
 
 from pyrobbot.chat_configs import VoiceChatConfigs
+from pyrobbot.sst_and_tts import SpeechToText, TextToSpeech
 from pyrobbot.voice_chat import VoiceChat
 
 
@@ -30,9 +32,13 @@ def test_listen(default_voice_chat):
 
 
 @pytest.mark.parametrize("stt_engine", ["google", "openai"])
-def test_stt(default_voice_chat, stt_engine, mock_wav_bytes_string):
+def test_stt(default_voice_chat, stt_engine):
     """Test the speech-to-text method."""
     default_voice_chat.stt_engine = stt_engine
-    rtn = default_voice_chat._wav_buffer_to_text(io.BytesIO(mock_wav_bytes_string))
-
-    assert rtn == "patched"
+    stt = SpeechToText(
+        speech=AudioSegment.silent(duration=100),
+        engine=stt_engine,
+        general_token_usage_db=default_voice_chat.general_token_usage_db,
+        token_usage_db=default_voice_chat.token_usage_db,
+    )
+    assert stt.text == "patched"

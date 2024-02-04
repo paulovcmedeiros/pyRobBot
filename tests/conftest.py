@@ -1,10 +1,8 @@
 import io
-from unittest.mock import MagicMock
 
 import lorem
 import numpy as np
 import pydub
-import pygame
 import pytest
 from _pytest.logging import LogCaptureFixture
 from loguru import logger
@@ -232,19 +230,6 @@ def _voice_chat_mockers(mocker, mock_wav_bytes_string):
         "speech_recognition.Recognizer.recognize_google",
         return_value=mock_transcription.text,
     )
-
-    # orig_func = VoiceChat._wav_buffer_to_sound
-
-    # def mock_wav_buffer_to_sound(self: VoiceChat, *args, **kwargs):
-    #    try:
-    #        return orig_func(self, *args, **kwargs)
-    #    except pygame.error:
-    #        return MagicMock()
-
-    # mocker.patch(
-    #    "pyrobbot.voice_chat.VoiceChat._wav_buffer_to_sound",
-    #    mock_wav_buffer_to_sound,
-    # )
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
     mocker.patch("pygame.mixer.init")
