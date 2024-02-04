@@ -302,7 +302,7 @@ class VoiceChat(Chat):
                             self.interrupt_reply.set()
                     check_for_cancel_expressions_queue.task_done()
 
-                else:
+                else:  # noqa: PLR5501
                     # Check for the exit expressions
                     if any(
                         _get_lower_alphanumeric(question).startswith(

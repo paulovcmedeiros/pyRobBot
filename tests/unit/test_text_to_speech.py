@@ -1,5 +1,4 @@
 import contextlib
-import io
 
 import pytest
 from pydantic import ValidationError
@@ -7,7 +6,7 @@ from pydub import AudioSegment
 from sounddevice import PortAudioError
 
 from pyrobbot.chat_configs import VoiceChatConfigs
-from pyrobbot.sst_and_tts import SpeechToText, TextToSpeech
+from pyrobbot.sst_and_tts import SpeechToText
 from pyrobbot.voice_chat import VoiceChat
 
 
