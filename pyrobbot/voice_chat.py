@@ -68,13 +68,9 @@ class VoiceChat(Chat):
         # Create queues and threads for handling the chat
         # 1. Watching for questions from the user
         self.questions_queue = queue.Queue()
-        self.check_for_cancel_expressions_queue = queue.Queue()
-        self.listening_watcher_thread = threading.Thread(
-            target=self.handle_listening,
-            args=(
-                self.questions_queue,
-                self.check_for_cancel_expressions_queue,
-            ),
+        self.questions_listening_watcher_thread = threading.Thread(
+            target=self.handle_question_listening,
+            args=(self.questions_queue,),
             daemon=True,
         )
         # 2. Converting assistant's text reply to speech and playing it
@@ -97,8 +93,8 @@ class VoiceChat(Chat):
         if not self.skip_initial_greeting:
             self.tts_conversion_queue.put(self.initial_greeting)
             while self._assistant_still_replying():
-                pygame.time.wait(100)
-        self.listening_watcher_thread.start()
+                pygame.time.wait(50)
+        self.questions_listening_watcher_thread.start()
 
         while True:
             try:
@@ -121,12 +117,12 @@ class VoiceChat(Chat):
                 chime.warning()
                 logger.debug(f"{self.assistant_name}> Waiting for user input...")
                 question = self.questions_queue.get()
+                self.questions_queue.task_done()
                 if question is None:
                     raise EOFError
 
                 chime.success()
                 self.answer_question(question)
-                self.questions_queue.task_done()
 
             except (KeyboardInterrupt, EOFError):  # noqa: PERF203
                 chime.info()
@@ -181,9 +177,35 @@ class VoiceChat(Chat):
         """Reproduce audio from a pygame Sound object."""
         tts.set_sample_rate(self.sample_rate)
         self.mixer.Sound(tts.speech.raw_data).play()
+        audio_recorded_while_assistant_replies = self.listen(
+            duration_seconds=tts.speech.duration_seconds
+        )
         while self.mixer.get_busy():
             pygame.time.wait(100)
-        self.check_for_cancel_expressions_queue.put(tts)
+
+        recorded_prompt = SpeechToText(
+            speech=audio_recorded_while_assistant_replies,
+            engine=self.stt_engine,
+            language=self.language,
+            timeout=self.timeout,
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+        ).text
+        recorded_prompt = _get_lower_alphanumeric(recorded_prompt)
+        assistant_msg = tts.text
+
+        user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_prompt)
+        if user_words:
+            logger.debug(
+                "Detected user words while assistant was speaking: {}",
+                user_words,
+            )
+            if any(cancel_cmd in user_words for cancel_cmd in self.cancel_expressions):
+                logger.debug(
+                    "Heard '{}'. Signalling for reply to be cancelled...",
+                    user_words,
+                )
+                self.interrupt_reply.set()
 
     def listen(self, duration_seconds: float = np.inf) -> AudioSegment:
         """Record audio from the microphone until user stops."""
@@ -256,19 +278,18 @@ class VoiceChat(Chat):
             return AudioSegment.from_wav(raw_buffer)
         return AudioSegment.empty()
 
-    def handle_listening(
-        self,
-        questions_queue: queue.Queue,
-        check_for_cancel_expressions_queue: queue.Queue,
-    ):
+    def handle_question_listening(self, questions_queue: queue.Queue):
         """Handle the queue of questions to be answered."""
         minimum_prompt_duration_seconds = 0.1
         while True:
             try:
+                if self._assistant_still_replying():
+                    continue
+
                 audio = self.listen()
                 if audio is None:
-                    raise EOFError
-
+                    questions_queue.put(None)
+                    continue
                 if audio.duration_seconds < minimum_prompt_duration_seconds:
                     continue
 
@@ -281,40 +302,18 @@ class VoiceChat(Chat):
                     token_usage_db=self.token_usage_db,
                 ).text
 
-                if self._assistant_still_replying():
-                    recorded_prompt = _get_lower_alphanumeric(question)
-                    assistant_msg_tts = check_for_cancel_expressions_queue.get()
-                    assistant_msg = assistant_msg_tts.text
-                    user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_prompt)
-                    if user_words:
-                        logger.debug(
-                            "Detected user words while assistant was speaking: {}",
-                            user_words,
-                        )
-                        if any(
-                            cancel_cmd in user_words
-                            for cancel_cmd in self.cancel_expressions
-                        ):
-                            logger.debug(
-                                "Heard '{}'. Signalling for reply to be cancelled...",
-                                user_words,
-                            )
-                            self.interrupt_reply.set()
-                    check_for_cancel_expressions_queue.task_done()
-
-                else:  # noqa: PLR5501
-                    # Check for the exit expressions
-                    if any(
-                        _get_lower_alphanumeric(question).startswith(
-                            _get_lower_alphanumeric(expr)
-                        )
-                        for expr in self.exit_expressions
-                    ):
-                        questions_queue.put(None)
-                    elif question:
-                        questions_queue.put(question)
-            except EOFError:
-                questions_queue.put(None)
+                # Check for the exit expressions
+                if any(
+                    _get_lower_alphanumeric(question).startswith(
+                        _get_lower_alphanumeric(expr)
+                    )
+                    for expr in self.exit_expressions
+                ):
+                    questions_queue.put(None)
+                elif question:
+                    questions_queue.put(question)
+            except sd.PortAudioError as error:
+                logger.opt(exception=True).debug(error)
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
