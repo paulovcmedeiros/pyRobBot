@@ -1,8 +1,12 @@
+import duckduckgo_search
+
 from pyrobbot.internet_utils import websearch
 
-# I don't know why the websearch returns `str` instead of `dict`
 # if called inside tests or fixtures. Leave it like this for now.
-search_results = list(websearch("foobar"))
+try:
+    search_results = list(websearch("foobar"))
+except duckduckgo_search.exceptions.RateLimitException:
+    search_results = []
 
 
 def test_websearch():

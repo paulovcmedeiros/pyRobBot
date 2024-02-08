@@ -142,7 +142,7 @@ class TextToSpeech(SpeechAndTextConfigs):
 
     def set_sample_rate(self, sample_rate: int):
         """Set the sample rate of the speech."""
-        self._speech = self._speech.set_frame_rate(sample_rate)
+        self._speech = self.speech.set_frame_rate(sample_rate)
 
     def _tts(self):
         logger.debug("Running {} TTS on text '{}'", self.engine, self.text)

@@ -106,7 +106,8 @@ class VoiceChat(Chat):
                         "<yellow>Interrupting the reply</yellow>"
                     )
                     self.interrupt_reply.clear()
-                    self.mixer.stop()
+                    with contextlib.suppress(pygame.error):
+                        self.mixer.stop()
                     with self.questions_queue.mutex:
                         self.questions_queue.queue.clear()
                     chime.theme("material")
