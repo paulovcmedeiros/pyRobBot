@@ -83,6 +83,12 @@ class VoiceChat(Chat):
             target=self.handle_speech_queue, args=(self.play_speech_queue,), daemon=True
         )
         # 3. Watching for expressions that cancel the reply or exit the chat
+        self.check_for_interrupt_expressions_queue = queue.Queue()
+        self.check_for_interrupt_expressions_thread = threading.Thread(
+            target=self.check_for_interrupt_expressions_handler,
+            args=(self.check_for_interrupt_expressions_queue,),
+            daemon=True,
+        )
         self.interrupt_reply = threading.Event()
 
     def start(self):
@@ -95,6 +101,7 @@ class VoiceChat(Chat):
             while self._assistant_still_replying():
                 pygame.time.wait(50)
         self.questions_listening_watcher_thread.start()
+        self.check_for_interrupt_expressions_thread.start()
 
         while True:
             try:
@@ -106,6 +113,8 @@ class VoiceChat(Chat):
                         "<yellow>Interrupting the reply</yellow>"
                     )
                     self.interrupt_reply.clear()
+                    with self.check_for_interrupt_expressions_queue.mutex:
+                        self.check_for_interrupt_expressions_queue.queue.clear()
                     with contextlib.suppress(pygame.error):
                         self.mixer.stop()
                     with self.questions_queue.mutex:
@@ -184,29 +193,50 @@ class VoiceChat(Chat):
         while self.mixer.get_busy():
             pygame.time.wait(100)
 
-        recorded_prompt = SpeechToText(
-            speech=audio_recorded_while_assistant_replies,
-            engine=self.stt_engine,
-            language=self.language,
-            timeout=self.timeout,
-            general_token_usage_db=self.general_token_usage_db,
-            token_usage_db=self.token_usage_db,
-        ).text
-        recorded_prompt = _get_lower_alphanumeric(recorded_prompt)
-        assistant_msg = tts.text
+        msgs_to_compare = {
+            "assistant_txt": tts.text,
+            "user_audio": audio_recorded_while_assistant_replies,
+        }
+        self.check_for_interrupt_expressions_queue.put(msgs_to_compare)
 
-        user_words = str2_minus_str1(str1=assistant_msg, str2=recorded_prompt)
-        if user_words:
-            logger.debug(
-                "Detected user words while assistant was speaking: {}",
-                user_words,
-            )
-            if any(cancel_cmd in user_words for cancel_cmd in self.cancel_expressions):
-                logger.debug(
-                    "Heard '{}'. Signalling for reply to be cancelled...",
-                    user_words,
-                )
-                self.interrupt_reply.set()
+    def check_for_interrupt_expressions_handler(
+        self, check_for_interrupt_expressions_queue: queue.Queue
+    ):
+        """Check for expressions that interrupt the assistant's reply."""
+        while True:
+            try:
+                msgs_to_compare = check_for_interrupt_expressions_queue.get()
+                assistant_msg = _get_lower_alphanumeric(msgs_to_compare["assistant_txt"])
+                recorded_prompt = SpeechToText(
+                    speech=msgs_to_compare["user_audio"],
+                    engine=self.stt_engine,
+                    language=self.language,
+                    timeout=self.timeout,
+                    general_token_usage_db=self.general_token_usage_db,
+                    token_usage_db=self.token_usage_db,
+                ).text
+                recorded_prompt = _get_lower_alphanumeric(recorded_prompt)
+
+                user_words = str2_minus_str1(
+                    str1=assistant_msg.strip(), str2=recorded_prompt.strip()
+                ).strip()
+                if user_words:
+                    logger.debug(
+                        "Detected user words while assistant was speaking: {}",
+                        user_words,
+                    )
+                    if any(
+                        cancel_cmd in user_words for cancel_cmd in self.cancel_expressions
+                    ):
+                        logger.debug(
+                            "Heard '{}'. Signalling for reply to be cancelled...",
+                            user_words,
+                        )
+                        self.interrupt_reply.set()
+            except Exception as error:  # noqa: PERF203, BLE001
+                logger.opt(exception=True).debug(error)
+            finally:
+                check_for_interrupt_expressions_queue.task_done()
 
     def listen(self, duration_seconds: float = np.inf) -> AudioSegment:
         """Record audio from the microphone until user stops."""
