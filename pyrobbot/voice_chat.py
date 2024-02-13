@@ -194,11 +194,11 @@ class VoiceChat(Chat):
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
         tts.set_sample_rate(self.sample_rate)
-        self.mixer.Sound(tts.speech.raw_data).play()
+        channel = self.mixer.Sound(tts.speech.raw_data).play()
         audio_recorded_while_assistant_replies = self.listen(
             duration_seconds=tts.speech.duration_seconds
         )
-        while self.mixer.get_busy():
+        while channel.get_busy():
             pygame.time.wait(100)
 
         msgs_to_compare = {
@@ -251,7 +251,9 @@ class VoiceChat(Chat):
         # Adapted from
         # <https://python-sounddevice.readthedocs.io/en/0.4.6/examples.html#
         #  recording-with-arbitrary-duration>
-        logger.debug("The assistant is listening...")
+        logger.debug(
+            "The assistant is listening for (in principle) {} s...", duration_seconds
+        )
         q = queue.Queue()
 
         def callback(indata, frames, time, status):  # noqa: ARG001
