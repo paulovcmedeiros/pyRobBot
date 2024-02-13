@@ -128,7 +128,6 @@ class VoiceChat(Chat):
                 chime.warning()
                 logger.debug(f"{self.assistant_name}> Waiting for user input...")
                 question = self.questions_queue.get()
-                self.questions_queue.task_done()
                 if question is None:
                     raise EOFError
 
@@ -138,6 +137,8 @@ class VoiceChat(Chat):
             except (KeyboardInterrupt, EOFError):  # noqa: PERF203
                 chime.info()
                 self.exit_chat.set()
+            finally:
+                self.questions_queue.task_done()
 
         logger.debug("Leaving chat")
 
@@ -194,18 +195,19 @@ class VoiceChat(Chat):
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
         tts.set_sample_rate(self.sample_rate)
-        channel = self.mixer.Sound(tts.speech.raw_data).play()
+        self.mixer.Sound(tts.speech.raw_data).play()
         audio_recorded_while_assistant_replies = self.listen(
             duration_seconds=tts.speech.duration_seconds
         )
-        while channel.get_busy():
-            pygame.time.wait(100)
 
         msgs_to_compare = {
             "assistant_txt": tts.text,
             "user_audio": audio_recorded_while_assistant_replies,
         }
         self.check_for_interrupt_expressions_queue.put(msgs_to_compare)
+
+        while self.mixer.get_busy():
+            pygame.time.wait(100)
 
     def check_for_interrupt_expressions_handler(
         self, check_for_interrupt_expressions_queue: queue.Queue
@@ -251,9 +253,15 @@ class VoiceChat(Chat):
         # Adapted from
         # <https://python-sounddevice.readthedocs.io/en/0.4.6/examples.html#
         #  recording-with-arbitrary-duration>
-        logger.debug(
-            "The assistant is listening for (in principle) {} s...", duration_seconds
-        )
+        debug_msg = "The assistant is listening"
+        if duration_seconds < np.inf:
+            debug_msg += f" for {duration_seconds} s"
+        debug_msg += "..."
+
+        inactivity_timeout_seconds = self.inactivity_timeout_seconds
+        if duration_seconds < np.inf:
+            inactivity_timeout_seconds = duration_seconds
+
         q = queue.Queue()
 
         def callback(indata, frames, time, status):  # noqa: ARG001
@@ -269,18 +277,17 @@ class VoiceChat(Chat):
             callback=callback,
             dtype="int16",  # int16, i.e., 2 bytes per sample
         ):
-            # Recording will stop after self.inactivity_timeout_seconds of silence
+            logger.debug("{}", debug_msg)
+            # Recording will stop after inactivity_timeout_seconds of silence
             voice_activity_detected = deque(
-                maxlen=int(
-                    (1000.0 * self.inactivity_timeout_seconds) / self.frame_duration
-                )
+                maxlen=int((1000.0 * inactivity_timeout_seconds) / self.frame_duration)
             )
             last_inactivity_checked = datetime.now()
-            user_is_speaking = True
+            continue_recording = True
             speech_detected = False
             elapsed_time = 0.0
             with contextlib.suppress(KeyboardInterrupt):
-                while user_is_speaking and elapsed_time < duration_seconds:
+                while continue_recording and elapsed_time < duration_seconds:
                     new_data = q.get()
                     sound_file.write(new_data)
 
@@ -298,24 +305,26 @@ class VoiceChat(Chat):
 
                     # Decide if user has been inactive for too long
                     now = datetime.now()
-                    if (
+                    if duration_seconds < np.inf:
+                        continue_recording = True
+                    elif (
                         now - last_inactivity_checked
-                    ).seconds >= self.inactivity_timeout_seconds:
+                    ).seconds >= inactivity_timeout_seconds:
                         speech_likelihood = 0.0
                         if len(voice_activity_detected) > 0:
                             speech_likelihood = sum(voice_activity_detected) / len(
                                 voice_activity_detected
                             )
-                        user_is_speaking = (
+                        continue_recording = (
                             speech_likelihood >= self.speech_likelihood_threshold
                         )
-                        if user_is_speaking:
+                        if continue_recording:
                             speech_detected = True
                         last_inactivity_checked = now
 
                     elapsed_time = (now - start_time).seconds
 
-        if speech_detected:
+        if speech_detected or duration_seconds < np.inf:
             return AudioSegment.from_wav(raw_buffer)
         return AudioSegment.empty()
 
@@ -323,10 +332,11 @@ class VoiceChat(Chat):
         """Handle the queue of questions to be answered."""
         minimum_prompt_duration_seconds = 0.1
         while not self.exit_chat.is_set():
-            try:
-                if self._assistant_still_replying():
-                    continue
+            if self._assistant_still_replying():
+                pygame.time.wait(100)
+                continue
 
+            try:
                 audio = self.listen()
                 if audio is None:
                     questions_queue.put(None)
