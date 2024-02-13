@@ -225,7 +225,7 @@ class Chat(AlternativeConstructors):
                 "Consider the following dialogue AND NOTHING MORE:\n\n"
                 f"{last_msg_exchange}\n\n"
                 "Now answer the following question using only 'yes' or 'no':\n"
-                "Did `you` or `user` imply or mention the need for search online?\n\n"
+                "Did `you` or `user` imply or mention the need to search online?\n\n"
             )
 
             reply = "".join(

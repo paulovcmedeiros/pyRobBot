@@ -172,7 +172,14 @@ class VoiceChat(Chat):
             else:
                 # The answer chunk is to be spoken
                 sentence += answer_chunk
-                if answer_chunk.strip().endswith(("?", "!", ".")):
+                stripd_chunk = answer_chunk.strip()
+                if stripd_chunk.endswith(("?", "!", ".")):
+                    # Check if second last character is a number, to avoid splitting
+                    if stripd_chunk.endswith("."):
+                        with contextlib.suppress(IndexError):
+                            previous_char = sentence.strip()[-2]
+                            if previous_char.isdigit():
+                                continue
                     # Send sentence for TTS even if the request hasn't finished
                     self.tts_conversion_queue.put(sentence)
                     sentence = ""
