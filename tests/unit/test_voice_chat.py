@@ -40,7 +40,7 @@ def test_speak(default_voice_chat, mocker):
     mocker.patch("pyrobbot.voice_chat._get_lower_alphanumeric", return_value="ok cancel")
     mocker.patch(
         "pyrobbot.voice_chat.VoiceChat.listen",
-        return_value=AudioSegment.silent(duration=100),
+        return_value=AudioSegment.silent(duration=150),
     )
     default_voice_chat.speak(tts)
 
@@ -53,4 +53,17 @@ def test_interrupt_reply(default_voice_chat):
     default_voice_chat.interrupt_reply.set()
     default_voice_chat.questions_queue.get = lambda: None
     default_voice_chat.questions_queue.task_done = lambda: None
+    default_voice_chat.start()
+
+
+def test_handle_interrupt_expressions(default_voice_chat, mocker):
+    mocker.patch("pyrobbot.general_utils.str2_minus_str1", return_value="cancel")
+    default_voice_chat.questions_queue.get = lambda: None
+    default_voice_chat.questions_queue.task_done = lambda: None
+    default_voice_chat.questions_queue.answer_question = lambda _question: None
+    msgs_to_compare = {
+        "assistant_txt": "foo",
+        "user_audio": AudioSegment.silent(duration=150),
+    }
+    default_voice_chat.check_for_interrupt_expressions_queue.put(msgs_to_compare)
     default_voice_chat.start()

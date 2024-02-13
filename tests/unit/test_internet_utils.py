@@ -1,12 +1,13 @@
+import contextlib
+
 import duckduckgo_search
 
 from pyrobbot.internet_utils import websearch
 
 # if called inside tests or fixtures. Leave it like this for now.
-try:
+search_results = []
+with contextlib.suppress(duckduckgo_search.exceptions.RateLimitException):
     search_results = list(websearch("foobar"))
-except duckduckgo_search.exceptions.RateLimitException:
-    search_results = []
 
 
 def test_websearch():
