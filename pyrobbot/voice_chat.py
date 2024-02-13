@@ -90,6 +90,7 @@ class VoiceChat(Chat):
             daemon=True,
         )
         self.interrupt_reply = threading.Event()
+        self.exit_chat = threading.Event()
 
     def start(self):
         """Start the chat."""
@@ -103,7 +104,7 @@ class VoiceChat(Chat):
         self.questions_listening_watcher_thread.start()
         self.check_for_interrupt_expressions_thread.start()
 
-        while True:
+        while not self.exit_chat.is_set():
             try:
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
@@ -136,7 +137,7 @@ class VoiceChat(Chat):
 
             except (KeyboardInterrupt, EOFError):  # noqa: PERF203
                 chime.info()
-                break
+                self.exit_chat.set()
 
         logger.debug("Leaving chat")
 
@@ -147,7 +148,7 @@ class VoiceChat(Chat):
         inside_code_block = False
         at_least_one_code_line_written = False
         for answer_chunk in self.respond_user_prompt(prompt=question):
-            if self.interrupt_reply.is_set():
+            if self.interrupt_reply.is_set() or self.exit_chat.is_set():
                 return
 
             fmtd_chunk = answer_chunk.strip(" \n")
@@ -210,7 +211,7 @@ class VoiceChat(Chat):
         self, check_for_interrupt_expressions_queue: queue.Queue
     ):
         """Check for expressions that interrupt the assistant's reply."""
-        while True:
+        while not self.exit_chat.is_set():
             try:
                 msgs_to_compare = check_for_interrupt_expressions_queue.get()
                 assistant_msg = _get_lower_alphanumeric(msgs_to_compare["assistant_txt"])
@@ -319,7 +320,7 @@ class VoiceChat(Chat):
     def handle_question_listening(self, questions_queue: queue.Queue):
         """Handle the queue of questions to be answered."""
         minimum_prompt_duration_seconds = 0.1
-        while True:
+        while not self.exit_chat.is_set():
             try:
                 if self._assistant_still_replying():
                     continue
@@ -358,7 +359,7 @@ class VoiceChat(Chat):
 
     def handle_speech_queue(self, speech_queue: queue.Queue[TextToSpeech]):
         """Handle the queue of audio segments to be played."""
-        while True:
+        while not self.exit_chat.is_set():
             try:
                 speech = speech_queue.get()
                 if speech and not self.interrupt_reply.is_set():
@@ -370,7 +371,7 @@ class VoiceChat(Chat):
 
     def handle_tts_queue(self, text_queue: queue.Queue):
         """Handle the text-to-speech queue."""
-        while True:
+        while not self.exit_chat.is_set():
             try:
                 text = text_queue.get()
                 if text and not self.interrupt_reply.is_set():
