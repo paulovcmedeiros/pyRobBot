@@ -63,12 +63,11 @@ class Chat(AlternativeConstructors):
             f"unless otherwise instructed by {self.username}\n"
             f"You must reply in {self.language} unless otherwise instructed\n"
             "> If asked to look up online, web internet etc, *you MUST ALWAYS AGREE*\n"
-            "\n*IMPORTANT*: If you are not able to provide information from your "
-            "training data, then, unless your answer is already derived from an "
-            "online search:\n"
-            "  > Do NOT apologise or give any excuses or imply you are not able to "
-            "provide the information\n"
-            "  > STATE CLEARLY that YOU *WILL* look it up online NOW.\n"
+            "\n*IMPORTANT*: If you can't find information neither in your training data "
+            "nor in the the conversation context, then, unless you have already looked up"
+            "online, you MUST:\n"
+            "  > Skip any apologies or excuses\n"
+            "  > STATE CLEARLY that YOU *WILL* look it up *online* NOW\n"
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -226,7 +225,7 @@ class Chat(AlternativeConstructors):
                 "Consider the following dialogue AND NOTHING MORE:\n\n"
                 f"{last_msg_exchange}\n\n"
                 "Now answer the following question using only 'yes' or 'no':\n"
-                "Did `you` or `user` imply or mention the need to search online?\n\n"
+                "Did `you` or `user` imply or mention searching for information online?\n"
             )
 
             reply = "".join(
@@ -263,9 +262,6 @@ class Chat(AlternativeConstructors):
                     json.dumps(result, indent=2) for result in websearch(internet_query)
                 )
                 if web_results_json_dumps:
-                    yield " " + self._translate(
-                        " I've got some results. Let me summarise them for you..."
-                    )
                     logger.opt(colors=True).debug(
                         "Web search rtn: <yellow>{}</yellow>...", web_results_json_dumps
                     )
@@ -276,7 +272,7 @@ class Chat(AlternativeConstructors):
                         "You will be shown a `json` and a `prompt`. Your task is to "
                         "summarise the `json` to answer the `prompt`. "
                         "You MUST follow the rules below:\n\n"
-                        "* ALWAYS summarise the `json` and provide an answer\n"
+                        "* ALWAYS provide a meaningful summary to the the `json`\n"
                         "* Do NOT include links or anything a human can't pronounce, "
                         "unless otherwise instructed\n"
                         "* Prefer searches without quotes but use them if needed\n"
@@ -289,6 +285,10 @@ class Chat(AlternativeConstructors):
                     )
                     prompt += f"\n```json\n{web_results_json_dumps}\n```\n"
                     prompt += f"\n`prompt`: '{original_prompt}'"
+
+                    yield " " + self._translate(
+                        " I've got some results. Let me summarise them for you..."
+                    )
 
                     full_reply_content += " "
                     yield " "
