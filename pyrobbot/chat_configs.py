@@ -188,7 +188,7 @@ class VoiceAssistantConfigs(BaseConfigModel):
     )
 
     cancel_expressions: list[str] = Field(
-        default=["ok", "okay", "cancel", "stop"],
+        default=["ok", "okay", "cancel", "stop", "listen"],
         description="Word(s) to use in order to cancel the current reply",
     )
 
