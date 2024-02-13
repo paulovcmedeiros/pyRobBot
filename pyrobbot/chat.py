@@ -66,7 +66,8 @@ class Chat(AlternativeConstructors):
             "\n*IMPORTANT*: If you are not able to provide information from your "
             "training data, then, unless your answer is already derived from an "
             "online search:\n"
-            "  > Do NOT apologise or give any excuses\n"
+            "  > Do NOT apologise or give any excuses or imply you are not able to "
+            "provide the information\n"
             "  > STATE CLEARLY that YOU *WILL* look it up online NOW.\n"
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
