@@ -230,13 +230,9 @@ class VoiceChat(Chat):
                     msgs_to_compare.get("assistant_txt", "")
                 ).strip()
 
-                if assistant_msg:
-                    user_words = str2_minus_str1(
-                        str1=assistant_msg, str2=recorded_prompt
-                    ).strip()
-                else:
-                    user_words = recorded_prompt
-
+                user_words = str2_minus_str1(
+                    str1=assistant_msg, str2=recorded_prompt
+                ).strip()
                 if user_words:
                     logger.debug(
                         "Detected user words while assistant was replying: {}",
@@ -339,25 +335,16 @@ class VoiceChat(Chat):
         """Handle the queue of questions to be answered."""
         minimum_prompt_duration_seconds = 0.05
         while not self.exit_chat.is_set():
+            if self._assistant_still_replying():
+                pygame.time.wait(100)
+                continue
             try:
-                if self.mixer.get_busy():
-                    pygame.time.wait(50)
-                    continue
-                assistant_still_replying = self._assistant_still_replying()
-
                 audio = self.listen()
                 if audio is None:
                     questions_queue.put(None)
                     continue
 
                 if audio.duration_seconds < minimum_prompt_duration_seconds:
-                    continue
-
-                if assistant_still_replying:
-                    if not self.interrupt_reply.is_set():
-                        self.check_for_interrupt_expressions_queue.put(
-                            {"user_audio": audio}
-                        )
                     continue
 
                 question = SpeechToText(
