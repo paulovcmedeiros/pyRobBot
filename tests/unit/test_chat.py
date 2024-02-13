@@ -70,3 +70,26 @@ def test_can_read_chat_from_cache(default_chat):
 def test_create_from_cache_returns_default_chat_if_invalid_cachedir(default_chat, caplog):
     _ = Chat.from_cache(default_chat.cache_dir / "foobar")
     assert "Creating Chat with default configs" in caplog.text
+
+
+@pytest.mark.usefixtures("_input_builtin_mocker")
+@pytest.mark.parametrize("user_input", ["regular-input"])
+def test_internet_search_can_be_triggered(default_chat, mocker):
+    mocker.patch(
+        "pyrobbot.openai_utils.make_api_chat_completion_call", return_value=iter(["yes"])
+    )
+    mocker.patch("pyrobbot.chat.Chat.respond_system_prompt", return_value=iter(["yes"]))
+    mocker.patch(
+        "pyrobbot.internet_utils.raw_websearch",
+        return_value=iter(
+            [
+                {
+                    "href": "foo/bar",
+                    "summary": 50 * "foo ",
+                    "detailed": 50 * "foo ",
+                    "relevance": 1.0,
+                }
+            ]
+        ),
+    )
+    default_chat.start()

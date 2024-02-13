@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Implementation of the Chat class."""
+import contextlib
 import json
 import shutil
 import uuid
@@ -165,10 +166,9 @@ class Chat(AlternativeConstructors):
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
         default_greeting = f"Hi! I'm {self.assistant_name}. How can I assist you?"
-        try:
+        passed_greeting = ""
+        with contextlib.suppress(AttributeError):
             passed_greeting = self._initial_greeting.strip()
-        except AttributeError:
-            passed_greeting = ""
 
         if not passed_greeting:
             self._initial_greeting = default_greeting
