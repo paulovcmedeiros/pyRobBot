@@ -18,7 +18,7 @@ from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
 from .internet_utils import websearch
 from .openai_utils import make_api_chat_completion_call
-from .tokens import TokenUsageDatabase
+from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
 
 
 class Chat(AlternativeConstructors):
@@ -108,7 +108,7 @@ class Chat(AlternativeConstructors):
         if self.context_model == "full-history":
             return FullHistoryChatContext(parent_chat=self)
 
-        if self.context_model == "text-embedding-ada-002":
+        if self.context_model in PRICE_PER_K_TOKENS_EMBEDDINGS:
             return EmbeddingBasedChatContext(parent_chat=self)
 
         raise NotImplementedError(f"Unknown context model: {self.context_model}")
@@ -333,9 +333,9 @@ class Chat(AlternativeConstructors):
         """Report token usage and associated costs."""
         dfs = {}
         if report_general:
-            dfs[
-                "All Recorded Chats"
-            ] = self.general_token_usage_db.get_usage_balance_dataframe()
+            dfs["All Recorded Chats"] = (
+                self.general_token_usage_db.get_usage_balance_dataframe()
+            )
         if report_current_chat:
             dfs["Current Chat"] = self.token_usage_db.get_usage_balance_dataframe()
 

@@ -1,4 +1,5 @@
 """Code for the creation streamlit apps with dynamically created pages."""
+
 import contextlib
 import datetime
 from abc import ABC, abstractmethod, abstractproperty
@@ -177,9 +178,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
         """Save a widget's 'previous value`, to be read by `get_widget_previous_value`."""
         if "widget_previous_value" not in self.selected_page.state:
             self.selected_page.state["widget_previous_value"] = {}
-        self.selected_page.state["widget_previous_value"][
-            element_key
-        ] = st.session_state.get(element_key)
+        self.selected_page.state["widget_previous_value"][element_key] = (
+            st.session_state.get(element_key)
+        )
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""

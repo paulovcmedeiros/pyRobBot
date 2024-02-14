@@ -10,7 +10,8 @@ from typing import Literal, Optional, get_args, get_origin
 
 from pydantic import BaseModel, Field
 
-from pyrobbot import GeneralConstants
+from . import GeneralConstants
+from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, PRICE_PER_K_TOKENS_LLM
 
 
 class BaseConfigModel(BaseModel, extra="forbid"):
@@ -87,14 +88,8 @@ class OpenAiApiCallOptions(BaseConfigModel):
     _openai_url = "https://platform.openai.com/docs/api-reference/chat/create#chat-create"
     _models_url = "https://platform.openai.com/docs/models"
 
-    model: Literal[
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-16k",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
-        "gpt-3.5-turbo",  # Will point to gpt-3.5-turbo-1106 starting Dec 11, 2023
-        "gpt-4-1106-preview",
-        "gpt-4",
-    ] = Field(
-        default="gpt-3.5-turbo-1106",
+    model: Literal[tuple(PRICE_PER_K_TOKENS_LLM)] = Field(
+        default=next(iter(PRICE_PER_K_TOKENS_LLM)),
         description=f"OpenAI LLM model to use. See {_openai_url}-model and {_models_url}",
     )
     max_tokens: Optional[int] = Field(
@@ -136,8 +131,8 @@ class ChatOptions(OpenAiApiCallOptions):
         ),
         description="Initial instructions for the AI",
     )
-    context_model: Literal["text-embedding-ada-002", "full-history"] = Field(
-        default="text-embedding-ada-002",
+    context_model: Literal[tuple(PRICE_PER_K_TOKENS_EMBEDDINGS)] = Field(
+        default=next(iter(PRICE_PER_K_TOKENS_EMBEDDINGS)),
         description=(
             "Model to use for chat context (~memory). "
             + "Once picked, it cannot be changed."
@@ -178,9 +173,9 @@ class VoiceAssistantConfigs(BaseConfigModel):
         description="The preferred speech-to-text engine to use. The `google` engine is "
         "free (for now, at least); the `openai` engine is less succeptible to outages.",
     )
-    openai_tts_voice: Literal[
-        "alloy", "echo", "fable", "onyx", "nova", "shimmer"
-    ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")
+    openai_tts_voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = (
+        Field(default="onyx", description="Voice to use for OpenAI's TTS")
+    )
 
     exit_expressions: list[str] = Field(
         default=["bye-bye", "ok bye-bye", "okay bye-bye"],
