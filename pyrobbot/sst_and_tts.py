@@ -1,4 +1,5 @@
 """Code related to speech-to-text and text-to-speech conversions."""
+
 import io
 import socket
 from dataclasses import dataclass, field

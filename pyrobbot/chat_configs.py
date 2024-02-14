@@ -173,9 +173,9 @@ class VoiceAssistantConfigs(BaseConfigModel):
         description="The preferred speech-to-text engine to use. The `google` engine is "
         "free (for now, at least); the `openai` engine is less succeptible to outages.",
     )
-    openai_tts_voice: Literal[
-        "alloy", "echo", "fable", "onyx", "nova", "shimmer"
-    ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")
+    openai_tts_voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = (
+        Field(default="onyx", description="Voice to use for OpenAI's TTS")
+    )
 
     exit_expressions: list[str] = Field(
         default=["bye-bye", "ok bye-bye", "okay bye-bye"],

@@ -1,4 +1,5 @@
 """Code related to the voice chat feature."""
+
 import contextlib
 import io
 import queue

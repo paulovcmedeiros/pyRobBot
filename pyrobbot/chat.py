@@ -333,9 +333,9 @@ class Chat(AlternativeConstructors):
         """Report token usage and associated costs."""
         dfs = {}
         if report_general:
-            dfs[
-                "All Recorded Chats"
-            ] = self.general_token_usage_db.get_usage_balance_dataframe()
+            dfs["All Recorded Chats"] = (
+                self.general_token_usage_db.get_usage_balance_dataframe()
+            )
         if report_current_chat:
             dfs["Current Chat"] = self.token_usage_db.get_usage_balance_dataframe()
 

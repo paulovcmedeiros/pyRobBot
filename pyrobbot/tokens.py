@@ -1,4 +1,5 @@
 """Management of token usage and costs for OpenAI API."""
+
 import datetime
 import sqlite3
 from pathlib import Path

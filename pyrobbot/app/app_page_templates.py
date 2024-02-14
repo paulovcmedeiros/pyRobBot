@@ -1,4 +1,5 @@
 """Utilities for creating pages in a streamlit app."""
+
 import contextlib
 import datetime
 import sys

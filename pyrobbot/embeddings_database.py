@@ -1,4 +1,5 @@
 """Management of embeddings/chat history storage and retrieval."""
+
 import datetime
 import json
 import sqlite3

@@ -1,4 +1,5 @@
 """Utils for using the OpenAI API."""
+
 from typing import TYPE_CHECKING
 
 import openai

@@ -1,4 +1,5 @@
 """Entrypoint for the package's UI."""
+
 from pyrobbot import GeneralConstants
 from pyrobbot.app.multipage import MultipageChatbotApp
 
