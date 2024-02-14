@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import shutil
 from abc import ABC, abstractmethod, abstractproperty
 
 import streamlit as st
@@ -178,9 +179,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
         """Save a widget's 'previous value`, to be read by `get_widget_previous_value`."""
         if "widget_previous_value" not in self.selected_page.state:
             self.selected_page.state["widget_previous_value"] = {}
-        self.selected_page.state["widget_previous_value"][element_key] = (
-            st.session_state.get(element_key)
-        )
+        self.selected_page.state["widget_previous_value"][
+            element_key
+        ] = st.session_state.get(element_key)
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
@@ -190,15 +191,15 @@ class MultipageChatbotApp(AbstractMultipageApp):
             "embeddings.db",
             "metadata.json",
         ]
-        yield from sorted(
-            (
-                directory
-                for directory in GeneralConstants.current_user_cache_dir.glob("chat_*/")
-                if all((directory / fname).exists() for fname in required_files)
-            ),
+        for directory in sorted(
+            (direc for direc in GeneralConstants.current_user_cache_dir.glob("chat_*/")),
             key=lambda fpath: fpath.stat().st_mtime,
             reverse=True,
-        )
+        ):
+            if all((directory / fname).exists() for fname in required_files):
+                yield directory
+            else:
+                shutil.rmtree(directory, ignore_errors=True)
 
     def handle_ui_page_selection(self):
         """Control page selection and removal in the UI sidebar."""
