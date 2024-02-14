@@ -184,11 +184,17 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
-        return sorted(
+        required_files = [
+            "chat_token_usage.db",
+            "configs.json",
+            "embeddings.db",
+            "metadata.json",
+        ]
+        yield from sorted(
             (
                 directory
                 for directory in GeneralConstants.current_user_cache_dir.glob("chat_*/")
-                if next(directory.iterdir(), False)
+                if all((directory / fname).exists() for fname in required_files)
             ),
             key=lambda fpath: fpath.stat().st_mtime,
             reverse=True,

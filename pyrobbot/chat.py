@@ -387,8 +387,7 @@ class Chat(AlternativeConstructors):
         return translation
 
     def __del__(self):
-        embedding_model = self.context_handler.database.get_embedding_model()
-        chat_started = embedding_model is not None
+        chat_started = self.context_handler.database.n_entries > 0
         if self.private_mode or not chat_started:
             self.clear_cache()
         else:
