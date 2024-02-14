@@ -6,10 +6,11 @@ import os
 import shutil
 from abc import ABC, abstractmethod, abstractproperty
 
+import openai
 import streamlit as st
 from pydantic import ValidationError
 
-from pyrobbot import GeneralConstants
+from pyrobbot import GeneralDefinitions
 from pyrobbot.app.app_page_templates import (
     _ASSISTANT_AVATAR_IMAGE,
     AppPage,
@@ -124,18 +125,24 @@ class MultipageChatbotApp(AbstractMultipageApp):
             st.session_state[app_state_id] = {}
         return st.session_state[app_state_id]
 
-    def init_chat_credentials(self):
-        """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
+    @property
+    def openai_client(self) -> openai.OpenAI:
+        """Return the OpenAI client."""
+        if "openai_client" not in self.state:
+            self.state["openai_client"] = openai.OpenAI(api_key=self.openai_api_key)
+        return self.state["openai_client"]
+
+    def create_api_key_element(self):
+        """Create an input element for the OpenAI API key."""
         self.openai_api_key = st.text_input(
             label="OpenAI API Key (required)",
-            value=GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY,
+            value=os.environ.get("OPENAI_API_KEY", ""),
             placeholder="Enter your OpenAI API key",
             key="openai_api_key",
             type="password",
             help="[OpenAI API auth key](https://platform.openai.com/account/api-keys). "
             + "Chats created with this key won't be visible to people using other keys.",
         )
-        os.environ["OPENAI_API_KEY"] = self.openai_api_key
         if not self.openai_api_key:
             st.write(":red[You need a valid key to use the chat]")
 
@@ -181,8 +188,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
             "embeddings.db",
             "metadata.json",
         ]
+        openai_client_cache_dir = GeneralDefinitions.get_openai_client_cache_dir(
+            openai_client=self.openai_client
+        )
         for directory in sorted(
-            (direc for direc in GeneralConstants.current_user_cache_dir.glob("chat_*/")),
+            (direc for direc in openai_client_cache_dir.glob("chat_*/")),
             key=lambda fpath: fpath.stat().st_mtime,
             reverse=True,
         ):
@@ -222,16 +232,16 @@ class MultipageChatbotApp(AbstractMultipageApp):
         with st.sidebar:
             _left_col, centre_col, _right_col = st.columns([0.33, 0.34, 0.33])
             with centre_col:
-                st.title(GeneralConstants.APP_NAME)
+                st.title(GeneralDefinitions.APP_NAME)
                 with contextlib.suppress(AttributeError, ValueError, OSError):
                     # st image raises some exceptions occasionally
                     st.image(_ASSISTANT_AVATAR_IMAGE, use_column_width=True)
             st.subheader(
-                GeneralConstants.PACKAGE_DESCRIPTION,
+                GeneralDefinitions.PACKAGE_DESCRIPTION,
                 divider="rainbow",
                 help="https://github.com/paulovcmedeiros/pyRobBot",
             )
-            self.init_chat_credentials()
+            self.create_api_key_element()
             # Create a sidebar with tabs for chats and settings
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}

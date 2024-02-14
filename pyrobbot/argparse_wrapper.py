@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from . import GeneralConstants
+from . import GeneralDefinitions
 from .chat_configs import ChatOptions, VoiceChatConfigs
 from .command_definitions import (
     accounting_report,
@@ -73,7 +73,7 @@ def get_parsed_args(argv=None, default_command="voice"):
         "--version",
         "-v",
         action="version",
-        version=f"{GeneralConstants.PACKAGE_NAME} v" + GeneralConstants.VERSION,
+        version=f"{GeneralDefinitions.PACKAGE_NAME} v" + GeneralDefinitions.VERSION,
     )
     subparsers = main_parser.add_subparsers(
         title="commands",

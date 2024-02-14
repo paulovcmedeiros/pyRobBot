@@ -20,6 +20,7 @@ from .tokens import TokenUsageDatabase
 class SpeechAndTextConfigs:
     """Configs for speech-to-text and text-to-speech."""
 
+    openai_client: OpenAI
     general_token_usage_db: TokenUsageDatabase
     token_usage_db: TokenUsageDatabase
     engine: Literal["openai", "google"] = "google"
@@ -97,7 +98,7 @@ class SpeechToText(SpeechAndTextConfigs):
         wav_buffer = io.BytesIO(self.audio_data.get_wav_data())
         wav_buffer.name = "audio.wav"
         with wav_buffer as audio_file_buffer:
-            transcript = OpenAI(timeout=self.timeout).audio.transcriptions.create(
+            transcript = self.openai_client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file_buffer,
                 language=self.language.split("-")[0],  # put in ISO-639-1 format
@@ -154,8 +155,6 @@ class TextToSpeech(SpeechAndTextConfigs):
 
     def _tts_openai(self) -> AudioSegment:
         """Convert text to speech using OpenAI's TTS. Return an AudioSegment object."""
-        client = OpenAI(timeout=self.timeout)
-
         openai_tts_model = "tts-1"
 
         @retry()
@@ -165,7 +164,7 @@ class TextToSpeech(SpeechAndTextConfigs):
                 self.token_usage_db,
             ]:
                 db.insert_data(model=openai_tts_model, n_input_tokens=len(self.text))
-            return client.audio.speech.create(*args, **kwargs)
+            return self.openai_client.audio.speech.create(*args, **kwargs)
 
         response = _create_speech(
             input=self.text,

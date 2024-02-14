@@ -32,6 +32,7 @@ def test_listen(default_voice_chat):
 
 def test_speak(default_voice_chat, mocker):
     tts = TextToSpeech(
+        openai_client=default_voice_chat.openai_client,
         text="foo",
         general_token_usage_db=default_voice_chat.general_token_usage_db,
         token_usage_db=default_voice_chat.token_usage_db,

@@ -12,7 +12,7 @@ import openai
 from loguru import logger
 from tzlocal import get_localzone
 
-from . import GeneralConstants
+from . import GeneralDefinitions
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
@@ -32,17 +32,25 @@ class Chat(AlternativeConstructors):
     _translation_cache = defaultdict(dict)
     default_configs = ChatOptions()
 
-    def __init__(self, configs: ChatOptions = default_configs):
+    def __init__(self, configs: ChatOptions = default_configs, openai_client=None):
         """Initializes a chat instance.
 
         Args:
             configs (ChatOptions, optional): The configurations for this chat session.
+            openai_client (openai.OpenAI, optional): An OpenAI API client instance.
 
         Raises:
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = str(uuid.uuid4())
-        self.initial_openai_key_hash = GeneralConstants.openai_key_hash()
+        try:
+            self.openai_client = openai_client or openai.OpenAI()
+        except openai.OpenAIError as error:
+            logger.opt(exception=True).debug(error)
+            logger.error(
+                "Cannot connect to OpenAI API. Please verify your API key. {}.", error
+            )
+            self.openai_client = None
 
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
@@ -55,10 +63,11 @@ class Chat(AlternativeConstructors):
         msg_content = (
             f"Your name is {self.assistant_name}. Your model is {self.model}\n"
             f"You are a helpful assistant to {self.username}\n"
+            f"You have internet access\n"
             + "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
             + "\n"
-            f"The current city is {GeneralConstants.IPINFO['city']} in "
-            f"{GeneralConstants.IPINFO['country_name']}\n"
+            f"The current city is {GeneralDefinitions.IPINFO['city']} in "
+            f"{GeneralDefinitions.IPINFO['country_name']}\n"
             f"The local datetime is {local_datetime}\n"
             f"\nYou must follow all directives by {self.system_name} "
             f"unless otherwise instructed by {self.username}\n"
@@ -66,9 +75,10 @@ class Chat(AlternativeConstructors):
             "> If asked to look up online, web internet etc, *you MUST ALWAYS AGREE*\n"
             "\n*IMPORTANT*: If you can't find information neither in your training data "
             "nor in the the conversation context, then, unless you have already looked up"
-            "online, you MUST:\n"
-            "  > Skip any apologies or excuses\n"
-            "  > STATE CLEARLY that YOU *WILL* look it up *online* NOW\n"
+            "online, do as follows:\n"
+            "  > Do *NOT* apologise. Do NOT say you are sorry.\n"
+            "  > Do NOT give any excuses. Do NOT ask permission to lookup online.\n"
+            "  > STATE CLEARLY that you will look it up online\n"
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -81,14 +91,12 @@ class Chat(AlternativeConstructors):
         return self._passed_configs.model_validate(configs_dict)
 
     @property
-    def user_cache_dir(self):
-        """Return the general-purpose cache directory assigned to the user."""
-        return GeneralConstants.current_user_cache_dir
-
-    @property
     def cache_dir(self):
         """Return the cache directory for this chat."""
-        directory = self.user_cache_dir / f"chat_{self.id}"
+        client_cache_dir = GeneralDefinitions.get_openai_client_cache_dir(
+            openai_client=self.openai_client
+        )
+        directory = client_cache_dir / f"chat_{self.id}"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -225,7 +233,8 @@ class Chat(AlternativeConstructors):
                 "Consider the following dialogue AND NOTHING MORE:\n\n"
                 f"{last_msg_exchange}\n\n"
                 "Now answer the following question using only 'yes' or 'no':\n"
-                "Did `you` or `user` imply or mention searching for information online?\n"
+                "Were `you` unable to fully answer the request made by `user`, "
+                "or have either of you asked or implied the need for a web search?\n"
             )
 
             reply = "".join(
@@ -255,7 +264,7 @@ class Chat(AlternativeConstructors):
                         skip_check=True,
                     )
                 )
-                yield " " + self._translate(
+                yield "\n\n" + self._translate(
                     "Searching the web now. My search is: "
                 ) + f" '{internet_query}'..."
                 web_results_json_dumps = "\n\n".join(
@@ -272,8 +281,8 @@ class Chat(AlternativeConstructors):
                         "You will be shown a `json` and a `prompt`. Your task is to "
                         "summarise the `json` to answer the `prompt`. "
                         "You MUST follow the rules below:\n\n"
-                        "* ALWAYS provide a meaningful summary to the the `json`\n"
-                        "* Do NOT include links or anything a human can't pronounce, "
+                        "* *ALWAYS* provide a meaningful summary to the the `json`\n"
+                        "* *Do NOT include links* or anything a human can't pronounce, "
                         "unless otherwise instructed\n"
                         "* Prefer searches without quotes but use them if needed\n"
                         "* Answer in human language (i.e., no json, etc)\n"
@@ -286,12 +295,12 @@ class Chat(AlternativeConstructors):
                     prompt += f"\n```json\n{web_results_json_dumps}\n```\n"
                     prompt += f"\n`prompt`: '{original_prompt}'"
 
-                    yield " " + self._translate(
+                    yield "\n\n" + self._translate(
                         " I've got some results. Let me summarise them for you..."
                     )
 
                     full_reply_content += " "
-                    yield " "
+                    yield "\n\n"
                     for chunk in self.respond_system_prompt(
                         prompt=prompt, add_to_history=False, skip_check=True
                     ):
@@ -354,7 +363,8 @@ class Chat(AlternativeConstructors):
         """Return the error message errors getting a response."""
         msg = "Could not get a response right now."
         if error is not None:
-            msg += f" The reason seems to be: {error}"
+            msg += f" The reason seems to be: {error} "
+            msg += "Please check your connection or OpenAI API key."
             logger.opt(exception=True).debug(error)
         return msg
 

@@ -12,14 +12,14 @@ import streamlit as st
 from loguru import logger
 from PIL import Image
 
-from pyrobbot import GeneralConstants
+from pyrobbot import GeneralDefinitions
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
 
 if TYPE_CHECKING:
     from pyrobbot.app.multipage import MultipageChatbotApp
 
-_AVATAR_FILES_DIR = GeneralConstants.APP_DIR / "data"
+_AVATAR_FILES_DIR = GeneralDefinitions.APP_DIR / "data"
 _ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"
 _USER_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "user_avatar.png"
 _ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
@@ -145,7 +145,9 @@ class ChatBotPage(AppPage):
     def chat_obj(self) -> Chat:
         """Return the chat object responsible for the queries in this page."""
         if "chat_obj" not in self.state:
-            self.chat_obj = Chat(self.chat_configs)
+            self.chat_obj = Chat(
+                self.chat_configs, openai_client=self.parent.openai_client
+            )
         return self.state["chat_obj"]
 
     @chat_obj.setter
@@ -154,6 +156,7 @@ class ChatBotPage(AppPage):
         if current_chat:
             current_chat.save_cache()
             new_chat_obj.id = current_chat.id
+        new_chat_obj.openai_client = self.parent.openai_client
         self.state["chat_obj"] = new_chat_obj
         self.state["chat_configs"] = new_chat_obj.configs
         new_chat_obj.save_cache()

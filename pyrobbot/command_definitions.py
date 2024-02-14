@@ -4,7 +4,7 @@ import subprocess
 
 from loguru import logger
 
-from . import GeneralConstants
+from . import GeneralDefinitions
 from .chat import Chat
 from .chat_configs import ChatOptions
 from .voice_chat import VoiceChat
@@ -17,17 +17,17 @@ def voice_chat(args):
 
 def browser_chat(args):
     """Run the chat on the browser."""
-    ChatOptions.from_cli_args(args).export(fpath=GeneralConstants.PARSED_ARGS_FILE)
+    ChatOptions.from_cli_args(args).export(fpath=GeneralDefinitions.PARSED_ARGS_FILE)
     try:
         subprocess.run(
             [  # noqa: S603, S607
                 "streamlit",
                 "run",
-                GeneralConstants.APP_PATH.as_posix(),
+                GeneralDefinitions.APP_PATH.as_posix(),
                 "--",
-                GeneralConstants.PARSED_ARGS_FILE.as_posix(),
+                GeneralDefinitions.PARSED_ARGS_FILE.as_posix(),
             ],
-            cwd=GeneralConstants.APP_DIR.as_posix(),
+            cwd=GeneralDefinitions.APP_DIR.as_posix(),
             check=True,
         )
     except (KeyboardInterrupt, EOFError):
