@@ -181,9 +181,15 @@ class VoiceAssistantConfigs(BaseConfigModel):
     openai_tts_voice: Literal[
         "alloy", "echo", "fable", "onyx", "nova", "shimmer"
     ] = Field(default="onyx", description="Voice to use for OpenAI's TTS")
+
     exit_expressions: list[str] = Field(
         default=["bye-bye", "ok bye-bye", "okay bye-bye"],
         description="Expression(s) to use in order to exit the chat",
+    )
+
+    cancel_expressions: list[str] = Field(
+        default=["ok", "okay", "cancel", "stop", "listen"],
+        description="Word(s) to use in order to cancel the current reply",
     )
 
     inactivity_timeout_seconds: int = Field(

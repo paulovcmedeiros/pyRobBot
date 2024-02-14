@@ -2,48 +2,44 @@
 import contextlib
 import io
 import queue
-import re
-import socket
 import threading
+import time
 from collections import deque
 from datetime import datetime
-from functools import partial
 
 import chime
 import numpy as np
 import pydub
-import scipy.io.wavfile as wav
+import pygame
 import soundfile as sf
-import speech_recognition as sr
 import webrtcvad
-from gtts import gTTS
 from loguru import logger
-from openai import OpenAI
+from pydub import AudioSegment
 
 from .chat import Chat
 from .chat_configs import VoiceChatConfigs
-from .general_utils import retry
+from .general_utils import _get_lower_alphanumeric, str2_minus_str1
+from .sst_and_tts import SpeechToText, TextToSpeech
 
 try:
     import sounddevice as sd
-
-    _sounddevice_imported = True
 except OSError as error:
     logger.error(error)
     logger.error(
         "Can't use module `sounddevice`. Please check your system's PortAudio install."
     )
     _sounddevice_imported = False
+else:
+    _sounddevice_imported = True
 
 try:
-    # Test if AudioSegment.from_mp3() can be used
+    # Test if pydub's AudioSegment can be used
     with contextlib.suppress(pydub.exceptions.CouldntDecodeError):
-        pydub.AudioSegment.from_mp3(io.BytesIO())
+        AudioSegment.from_mp3(io.BytesIO())
 except (ImportError, OSError, FileNotFoundError) as error:
     logger.error(
         "{}. Can't use module `pydub`. Please check your system's ffmpeg install.", error
     )
-    logger.warning("Using Google's TTS instead of OpenAI's, which requires `pydub`.")
     _pydub_imported = False
 else:
     _pydub_imported = True
@@ -56,55 +52,309 @@ class VoiceChat(Chat):
 
     def __init__(self, configs: VoiceChatConfigs = default_configs):
         """Initializes a chat instance."""
-        if not _sounddevice_imported:
-            raise ImportError(
-                "Module `sounddevice`, needed for audio recording, is not available."
-            )
-        # Import it here to prevent the hello message from being printed when not needed
-        import pygame
-
+        _check_needed_imports()
         super().__init__(configs=configs)
 
-        self.pygame = pygame
-        self.mixer = pygame.mixer
-        self.vad = webrtcvad.Vad(2)
-        self.mixer.init()
-        chime.theme("big-sur")
+        self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
 
-        # Create queues for TTS processing and speech playing
+        self.mixer = pygame.mixer
+        self.mixer.init(frequency=self.sample_rate, channels=1, buffer=self.block_size)
+
+        self.vad = webrtcvad.Vad(2)
+
+        self.default_chime_theme = "big-sur"
+        chime.theme(self.default_chime_theme)
+
+        # Create queues and threads for handling the chat
+        # 1. Watching for questions from the user
+        self.questions_queue = queue.Queue()
+        self.questions_listening_watcher_thread = threading.Thread(
+            target=self.handle_question_listening,
+            args=(self.questions_queue,),
+            daemon=True,
+        )
+        # 2. Converting assistant's text reply to speech and playing it
         self.tts_conversion_queue = queue.Queue()
         self.play_speech_queue = queue.Queue()
-        # Create threads to watch the TTS and speech playing queues
         self.tts_conversion_watcher_thread = threading.Thread(
-            target=self.get_tts, args=(self.tts_conversion_queue,), daemon=True
+            target=self.handle_tts_queue, args=(self.tts_conversion_queue,), daemon=True
         )
         self.play_speech_thread = threading.Thread(
-            target=self.speak, args=(self.play_speech_queue,), daemon=True
+            target=self.handle_speech_queue, args=(self.play_speech_queue,), daemon=True
         )
-        self.tts_conversion_watcher_thread.start()
-        self.play_speech_thread.start()
+        # 3. Watching for expressions that cancel the reply or exit the chat
+        self.check_for_interrupt_expressions_queue = queue.Queue()
+        self.check_for_interrupt_expressions_thread = threading.Thread(
+            target=self.check_for_interrupt_expressions_handler,
+            args=(self.check_for_interrupt_expressions_queue,),
+            daemon=True,
+        )
+        self.interrupt_reply = threading.Event()
+        self.exit_chat = threading.Event()
 
-    def start(self):  # noqa: PLR0912, PLR0915
+    def start(self):
         """Start the chat."""
         # ruff: noqa: T201
+        self.tts_conversion_watcher_thread.start()
+        self.play_speech_thread.start()
         if not self.skip_initial_greeting:
             self.tts_conversion_queue.put(self.initial_greeting)
+            while self._assistant_still_replying():
+                pygame.time.wait(50)
+        self.questions_listening_watcher_thread.start()
+        self.check_for_interrupt_expressions_thread.start()
 
-        try:
-            previous_question_answered = True
-            while True:
-                # Wait for all items in the queue to be processed
+        while not self.exit_chat.is_set():
+            try:
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
-                if previous_question_answered:
-                    chime.warning()
-                    previous_question_answered = False
-                    logger.debug(f"{self.assistant_name}> Listening...")
 
-                question = self.listen().strip()
-                if not question:
+                if self.interrupt_reply.is_set():
+                    logger.opt(colors=True).debug(
+                        "<yellow>Interrupting the reply</yellow>"
+                    )
+                    self.interrupt_reply.clear()
+                    with self.check_for_interrupt_expressions_queue.mutex:
+                        self.check_for_interrupt_expressions_queue.queue.clear()
+                    with contextlib.suppress(pygame.error):
+                        self.mixer.stop()
+                    with self.questions_queue.mutex:
+                        self.questions_queue.queue.clear()
+                    chime.theme("material")
+                    chime.error()
+                    chime.theme(self.default_chime_theme)
+                    time.sleep(0.25)
+
+                chime.warning()
+                logger.debug(f"{self.assistant_name}> Waiting for user input...")
+                question = self.questions_queue.get()
+
+                if question is None:
+                    self.exit_chat.set()
+                else:
+                    chime.success()
+                    self.answer_question(question)
+            except (KeyboardInterrupt, EOFError):  # noqa: PERF203
+                self.exit_chat.set()
+            finally:
+                self.questions_queue.task_done()
+
+        chime.info()
+        logger.debug("Leaving chat")
+
+    def answer_question(self, question: str):
+        """Answer a question."""
+        logger.debug("{}> Getting response to '{}'...", self.assistant_name, question)
+        sentence = ""
+        inside_code_block = False
+        at_least_one_code_line_written = False
+        for answer_chunk in self.respond_user_prompt(prompt=question):
+            if self.interrupt_reply.is_set() or self.exit_chat.is_set():
+                return
+
+            fmtd_chunk = answer_chunk.strip(" \n")
+            code_block_start_detected = fmtd_chunk.startswith("``")
+
+            if code_block_start_detected and not inside_code_block:
+                # Toggle the code block state
+                inside_code_block = True
+
+            if inside_code_block:
+                code_chunk = answer_chunk
+                if at_least_one_code_line_written:
+                    inside_code_block = not fmtd_chunk.endswith("``")  # Code block ends
+                    if not inside_code_block:
+                        code_chunk = answer_chunk.rstrip("`") + "```\n"
+                print(
+                    code_chunk,
+                    end="" if inside_code_block else "\n",
+                    flush=True,
+                )
+                at_least_one_code_line_written = True
+            else:
+                # The answer chunk is to be spoken
+                sentence += answer_chunk
+                stripd_chunk = answer_chunk.strip()
+                if stripd_chunk.endswith(("?", "!", ".")):
+                    # Check if second last character is a number, to avoid splitting
+                    if stripd_chunk.endswith("."):
+                        with contextlib.suppress(IndexError):
+                            previous_char = sentence.strip()[-2]
+                            if previous_char.isdigit():
+                                continue
+                    # Send sentence for TTS even if the request hasn't finished
+                    self.tts_conversion_queue.put(sentence)
+                    sentence = ""
+        if sentence:
+            self.tts_conversion_queue.put(sentence)
+        if at_least_one_code_line_written:
+            spoken_info_to_user = "The code has been written to the console"
+            spoken_info_to_user = self._translate(spoken_info_to_user)
+            self.tts_conversion_queue.put(spoken_info_to_user)
+
+    def speak(self, tts: TextToSpeech):
+        """Reproduce audio from a pygame Sound object."""
+        tts.set_sample_rate(self.sample_rate)
+        self.mixer.Sound(tts.speech.raw_data).play()
+        audio_recorded_while_assistant_replies = self.listen(
+            duration_seconds=tts.speech.duration_seconds
+        )
+
+        msgs_to_compare = {
+            "assistant_txt": tts.text,
+            "user_audio": audio_recorded_while_assistant_replies,
+        }
+        self.check_for_interrupt_expressions_queue.put(msgs_to_compare)
+
+        while self.mixer.get_busy():
+            pygame.time.wait(100)
+
+    def check_for_interrupt_expressions_handler(
+        self, check_for_interrupt_expressions_queue: queue.Queue
+    ):
+        """Check for expressions that interrupt the assistant's reply."""
+        while not self.exit_chat.is_set():
+            try:
+                msgs_to_compare = check_for_interrupt_expressions_queue.get()
+                recorded_prompt = SpeechToText(
+                    speech=msgs_to_compare["user_audio"],
+                    engine=self.stt_engine,
+                    language=self.language,
+                    timeout=self.timeout,
+                    general_token_usage_db=self.general_token_usage_db,
+                    token_usage_db=self.token_usage_db,
+                ).text
+
+                recorded_prompt = _get_lower_alphanumeric(recorded_prompt).strip()
+                assistant_msg = _get_lower_alphanumeric(
+                    msgs_to_compare.get("assistant_txt", "")
+                ).strip()
+
+                user_words = str2_minus_str1(
+                    str1=assistant_msg, str2=recorded_prompt
+                ).strip()
+                if user_words:
+                    logger.debug(
+                        "Detected user words while assistant was replying: {}",
+                        user_words,
+                    )
+                    if any(
+                        cancel_cmd in user_words for cancel_cmd in self.cancel_expressions
+                    ):
+                        logger.debug(
+                            "Heard '{}'. Signalling for reply to be cancelled...",
+                            user_words,
+                        )
+                        self.interrupt_reply.set()
+            except Exception as error:  # noqa: PERF203, BLE001
+                logger.opt(exception=True).debug(error)
+            finally:
+                check_for_interrupt_expressions_queue.task_done()
+
+    def listen(self, duration_seconds: float = np.inf) -> AudioSegment:
+        """Record audio from the microphone until user stops."""
+        # Adapted from
+        # <https://python-sounddevice.readthedocs.io/en/0.4.6/examples.html#
+        #  recording-with-arbitrary-duration>
+        debug_msg = "The assistant is listening"
+        if duration_seconds < np.inf:
+            debug_msg += f" for {duration_seconds} s"
+        debug_msg += "..."
+
+        inactivity_timeout_seconds = self.inactivity_timeout_seconds
+        if duration_seconds < np.inf:
+            inactivity_timeout_seconds = duration_seconds
+
+        q = queue.Queue()
+
+        def callback(indata, frames, time, status):  # noqa: ARG001
+            """This is called (from a separate thread) for each audio block."""
+            q.put(indata.copy())
+
+        raw_buffer = io.BytesIO()
+        start_time = datetime.now()
+        with self.get_sound_file(raw_buffer, mode="x") as sound_file, sd.InputStream(
+            samplerate=self.sample_rate,
+            blocksize=self.block_size,
+            channels=1,
+            callback=callback,
+            dtype="int16",  # int16, i.e., 2 bytes per sample
+        ):
+            logger.debug("{}", debug_msg)
+            # Recording will stop after inactivity_timeout_seconds of silence
+            voice_activity_detected = deque(
+                maxlen=int((1000.0 * inactivity_timeout_seconds) / self.frame_duration)
+            )
+            last_inactivity_checked = datetime.now()
+            continue_recording = True
+            speech_detected = False
+            elapsed_time = 0.0
+            with contextlib.suppress(KeyboardInterrupt):
+                while continue_recording and elapsed_time < duration_seconds:
+                    new_data = q.get()
+                    sound_file.write(new_data)
+
+                    # Gather voice activity samples for the inactivity check
+                    wav_buffer = _np_array_to_wav_in_memory(
+                        sound_data=new_data,
+                        sample_rate=self.sample_rate,
+                        subtype="PCM_16",
+                    )
+
+                    vad_thinks_this_chunk_is_speech = self.vad.is_speech(
+                        wav_buffer, self.sample_rate
+                    )
+                    voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
+
+                    # Decide if user has been inactive for too long
+                    now = datetime.now()
+                    if duration_seconds < np.inf:
+                        continue_recording = True
+                    elif (
+                        now - last_inactivity_checked
+                    ).seconds >= inactivity_timeout_seconds:
+                        speech_likelihood = 0.0
+                        if len(voice_activity_detected) > 0:
+                            speech_likelihood = sum(voice_activity_detected) / len(
+                                voice_activity_detected
+                            )
+                        continue_recording = (
+                            speech_likelihood >= self.speech_likelihood_threshold
+                        )
+                        if continue_recording:
+                            speech_detected = True
+                        last_inactivity_checked = now
+
+                    elapsed_time = (now - start_time).seconds
+
+        if speech_detected or duration_seconds < np.inf:
+            return AudioSegment.from_wav(raw_buffer)
+        return AudioSegment.empty()
+
+    def handle_question_listening(self, questions_queue: queue.Queue):
+        """Handle the queue of questions to be answered."""
+        minimum_prompt_duration_seconds = 0.05
+        while not self.exit_chat.is_set():
+            if self._assistant_still_replying():
+                pygame.time.wait(100)
+                continue
+            try:
+                audio = self.listen()
+                if audio is None:
+                    questions_queue.put(None)
                     continue
-                logger.debug(f"{self.assistant_name}> Heard: '{question}'")
+
+                if audio.duration_seconds < minimum_prompt_duration_seconds:
+                    continue
+
+                question = SpeechToText(
+                    speech=audio,
+                    engine=self.stt_engine,
+                    language=self.language,
+                    timeout=self.timeout,
+                    general_token_usage_db=self.general_token_usage_db,
+                    token_usage_db=self.token_usage_db,
+                ).text
 
                 # Check for the exit expressions
                 if any(
@@ -113,306 +363,94 @@ class VoiceChat(Chat):
                     )
                     for expr in self.exit_expressions
                 ):
-                    chime.theme("material")
-                    chime.error()
-                    logger.debug(f"{self.assistant_name}> Goodbye!")
-                    break
+                    questions_queue.put(None)
+                elif question:
+                    questions_queue.put(question)
+            except sd.PortAudioError as error:
+                logger.opt(exception=True).debug(error)
+            except Exception as error:  # noqa: BLE001
+                logger.opt(exception=True).debug(error)
+                logger.error(error)
 
-                chime.success()
-                logger.debug(f"{self.assistant_name}> Getting response...")
-                sentence = ""
-                inside_code_block = False
-                at_least_one_code_line_written = False
-                for answer_chunk in self.respond_user_prompt(prompt=question):
-                    fmtd_chunk = answer_chunk.strip(" \n")
-                    code_block_start_detected = fmtd_chunk.startswith("``")
+    def handle_speech_queue(self, speech_queue: queue.Queue[TextToSpeech]):
+        """Handle the queue of audio segments to be played."""
+        while not self.exit_chat.is_set():
+            try:
+                speech = speech_queue.get()
+                if speech and not self.interrupt_reply.is_set():
+                    self.speak(speech)
+            except Exception as error:  # noqa: BLE001, PERF203
+                logger.exception(error)
+            finally:
+                speech_queue.task_done()
 
-                    if code_block_start_detected and not inside_code_block:
-                        # Toggle the code block state
-                        inside_code_block = True
-
-                    if inside_code_block:
-                        code_chunk = answer_chunk
-                        if at_least_one_code_line_written:
-                            inside_code_block = not fmtd_chunk.endswith("``")  # Code ends
-                            if not inside_code_block:
-                                code_chunk = answer_chunk.rstrip("`") + "```\n"
-                        print(
-                            code_chunk,
-                            end="" if inside_code_block else "\n",
-                            flush=True,
-                        )
-                        at_least_one_code_line_written = True
-                    else:
-                        # The answer chunk is to be spoken
-                        sentence += answer_chunk
-                        if answer_chunk.strip().endswith(("?", "!", ".")):
-                            # Send sentence for TTS even if the request hasn't finished
-                            self.tts_conversion_queue.put(sentence)
-                            sentence = ""
-
-                if sentence:
-                    self.tts_conversion_queue.put(sentence)
-
-                if at_least_one_code_line_written:
-                    spoken_info_to_user = "The code has been written to the console"
-                    spoken_info_to_user = self._translate(spoken_info_to_user)
-                    self.tts_conversion_queue.put(spoken_info_to_user)
-
-                previous_question_answered = True
-
-        except (KeyboardInterrupt, EOFError):
-            chime.info()
-        finally:
-            logger.debug("Leaving chat")
-
-    def get_tts(self, text_queue: queue.Queue):
-        """Convert text to a pygame Sound object."""
-        while True:
+    def handle_tts_queue(self, text_queue: queue.Queue):
+        """Handle the text-to-speech queue."""
+        while not self.exit_chat.is_set():
             try:
                 text = text_queue.get()
-                logger.debug("Received for {} TTS: '{}'", self.tts_engine, text)
+                if text and not self.interrupt_reply.is_set():
+                    tts = TextToSpeech(
+                        text=text,
+                        engine=self.tts_engine,
+                        openai_tts_voice=self.openai_tts_voice,
+                        language=self.language,
+                        timeout=self.timeout,
+                        general_token_usage_db=self.general_token_usage_db,
+                        token_usage_db=self.token_usage_db,
+                    )
 
-                if self.tts_engine == "openai" and _pydub_imported:
-                    tts_wav_buffer = self._tts_openai(text)
-                else:
-                    tts_wav_buffer = self._tts_google(text)
+                    # Trigger the TTS conversion
+                    _ = tts.speech
 
-                # Convert wav buffer to sound
-                speech_sound = self._wav_buffer_to_sound(wav_buffer=tts_wav_buffer)
-                self.play_speech_queue.put(speech_sound)
-
-                logger.debug("Done with TTS for '{}'", text)
+                    # Dispatch the audio to be played
+                    self.play_speech_queue.put(tts)
             except Exception as error:  # noqa: PERF203, BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
             finally:
                 text_queue.task_done()
 
-    def speak(self, sound_obj_queue: queue.Queue):
-        """Reproduce audio from a pygame Sound object."""
-        while True:
-            try:
-                sound = sound_obj_queue.get()
-                _channel = sound.play()
-                while self._assistant_still_talking():
-                    self.pygame.time.wait(100)
-            except Exception as error:  # noqa: PERF203, BLE001
-                logger.exception(error)
-            finally:
-                sound_obj_queue.task_done()
-
-    def listen(self):
-        """Record audio from the microphone, until user stops, and convert it to text."""
-        # Adapted from
-        # <https://python-sounddevice.readthedocs.io/en/0.4.6/examples.html#
-        #  recording-with-arbitrary-duration>
-        logger.debug("The assistant is listening...")
-        q = queue.Queue()
-
-        def callback(indata, frames, time, status):  # noqa: ARG001
-            """This is called (from a separate thread) for each audio block."""
-            q.put(indata.copy())
-
-        stream_block_size = int((self.sample_rate * self.frame_duration) / 1000)
-        raw_buffer = io.BytesIO()
-        with sf.SoundFile(
-            raw_buffer,
-            mode="x",
+    def get_sound_file(self, wav_buffer: io.BytesIO, mode: str = "r"):
+        """Return a sound file object."""
+        return sf.SoundFile(
+            wav_buffer,
+            mode=mode,
             samplerate=self.sample_rate,
             channels=1,
             format="wav",
             subtype="PCM_16",
-        ) as audio_file, sd.InputStream(
-            samplerate=self.sample_rate,
-            blocksize=stream_block_size,
-            channels=1,
-            callback=callback,
-            dtype="int16",  # int16, i.e., 2 bytes per sample
-        ):
-            # Recording will stop after self.inactivity_timeout_seconds of silence
-            voice_activity_detected = deque(
-                maxlen=int(
-                    (1000.0 * self.inactivity_timeout_seconds) / self.frame_duration
-                )
-            )
-            last_inactivity_checked = datetime.now()
-            user_is_speaking = True
-            speech_detected = False
-            with contextlib.suppress(KeyboardInterrupt):
-                while user_is_speaking:
-                    new_data = q.get()
-                    audio_file.write(new_data)
+        )
 
-                    # Gather voice activity samples for the inactivity check
-                    wav_buffer = _np_array_to_wav_in_memory(
-                        new_data, sample_rate=self.sample_rate
-                    )
-                    vad_thinks_this_chunk_is_speech = self.vad.is_speech(
-                        wav_buffer, self.sample_rate
-                    )
-                    voice_activity_detected.append(vad_thinks_this_chunk_is_speech)
-
-                    # Decide if user has been inactive for too long
-                    now = datetime.now()
-                    if (
-                        now - last_inactivity_checked
-                    ).seconds >= self.inactivity_timeout_seconds:
-                        speech_likelihood = 0.0
-                        if len(voice_activity_detected) > 0:
-                            speech_likelihood = sum(voice_activity_detected) / len(
-                                voice_activity_detected
-                            )
-                        user_is_speaking = (
-                            speech_likelihood >= self.speech_likelihood_threshold
-                        )
-                        if user_is_speaking:
-                            speech_detected = True
-                        last_inactivity_checked = now
-
-        if not speech_detected:
-            logger.debug("No speech detected")
-            return ""
-
-        return self._wav_buffer_to_text(wav_buffer=raw_buffer)
-
-    def _assistant_still_talking(self):
+    def _assistant_still_replying(self):
         """Check if the assistant is still talking."""
-        return self.mixer.get_busy()
-
-    def _tts_openai(self, text):
-        """Convert text to speech using OpenAI's TTS."""
-        logger.debug("OpenAI TTS received: '{}'", text)
-        text = text.strip()
-        client = OpenAI(timeout=self.timeout)
-
-        openai_tts_model = "tts-1"
-
-        @retry()
-        def _create_speech(*args, **kwargs):
-            for db in [
-                self.general_token_usage_db,
-                self.token_usage_db,
-            ]:
-                db.insert_data(model=openai_tts_model, n_input_tokens=len(text))
-            return client.audio.speech.create(*args, **kwargs)
-
-        response = _create_speech(
-            input=text,
-            model=openai_tts_model,
-            voice=self.openai_tts_voice,
-            response_format="mp3",
-            timeout=self.timeout,
+        return (
+            self.mixer.get_busy()
+            or self.questions_queue.unfinished_tasks > 0
+            or self.tts_conversion_queue.unfinished_tasks > 0
+            or self.play_speech_queue.unfinished_tasks > 0
         )
 
-        mp3_buffer = io.BytesIO()
-        for mp3_stream_chunk in response.iter_bytes(chunk_size=4096):
-            mp3_buffer.write(mp3_stream_chunk)
-        mp3_buffer.seek(0)
 
-        wav_buffer = io.BytesIO()
-        sound = pydub.AudioSegment.from_mp3(mp3_buffer)
-        # Increase the default volume, the default is a bit to quiet
-        volume_increase_db = 8
-        sound += volume_increase_db
-        sound.export(wav_buffer, format="wav")
-        wav_buffer.seek(0)
-
-        logger.debug("OpenAI TTS done for '{}'", text)
-        return wav_buffer
-
-    def _tts_google(self, text):
-        """Convert text to speech using Google's TTS."""
-        tts = gTTS(text.strip(), lang=self.language)
-        wav_buffer = io.BytesIO()
-        tts.write_to_fp(wav_buffer)
-        wav_buffer.seek(0)
-        return wav_buffer
-
-    def _wav_buffer_to_sound(self, wav_buffer):
-        """Create a pygame sound object from a BytesIO object."""
-        return self.mixer.Sound(wav_buffer)
-
-    def _wav_buffer_to_text(self, wav_buffer) -> str:
-        """Use SpeechRecognition to convert the audio to text."""
-        r = sr.Recognizer()
-        r.operation_timeout = self.timeout
-
-        get_stt_openai = self._speech_to_text_openai
-        get_stt_google = partial(r.recognize_google, language=self.language)
-        if self.stt_engine == "openai":
-            stt_function = get_stt_openai
-            fallback_stt_function = get_stt_google
-            fallback_name = "google"
-        else:
-            stt_function = get_stt_google
-            fallback_stt_function = get_stt_openai
-            fallback_name = "openai"
-
-        logger.debug("Converting audio to text ({} STT)...", self.stt_engine)
-        wav_buffer.seek(0)
-        with sr.AudioFile(wav_buffer) as source:
-            audio_data = r.listen(source)
-
-        try:
-            rtn = stt_function(audio_data)
-        except (ConnectionResetError, socket.timeout) as error:
-            logger.error(error)
-            logger.error(
-                "Can't communicate with `{}` speech-to-text API right now",
-                self.stt_engine,
-            )
-            logger.warning("Trying to use `{}` STT instead", fallback_name)
-            rtn = fallback_stt_function(audio_data)
-        except sr.exceptions.UnknownValueError:
-            rtn = ""
-
-        rtn = rtn.strip()
-        if rtn:
-            logger.debug("Heard: '{}'", rtn)
-        else:
-            logger.debug("Could not understand audio")
-
-        return rtn
-
-    @retry()
-    def _speech_to_text_openai(self, audio_data: sr.AudioData):
-        """Convert audio data to text using OpenAI's API."""
-        new_buffer = io.BytesIO(audio_data.get_wav_data())
-        new_buffer.name = "audio.wav"
-        with new_buffer as audio_file_buffer:
-            transcript = OpenAI(timeout=self.timeout).audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file_buffer,
-                language=self.language.split("-")[0],  # put in ISO-639-1 format
-                prompt=f"The language is {self.language}. "
-                "Do not transcribe if you think it is noise.",
-            )
-
-        # Register the number of audio minutes used for the transcription
-        sound_length_in_seconds = len(audio_data.get_raw_data()) / (
-            audio_data.sample_width * audio_data.sample_rate
+def _check_needed_imports():
+    """Check if the needed modules are available."""
+    if not _sounddevice_imported:
+        raise ImportError(
+            "Module `sounddevice`, needed for audio recording, is not available."
         )
-        for db in [
-            self.general_token_usage_db,
-            self.token_usage_db,
-        ]:
-            db.insert_data(
-                model="whisper-1",
-                n_input_tokens=int(np.ceil(sound_length_in_seconds)),
-            )
 
-        return transcript.text
+    if not _pydub_imported:
+        raise ImportError(
+            "Module `pydub`, needed for audio conversion, is not available."
+        )
 
 
-def _np_array_to_wav_in_memory(array: np.ndarray, sample_rate: int):
+def _np_array_to_wav_in_memory(
+    sound_data: np.ndarray, sample_rate: int, subtype="PCM_16"
+):
     """Convert the recorded array to an in-memory wav file."""
-    byte_io = io.BytesIO()
-    wav.write(byte_io, rate=sample_rate, data=array)
-    byte_io.seek(44)  # Skip the WAV header
-    return byte_io.read()
-
-
-def _get_lower_alphanumeric(string: str):
-    """Return a string with only lowercase alphanumeric characters."""
-    return re.sub("[^0-9a-zA-Z]+", " ", string.strip().lower())
+    wav_buffer = io.BytesIO()
+    wav_buffer.name = "audio.wav"
+    sf.write(wav_buffer, sound_data, sample_rate, subtype=subtype)
+    wav_buffer.seek(44)  # Skip the WAV header
+    return wav_buffer.read()

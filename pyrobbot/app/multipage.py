@@ -4,7 +4,7 @@ import datetime
 from abc import ABC, abstractmethod, abstractproperty
 
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from pydantic import ValidationError
 
 from pyrobbot import GeneralConstants
@@ -138,7 +138,12 @@ class MultipageChatbotApp(AbstractMultipageApp):
             + "Chats created with this key won't be visible to people using other keys.",
         )
 
-        client = OpenAI()
+        try:
+            client = OpenAI()
+        except OpenAIError:
+            st.error("Failed to connect to OpenAI API. Please check your API key.")
+            return
+
         if not client.api_key:
             st.write(":red[You need to provide a key to use the chat]")
 

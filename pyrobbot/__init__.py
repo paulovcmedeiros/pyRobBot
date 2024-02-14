@@ -5,12 +5,14 @@ import os
 import sys
 import tempfile
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from importlib.metadata import metadata, version
 from pathlib import Path
 
 import ipinfo
 import openai
+import requests
 from loguru import logger
 
 logger.remove()
@@ -18,6 +20,8 @@ logger.add(
     sys.stderr,
     level=os.environ.get("LOGLEVEL", os.environ.get("LOGURU_LEVEL", "INFO")),
 )
+
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 
 
 @dataclass
@@ -45,7 +49,10 @@ class GeneralDefinitions:
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
 
     # Location info
-    IPINFO = ipinfo.getHandler().getDetails().all
+    try:
+        IPINFO = ipinfo.getHandler().getDetails().all
+    except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+        IPINFO = defaultdict(lambda: "unknown")
 
     @staticmethod
     def openai_key_hash():
@@ -79,5 +86,3 @@ class GeneralDefinitions:
 GeneralConstants = GeneralDefinitions(
     SYSTEM_ENV_OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY")
 )
-
-# Initialize the OpenAI API client
