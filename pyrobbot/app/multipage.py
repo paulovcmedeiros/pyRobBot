@@ -2,11 +2,11 @@
 
 import contextlib
 import datetime
+import os
 import shutil
 from abc import ABC, abstractmethod, abstractproperty
 
 import streamlit as st
-from openai import OpenAI, OpenAIError
 from pydantic import ValidationError
 
 from pyrobbot import GeneralConstants
@@ -126,28 +126,18 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
     def init_chat_credentials(self):
         """Initializes the OpenAI client with the API key provided in the Streamlit UI."""
-        placeholher = (
-            "OPENAI_API_KEY detected"
-            if GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY
-            else "You need this to use the chat"
-        )
         self.openai_api_key = st.text_input(
             label="OpenAI API Key (required)",
-            placeholder=placeholher,
+            value=GeneralConstants.SYSTEM_ENV_OPENAI_API_KEY,
+            placeholder="Enter your OpenAI API key",
             key="openai_api_key",
             type="password",
             help="[OpenAI API auth key](https://platform.openai.com/account/api-keys). "
             + "Chats created with this key won't be visible to people using other keys.",
         )
-
-        try:
-            client = OpenAI()
-        except OpenAIError:
-            st.error("Failed to connect to OpenAI API. Please check your API key.")
-            return
-
-        if not client.api_key:
-            st.write(":red[You need to provide a key to use the chat]")
+        os.environ["OPENAI_API_KEY"] = self.openai_api_key
+        if not self.openai_api_key:
+            st.write(":red[You need a valid key to use the chat]")
 
     def add_page(
         self, page: ChatBotPage = None, selected: bool = True, **page_obj_kwargs
@@ -179,9 +169,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
         """Save a widget's 'previous value`, to be read by `get_widget_previous_value`."""
         if "widget_previous_value" not in self.selected_page.state:
             self.selected_page.state["widget_previous_value"] = {}
-        self.selected_page.state["widget_previous_value"][
-            element_key
-        ] = st.session_state.get(element_key)
+        self.selected_page.state["widget_previous_value"][element_key] = (
+            st.session_state.get(element_key)
+        )
 
     def get_saved_chat_cache_dir_paths(self):
         """Get the filepaths of saved chat contexts, sorted by last modified."""
