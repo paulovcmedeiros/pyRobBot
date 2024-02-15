@@ -44,18 +44,19 @@ class Chat(AlternativeConstructors):
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = str(uuid.uuid4())
+
+        self._passed_configs = configs
+        for field in self._passed_configs.model_fields:
+            setattr(self, field, self._passed_configs[field])
+
         try:
-            self.openai_client = openai_client or openai.OpenAI()
+            self.openai_client = openai_client or openai.OpenAI(timeout=self.timeout)
         except openai.OpenAIError as error:
             logger.opt(exception=True).debug(error)
             logger.error(
                 "Cannot connect to OpenAI API. Please verify your API key. {}.", error
             )
             self.openai_client = None
-
-        self._passed_configs = configs
-        for field in self._passed_configs.model_fields:
-            setattr(self, field, self._passed_configs[field])
 
     @property
     def base_directive(self):
