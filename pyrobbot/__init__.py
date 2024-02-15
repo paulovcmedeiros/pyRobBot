@@ -5,13 +5,15 @@ import os
 import sys
 import tempfile
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from importlib.metadata import metadata, version
 from pathlib import Path
 
 import ipinfo
-import openai
+import requests
 from loguru import logger
+from openai import OpenAI
 
 logger.remove()
 logger.add(
@@ -19,13 +21,12 @@ logger.add(
     level=os.environ.get("LOGLEVEL", os.environ.get("LOGURU_LEVEL", "INFO")),
 )
 
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
+
 
 @dataclass
 class GeneralDefinitions:
     """General definitions for the package."""
-
-    # Keep track of the OpenAI API key available to the package at initialization
-    SYSTEM_ENV_OPENAI_API_KEY: str = None
 
     # Main package info
     RUN_ID = uuid.uuid4().hex
@@ -35,6 +36,7 @@ class GeneralDefinitions:
 
     # Main package directories
     PACKAGE_DIRECTORY = Path(__file__).parent
+    PACKAGE_CACHE_DIRECTORY = Path.home() / ".cache" / PACKAGE_NAME
     _PACKAGE_TMPDIR = tempfile.TemporaryDirectory()
     PACKAGE_TMPDIR = Path(_PACKAGE_TMPDIR.name)
 
@@ -45,39 +47,15 @@ class GeneralDefinitions:
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
 
     # Location info
-    IPINFO = ipinfo.getHandler().getDetails().all
+    try:
+        IPINFO = ipinfo.getHandler().getDetails().all
+    except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+        IPINFO = defaultdict(lambda: "unknown")
 
-    @staticmethod
-    def openai_key_hash():
-        """Return a hash of the OpenAI API key."""
-        try:
-            client = openai.OpenAI()
-        except openai.OpenAIError:
-            api_key = None
-        else:
-            api_key = client.api_key
-        if api_key is None:
-            return "demo"
-        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
-
-    @property
-    def package_cache_directory(self):
-        """Return the path to the package's general cache directory."""
-        return Path.home() / ".cache" / self.PACKAGE_NAME
-
-    @property
-    def current_user_cache_dir(self):
-        """Return the directory where cache info for the current user is stored."""
-        return self.package_cache_directory / f"user_{self.openai_key_hash()}"
-
-    @property
-    def chats_storage_dir(self):
-        """Return the directory where the current user's chats are stored."""
-        return self.current_user_cache_dir / "chats"
-
-
-GeneralConstants = GeneralDefinitions(
-    SYSTEM_ENV_OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY")
-)
-
-# Initialize the OpenAI API client
+    @classmethod
+    def get_openai_client_cache_dir(cls, openai_client: OpenAI = None):
+        """Return the directory where chats using openai_client will be stored."""
+        if openai_client is None:
+            return cls.PACKAGE_CACHE_DIRECTORY / "user_demo"
+        key_hash = hashlib.sha256(openai_client.api_key.encode("utf-8")).hexdigest()
+        return cls.PACKAGE_CACHE_DIRECTORY / f"user_{key_hash}"

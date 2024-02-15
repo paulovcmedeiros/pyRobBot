@@ -12,7 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from unidecode import unidecode
 
-from . import GeneralConstants
+from . import GeneralDefinitions
 from .general_utils import retry
 
 
@@ -70,8 +70,8 @@ def find_whole_word_index(my_string, my_substring):
 def raw_websearch(
     query: str,
     max_results: int = 5,
-    region: str = GeneralConstants.IPINFO["country_name"],
-) -> list:
+    region: str = GeneralDefinitions.IPINFO["country_name"],
+):
     """Search the web using DuckDuckGo Search API."""
     with DDGS() as ddgs:
         for result in ddgs.text(
@@ -82,6 +82,8 @@ def raw_websearch(
         ):
             if not isinstance(result, dict):
                 logger.error("Expected a `dict`, got type {}: {}", type(result), result)
+                yield {}
+                continue
 
             if result["body"] is None:
                 continue
@@ -92,7 +94,7 @@ def raw_websearch(
                 continue
             else:
                 content_type = response.headers.get("content-type")
-                if "text/html" not in content_type:
+                if (not content_type) or ("text/html" not in content_type):
                     continue
                 html = unidecode(extract_text_from_html(response.text))
 
@@ -115,12 +117,14 @@ def raw_websearch(
 def websearch(query, **kwargs):
     """Search the web using DuckDuckGo Search API."""
     raw_results = list(raw_websearch(query, **kwargs))
-    raw_results = iter(sorted(raw_results, key=lambda x: x["relevance"], reverse=True))
+    raw_results = iter(
+        sorted(raw_results, key=lambda x: x.get("relevance", 0.0), reverse=True)
+    )
     min_relevant_keyword_length = 4
     min_n_words = 40
 
     for result in raw_results:
-        html = result["detailed"]
+        html = result.get("detailed", "")
 
         index_first_query_word_to_appear = np.inf
         for word in unidecode(query).split():
@@ -140,16 +144,16 @@ def websearch(query, **kwargs):
         html = " ".join(selected_words)
 
         yield {
-            "href": result["href"],
-            "summary": result["summary"],
+            "href": result.get("href", ""),
+            "summary": result.get("summary", ""),
             "detailed": html,
-            "relevance": result["relevance"],
+            "relevance": result.get("relevance", ""),
         }
         break
 
     for result in raw_results:
         yield {
-            "href": result["href"],
-            "summary": result["summary"],
-            "relevance": result["relevance"],
+            "href": result.get("href", ""),
+            "summary": result.get("summary", ""),
+            "relevance": result.get("relevance", ""),
         }
