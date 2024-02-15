@@ -53,8 +53,8 @@ class VoiceChat(Chat):
 
     def __init__(self, configs: VoiceChatConfigs = default_configs):
         """Initializes a chat instance."""
-        _check_needed_imports()
         super().__init__(configs=configs)
+        _check_needed_imports()
 
         self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
 

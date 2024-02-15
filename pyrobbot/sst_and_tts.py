@@ -24,7 +24,7 @@ class SpeechAndTextConfigs:
     general_token_usage_db: TokenUsageDatabase
     token_usage_db: TokenUsageDatabase
     engine: Literal["openai", "google"] = "google"
-    language: str = "en-US"
+    language: str = "en"
     timeout: int = 10
 
 
