@@ -193,8 +193,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         )
         for directory in sorted(
             (direc for direc in openai_client_cache_dir.glob("chat_*/")),
-            key=lambda fpath: fpath.stat().st_mtime,
-            reverse=True,
+            key=lambda fpath: fpath.stat().st_ctime,
         ):
             if all((directory / fname).exists() for fname in required_files):
                 yield directory
