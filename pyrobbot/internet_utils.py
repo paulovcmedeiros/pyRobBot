@@ -12,7 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from unidecode import unidecode
 
-from . import GeneralConstants
+from . import GeneralDefinitions
 from .general_utils import retry
 
 
@@ -70,8 +70,8 @@ def find_whole_word_index(my_string, my_substring):
 def raw_websearch(
     query: str,
     max_results: int = 5,
-    region: str = GeneralConstants.IPINFO["country_name"],
-) -> list:
+    region: str = GeneralDefinitions.IPINFO["country_name"],
+):
     """Search the web using DuckDuckGo Search API."""
     with DDGS() as ddgs:
         for result in ddgs.text(

@@ -41,7 +41,7 @@ def pytest_configure(config):
     )
 
     pytest.original_package_cache_directory = (
-        pyrobbot.GeneralConstants.package_cache_directory
+        pyrobbot.GeneralDefinitions.PACKAGE_CACHE_DIRECTORY
     )
 
 
@@ -55,7 +55,7 @@ def _set_env(monkeypatch):
 @pytest.fixture(autouse=True)
 def _mocked_general_constants(tmp_path, mocker):
     mocker.patch(
-        "pyrobbot.GeneralDefinitions.package_cache_directory", tmp_path / "cache"
+        "pyrobbot.GeneralDefinitions.PACKAGE_CACHE_DIRECTORY", tmp_path / "cache"
     )
 
 
@@ -84,7 +84,7 @@ def _openai_api_request_mockers(request, mocker):
             yield completion_chunk
 
         # Yield some code as well, to test the code filtering
-        code_path = pyrobbot.GeneralConstants.PACKAGE_DIRECTORY / "__init__.py"
+        code_path = pyrobbot.GeneralDefinitions.PACKAGE_DIRECTORY / "__init__.py"
         for word in [
             "```python\n",
             *code_path.read_text().splitlines(keepends=True)[:5],

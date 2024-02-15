@@ -135,8 +135,10 @@ class AlternativeConstructors:
                 new.id = new.metadata["chat_id"]
         except FileNotFoundError:
             logger.warning(
-                "Could not find configs and/or metadata file in cache directory. "
-                + f"Creating {cls.__name__} with default configs."
+                "Could not find configs and/or metadata file in cache directory <{}>. "
+                + "Creating {} with default configs.",
+                cache_dir,
+                cls.__name__,
             )
             new = cls()
         return new

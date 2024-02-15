@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING
 
-import openai
-
 from .chat_configs import OpenAiApiCallOptions
 from .general_utils import retry
 from .tokens import get_n_tokens_from_msgs
@@ -36,7 +34,7 @@ def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):
             db.insert_data(model=chat_obj.model, n_input_tokens=n_tokens)
 
         full_reply_content = ""
-        for completion_chunk in openai.chat.completions.create(
+        for completion_chunk in chat_obj.openai_client.chat.completions.create(
             messages=conversation, stream=True, **api_call_args
         ):
             reply_chunk = getattr(completion_chunk.choices[0].delta, "content", "")

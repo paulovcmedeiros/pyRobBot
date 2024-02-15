@@ -1,7 +1,7 @@
 import openai
 import pytest
 
-from pyrobbot import GeneralConstants
+from pyrobbot import GeneralDefinitions
 from pyrobbot.chat import Chat
 
 
@@ -23,14 +23,14 @@ def testbed_doesnt_actually_connect_to_openai(default_chat, caplog):
 def test_we_are_using_tmp_cachedir():
     try:
         assert (
-            GeneralConstants.package_cache_directory
-            != pytest.original_package_cache_directory
+            pytest.original_package_cache_directory
+            != GeneralDefinitions.PACKAGE_CACHE_DIRECTORY
         )
 
     except AssertionError:
         pytest.exit(
             "Refuse to continue: Tests attempted to use the package's real cache dir "
-            + f"({GeneralConstants.package_cache_directory})!"
+            + f"({GeneralDefinitions.PACKAGE_CACHE_DIRECTORY})!"
         )
 
 

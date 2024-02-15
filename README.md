@@ -18,12 +18,12 @@ A python package that uses OpenAI's [GPT large language models (LLMs)](https://p
 - [x] Text to speech and speech to text
   - Talk to the GPT assistant and the assistant will talk back to you!
   - Choose your preferred language (e.g., `rob --lang pt-br`)
-  - Choose your preferred Text-to-Speech (TTS) engine
+  - Choose your preferred Text-to-Speech (TTS) engine (e.g., `rob --tts google`)
     - [OpenAI Text-to-Speech](https://platform.openai.com/docs/guides/text-to-speech) (default): AI-generated *human-like* voice
-    - [Google TTS](https://cloud.google.com/text-to-speech) (`rob --tts google`): free at the time being, with decent quality
+    - [Google TTS](https://cloud.google.com/text-to-speech): free at the time being, with decent quality
   - Choose your preferred Speech-to-Text (STT) engine
-    - Also between OpenAI (default) and Google
-- [x] Browser  UI (made with [Streamlit](https://pyrobbot.streamlit.app))
+    - Also between OpenAI and Google (default)
+- [x] Web browser UI (made with [Streamlit](https://pyrobbot.streamlit.app))
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
 - [x] Terminal UI

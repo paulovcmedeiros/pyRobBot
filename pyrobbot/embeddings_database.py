@@ -138,6 +138,18 @@ class EmbeddingsDatabase:
         conn.close()
         return messages_df
 
+    @property
+    def n_entries(self):
+        """Return the number of entries in the `messages` table."""
+        conn = sqlite3.connect(self.db_path)
+        query = "SELECT COUNT(*) FROM messages;"
+        with conn:
+            cur = conn.cursor()
+            cur.execute(query)
+            result = cur.fetchone()
+        conn.close()
+        return result[0]
+
     def _init_database(self):
         """Initialise the 'embedding_model' table in the database."""
         conn = sqlite3.connect(self.db_path)

@@ -53,8 +53,8 @@ class VoiceChat(Chat):
 
     def __init__(self, configs: VoiceChatConfigs = default_configs):
         """Initializes a chat instance."""
-        _check_needed_imports()
         super().__init__(configs=configs)
+        _check_needed_imports()
 
         self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
 
@@ -218,6 +218,7 @@ class VoiceChat(Chat):
             try:
                 msgs_to_compare = check_for_interrupt_expressions_queue.get()
                 recorded_prompt = SpeechToText(
+                    openai_client=self.openai_client,
                     speech=msgs_to_compare["user_audio"],
                     engine=self.stt_engine,
                     language=self.language,
@@ -349,6 +350,7 @@ class VoiceChat(Chat):
                     continue
 
                 question = SpeechToText(
+                    openai_client=self.openai_client,
                     speech=audio,
                     engine=self.stt_engine,
                     language=self.language,
@@ -392,6 +394,7 @@ class VoiceChat(Chat):
                 text = text_queue.get()
                 if text and not self.interrupt_reply.is_set():
                     tts = TextToSpeech(
+                        openai_client=self.openai_client,
                         text=text,
                         engine=self.tts_engine,
                         openai_tts_voice=self.openai_tts_voice,
