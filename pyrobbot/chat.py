@@ -6,6 +6,7 @@ import shutil
 import uuid
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import openai
@@ -91,12 +92,24 @@ class Chat(AlternativeConstructors):
         return self._passed_configs.model_validate(configs_dict)
 
     @property
-    def cache_dir(self):
-        """Return the cache directory for this chat."""
-        client_cache_dir = GeneralDefinitions.get_openai_client_cache_dir(
+    def tmp_dir(self):
+        """Return the temporary directory for the chat."""
+        return Path(self._tmp_dir.name)
+
+    @property
+    def client_cache_dir(self):
+        """Return the cache directory for the chat."""
+        rtn = GeneralDefinitions.get_openai_client_cache_dir(
             openai_client=self.openai_client
         )
-        directory = client_cache_dir / f"chat_{self.id}"
+        if self.private_mode:
+            rtn = GeneralDefinitions.PACKAGE_TMPDIR / rtn.name
+        return rtn
+
+    @property
+    def cache_dir(self):
+        """Return the cache directory for this chat."""
+        directory = self.client_cache_dir / f"chat_{self.id}"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
