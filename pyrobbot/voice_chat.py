@@ -114,7 +114,6 @@ class VoiceChat(Chat):
                     logger.opt(colors=True).debug(
                         "<yellow>Interrupting the reply</yellow>"
                     )
-                    self.interrupt_reply.clear()
                     with self.check_for_interrupt_expressions_queue.mutex:
                         self.check_for_interrupt_expressions_queue.queue.clear()
                     with contextlib.suppress(pygame.error):
@@ -127,6 +126,7 @@ class VoiceChat(Chat):
                     time.sleep(0.25)
 
                 chime.warning()
+                self.interrupt_reply.clear()
                 logger.debug(f"{self.assistant_name}> Waiting for user input...")
                 question = self.questions_queue.get()
 

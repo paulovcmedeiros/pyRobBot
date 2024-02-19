@@ -83,7 +83,7 @@ class AlternativeConstructors:
     """Mixin class for alternative constructors."""
 
     @classmethod
-    def from_dict(cls, configs: dict):
+    def from_dict(cls, configs: dict, **kwargs):
         """Creates an instance from a configuration dictionary.
 
         Converts the configuration dictionary into a instance of this class
@@ -91,14 +91,15 @@ class AlternativeConstructors:
 
         Args:
             configs (dict): The configuration options as a dictionary.
+            **kwargs: Additional keyword arguments to pass to the class constructor.
 
         Returns:
             cls: An instance of Chat initialized with the given configurations.
         """
-        return cls(configs=cls.default_configs.model_validate(configs))
+        return cls(configs=cls.default_configs.model_validate(configs), **kwargs)
 
     @classmethod
-    def from_cli_args(cls, cli_args):
+    def from_cli_args(cls, cli_args, **kwargs):
         """Creates an instance from CLI arguments.
 
         Extracts relevant options from the CLI arguments and initializes a class instance
@@ -106,6 +107,7 @@ class AlternativeConstructors:
 
         Args:
             cli_args: The command line arguments.
+            **kwargs: Additional keyword arguments to pass to the class constructor.
 
         Returns:
             cls: An instance of the class initialized with CLI-specified configurations.
@@ -115,23 +117,29 @@ class AlternativeConstructors:
             for k, v in vars(cli_args).items()
             if k in cls.default_configs.model_fields and v is not None
         }
-        return cls.from_dict(chat_opts)
+        return cls.from_dict(chat_opts, **kwargs)
 
     @classmethod
-    def from_cache(cls, cache_dir: Path):
+    def from_cache(cls, cache_dir: Path, **kwargs):
         """Loads an instance from a cache directory.
 
         Args:
             cache_dir (Path): The path to the cache directory.
+            **kwargs: Additional keyword arguments to pass to the class constructor.
 
         Returns:
             cls: An instance of the class loaded with cached configurations and metadata.
         """
         try:
             with open(cache_dir / "configs.json", "r") as configs_f:
-                new = cls.from_dict(json.load(configs_f))
+                new = cls.from_dict(json.load(configs_f), **kwargs)
             with open(cache_dir / "metadata.json", "r") as metadata_f:
                 new.metadata = json.load(metadata_f)
+                logger.debug(
+                    "Reseting chat_id from cache: {} --> {}.",
+                    new.id,
+                    new.metadata["chat_id"],
+                )
                 new.id = new.metadata["chat_id"]
         except FileNotFoundError:
             logger.warning(
@@ -140,5 +148,5 @@ class AlternativeConstructors:
                 cache_dir,
                 cls.__name__,
             )
-            new = cls()
+            new = cls(**kwargs)
         return new

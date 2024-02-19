@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Unnoficial OpenAI API UI and CLI tool."""
-import hashlib
+import contextlib
 import os
 import sys
 import tempfile
@@ -13,7 +13,6 @@ from pathlib import Path
 import ipinfo
 import requests
 from loguru import logger
-from openai import OpenAI
 
 logger.remove()
 logger.add(
@@ -47,15 +46,8 @@ class GeneralDefinitions:
     PARSED_ARGS_FILE = PACKAGE_TMPDIR / f"parsed_args_{RUN_ID}.pkl"
 
     # Location info
-    try:
+    IPINFO = defaultdict(lambda: "unknown")
+    with contextlib.suppress(
+        requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError
+    ):
         IPINFO = ipinfo.getHandler().getDetails().all
-    except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
-        IPINFO = defaultdict(lambda: "unknown")
-
-    @classmethod
-    def get_openai_client_cache_dir(cls, openai_client: OpenAI = None):
-        """Return the directory where chats using openai_client will be stored."""
-        if openai_client is None:
-            return cls.PACKAGE_CACHE_DIRECTORY / "user_demo"
-        key_hash = hashlib.sha256(openai_client.api_key.encode("utf-8")).hexdigest()
-        return cls.PACKAGE_CACHE_DIRECTORY / f"user_{key_hash}"

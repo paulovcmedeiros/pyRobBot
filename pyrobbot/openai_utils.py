@@ -1,13 +1,73 @@
 """Utils for using the OpenAI API."""
 
-from typing import TYPE_CHECKING
+import hashlib
+import shutil
+from typing import TYPE_CHECKING, Optional
 
+import openai
+
+from . import GeneralDefinitions
 from .chat_configs import OpenAiApiCallOptions
 from .general_utils import retry
 from .tokens import get_n_tokens_from_msgs
 
 if TYPE_CHECKING:
     from .chat import Chat
+
+
+class OpenAiClientWrapper(openai.OpenAI):
+    """Wrapper for OpenAI API client."""
+
+    def __init__(self, *args, private_mode: bool = False, **kwargs):
+        """Initialize the OpenAI API client wrapper."""
+        super().__init__(*args, **kwargs)
+        self.private_mode = private_mode
+
+        self.required_cache_files = [
+            "chat_token_usage.db",
+            "configs.json",
+            "embeddings.db",
+            "metadata.json",
+        ]
+        self.clear_invalid_cache_dirs()
+
+    @property
+    def cache_dir(self):
+        """Return client's cache dir according to the privacy configs."""
+        return self.get_cache_dir(private_mode=self.private_mode)
+
+    @property
+    def saved_chat_cache_paths(self):
+        """Get the filepaths of saved chat contexts, sorted by last modified."""
+        yield from sorted(
+            (direc for direc in self.cache_dir.glob("chat_*/")),
+            key=lambda fpath: fpath.stat().st_ctime,
+        )
+
+    def clear_invalid_cache_dirs(self):
+        """Remove cache directories that are missing required files."""
+        for directory in self.cache_dir.glob("chat_*/"):
+            if not all(
+                (directory / fname).exists() for fname in self.required_cache_files
+            ):
+                shutil.rmtree(directory, ignore_errors=True)
+
+    def get_cache_dir(self, private_mode: Optional[bool] = None):
+        """Return the directory where the chats using the client will be stored."""
+        if private_mode is None:
+            private_mode = self.private_mode
+
+        if private_mode:
+            client_id = "demo"
+            parent_dir = GeneralDefinitions.PACKAGE_TMPDIR
+        else:
+            client_id = hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()
+            parent_dir = GeneralDefinitions.PACKAGE_CACHE_DIRECTORY
+
+        directory = parent_dir / f"user_{client_id}"
+        directory.mkdir(parents=True, exist_ok=True)
+
+        return directory
 
 
 def make_api_chat_completion_call(conversation: list, chat_obj: "Chat"):

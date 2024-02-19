@@ -2,14 +2,11 @@
 
 import contextlib
 import datetime
-import sys
 import uuid
 from abc import ABC, abstractmethod
-from json.decoder import JSONDecodeError
 from typing import TYPE_CHECKING
 
 import streamlit as st
-from loguru import logger
 from PIL import Image
 
 from pyrobbot import GeneralDefinitions
@@ -127,12 +124,7 @@ class ChatBotPage(AppPage):
     def chat_configs(self) -> ChatOptions:
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
-            try:
-                chat_options_file_path = sys.argv[-1]
-                self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
-            except (FileNotFoundError, JSONDecodeError):
-                logger.warning("Could not retrieve cli args. Using default chat options.")
-                self.state["chat_configs"] = ChatOptions()
+            self.state["chat_configs"] = self.parent.state["chat_configs"]
         return self.state["chat_configs"]
 
     @chat_configs.setter
@@ -143,10 +135,10 @@ class ChatBotPage(AppPage):
 
     @property
     def chat_obj(self) -> Chat:
-        """Return the chat object responsible for the queries in this page."""
+        """Return the chat object responsible for the queries on this page."""
         if "chat_obj" not in self.state:
             self.chat_obj = Chat(
-                self.chat_configs, openai_client=self.parent.openai_client
+                configs=self.chat_configs, openai_client=self.parent.openai_client
             )
         return self.state["chat_obj"]
 
@@ -170,6 +162,9 @@ class ChatBotPage(AppPage):
 
     def render_chat_history(self):
         """Render the chat history of the page. Do not include system messages."""
+        with st.chat_message("assistant", avatar=self.avatars["assistant"]):
+            st.markdown(self.chat_obj.initial_greeting)
+
         for message in self.chat_history:
             role = message["role"]
             if role == "system":
@@ -201,19 +196,7 @@ class ChatBotPage(AppPage):
 
         """
         st.header(self.title, divider="rainbow")
-
-        if self.chat_history:
-            self.render_chat_history()
-        else:
-            with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                st.markdown(self.chat_obj.initial_greeting)
-            self.chat_history.append(
-                {
-                    "role": "assistant",
-                    "name": self.chat_obj.assistant_name,
-                    "content": self.chat_obj.initial_greeting,
-                }
-            )
+        self.render_chat_history()
 
         # Accept user input
         placeholder = (
@@ -264,7 +247,7 @@ class ChatBotPage(AppPage):
                 and len(self.chat_history) > min_history_len_for_summary
             ):
                 with st.spinner("Working out conversation topic..."):
-                    prompt = "Summarize the messages in max 4 words.\n"
+                    prompt = "Summarize the previous messages in max 4 words"
                     title = "".join(
                         self.chat_obj.respond_system_prompt(prompt, add_to_history=False)
                     )

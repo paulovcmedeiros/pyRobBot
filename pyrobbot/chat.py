@@ -18,7 +18,7 @@ from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
 from .internet_utils import websearch
-from .openai_utils import make_api_chat_completion_call
+from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
 from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
 
 
@@ -33,24 +33,35 @@ class Chat(AlternativeConstructors):
     _translation_cache = defaultdict(dict)
     default_configs = ChatOptions()
 
-    def __init__(self, configs: ChatOptions = default_configs, openai_client=None):
+    def __init__(
+        self,
+        openai_client: OpenAiClientWrapper = None,
+        configs: ChatOptions = default_configs,
+    ):
         """Initializes a chat instance.
 
         Args:
             configs (ChatOptions, optional): The configurations for this chat session.
-            openai_client (openai.OpenAI, optional): An OpenAI API client instance.
+            openai_client (openai.OpenAI, optional): An OpenAiClientWrapper instance.
 
         Raises:
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = str(uuid.uuid4())
+        logger.debug("Init chat {}", self.id)
 
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
             setattr(self, field, self._passed_configs[field])
 
         try:
-            self.openai_client = openai_client or openai.OpenAI(timeout=self.timeout)
+            self.openai_client = (
+                openai_client
+                if openai_client is not None
+                else OpenAiClientWrapper(
+                    timeout=self.timeout, private_mode=self.private_mode
+                )
+            )
         except openai.OpenAIError as error:
             logger.opt(exception=True).debug(error)
             logger.error(
@@ -98,19 +109,10 @@ class Chat(AlternativeConstructors):
         return Path(self._tmp_dir.name)
 
     @property
-    def client_cache_dir(self):
-        """Return the cache directory for the chat."""
-        rtn = GeneralDefinitions.get_openai_client_cache_dir(
-            openai_client=self.openai_client
-        )
-        if self.private_mode:
-            rtn = GeneralDefinitions.PACKAGE_TMPDIR / rtn.name
-        return rtn
-
-    @property
     def cache_dir(self):
         """Return the cache directory for this chat."""
-        directory = self.client_cache_dir / f"chat_{self.id}"
+        parent_dir = self.openai_client.get_cache_dir(private_mode=self.private_mode)
+        directory = parent_dir / f"chat_{self.id}"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -142,8 +144,12 @@ class Chat(AlternativeConstructors):
 
     @property
     def general_token_usage_db(self):
-        """Return the general token usage database for all chats."""
-        return TokenUsageDatabase(fpath=self.cache_dir.parent / "token_usage.db")
+        """Return the general token usage database for all chats.
+
+        Even private-mode chats will use this database to keep track of total token usage.
+        """
+        general_cache_dir = self.openai_client.get_cache_dir(private_mode=False)
+        return TokenUsageDatabase(fpath=general_cache_dir.parent / "token_usage.db")
 
     @property
     def metadata_file(self):
@@ -178,6 +184,7 @@ class Chat(AlternativeConstructors):
 
     def clear_cache(self):
         """Remove the cache directory."""
+        logger.debug("Clearing cache for chat {}", self.id)
         shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     def load_history(self):
@@ -188,14 +195,15 @@ class Chat(AlternativeConstructors):
     def initial_greeting(self):
         """Return the initial greeting for the chat."""
         default_greeting = f"Hi! I'm {self.assistant_name}. How can I assist you?"
-        passed_greeting = ""
+        user_set_greeting = False
         with contextlib.suppress(AttributeError):
-            passed_greeting = self._initial_greeting.strip()
+            user_set_greeting = self._initial_greeting != ""
 
-        if not passed_greeting:
+        if not user_set_greeting:
             self._initial_greeting = default_greeting
 
-        if passed_greeting or self.language != "en":
+        custom_greeting = user_set_greeting and self._initial_greeting != default_greeting
+        if custom_greeting or self.language[:2] != "en":
             self._initial_greeting = self._translate(self._initial_greeting)
 
         return self._initial_greeting
@@ -222,6 +230,54 @@ class Chat(AlternativeConstructors):
             )
         except (ReachedMaxNumberOfAttemptsError, openai.OpenAIError) as error:
             yield self.response_failure_message(error=error)
+
+    def start(self):
+        """Start the chat."""
+        # ruff: noqa: T201
+        print(f"{self.assistant_name}> {self.initial_greeting}\n")
+        try:
+            while True:
+                question = input(f"{self.username}> ").strip()
+                if not question:
+                    continue
+                print(f"{self.assistant_name}> ", end="", flush=True)
+                for chunk in self.respond_user_prompt(prompt=question):
+                    print(chunk, end="", flush=True)
+                print()
+                print()
+        except (KeyboardInterrupt, EOFError):
+            print("", end="\r")
+            logger.info("Leaving chat")
+
+    def report_token_usage(self, report_current_chat=True, report_general: bool = False):
+        """Report token usage and associated costs."""
+        dfs = {}
+        if report_general:
+            dfs["All Recorded Chats"] = (
+                self.general_token_usage_db.get_usage_balance_dataframe()
+            )
+        if report_current_chat:
+            dfs["Current Chat"] = self.token_usage_db.get_usage_balance_dataframe()
+
+        if dfs:
+            for category, df in dfs.items():
+                header = f"{df.attrs['description']}: {category}"
+                table_separator = "=" * (len(header) + 4)
+                print(table_separator)
+                print(f"  {header}  ")
+                print(table_separator)
+                print(df)
+                print()
+            print(df.attrs["disclaimer"])
+
+    def response_failure_message(self, error: Optional[Exception] = None):
+        """Return the error message errors getting a response."""
+        msg = "Could not get a response right now."
+        if error is not None:
+            msg += f" The reason seems to be: {error} "
+            msg += "Please check your connection or OpenAI API key."
+            logger.opt(exception=True).debug(error)
+        return msg
 
     def _yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
@@ -334,54 +390,6 @@ class Chat(AlternativeConstructors):
                 ]
             )
 
-    def start(self):
-        """Start the chat."""
-        # ruff: noqa: T201
-        print(f"{self.assistant_name}> {self.initial_greeting}\n")
-        try:
-            while True:
-                question = input(f"{self.username}> ").strip()
-                if not question:
-                    continue
-                print(f"{self.assistant_name}> ", end="", flush=True)
-                for chunk in self.respond_user_prompt(prompt=question):
-                    print(chunk, end="", flush=True)
-                print()
-                print()
-        except (KeyboardInterrupt, EOFError):
-            print("", end="\r")
-            logger.info("Leaving chat")
-
-    def report_token_usage(self, report_current_chat=True, report_general: bool = False):
-        """Report token usage and associated costs."""
-        dfs = {}
-        if report_general:
-            dfs["All Recorded Chats"] = (
-                self.general_token_usage_db.get_usage_balance_dataframe()
-            )
-        if report_current_chat:
-            dfs["Current Chat"] = self.token_usage_db.get_usage_balance_dataframe()
-
-        if dfs:
-            for category, df in dfs.items():
-                header = f"{df.attrs['description']}: {category}"
-                table_separator = "=" * (len(header) + 4)
-                print(table_separator)
-                print(f"  {header}  ")
-                print(table_separator)
-                print(df)
-                print()
-            print(df.attrs["disclaimer"])
-
-    def response_failure_message(self, error: Optional[Exception] = None):
-        """Return the error message errors getting a response."""
-        msg = "Could not get a response right now."
-        if error is not None:
-            msg += f" The reason seems to be: {error} "
-            msg += "Please check your connection or OpenAI API key."
-            logger.opt(exception=True).debug(error)
-        return msg
-
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
         prompt_as_msg = {"role": role.lower().strip(), "content": prompt.strip()}
         yield from self.yield_response_from_msg(prompt_as_msg, **kwargs)
@@ -394,18 +402,19 @@ class Chat(AlternativeConstructors):
             return cached_translation
 
         logger.debug("Processing translation of '{}' to '{}'...", text, lang)
-        translation_prompt = f"Translate the text between triple quotes to {lang}. "
+        translation_prompt = f"Translate the text between triple quotes below to {lang}. "
         translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
-        translation_prompt += f"If the text is already in {lang}, then just repeat "
-        translation_prompt += f"it verbatim in {lang} without adding anything.\n"
+        translation_prompt += f"If the text is already in {lang}, then just return ''.\n"
         translation_prompt += f"'''{text}'''"
         translation = "".join(
             self.respond_system_prompt(
                 prompt=translation_prompt, add_to_history=False, skip_check=True
             )
         )
-        translation = translation.strip(" '\"")
 
+        translation = translation.strip(" '\"")
+        if not translation.strip():
+            translation = text.strip()
         type(self)._translation_cache[text][lang] = translation  # noqa: SLF001
 
         return translation
