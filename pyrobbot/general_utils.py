@@ -132,21 +132,36 @@ class AlternativeConstructors:
         """
         try:
             with open(cache_dir / "configs.json", "r") as configs_f:
-                new = cls.from_dict(json.load(configs_f), **kwargs)
-            with open(cache_dir / "metadata.json", "r") as metadata_f:
-                new.metadata = json.load(metadata_f)
-                logger.debug(
-                    "Reseting chat_id from cache: {} --> {}.",
-                    new.id,
-                    new.metadata["chat_id"],
-                )
-                new.id = new.metadata["chat_id"]
+                new_configs = json.load(configs_f)
         except FileNotFoundError:
             logger.warning(
-                "Could not find configs and/or metadata file in cache directory <{}>. "
+                "Could not find config file in cache directory <{}>. "
                 + "Creating {} with default configs.",
                 cache_dir,
                 cls.__name__,
             )
-            new = cls(**kwargs)
+            new_configs = cls.default_configs.model_dump()
+
+        try:
+            with open(cache_dir / "metadata.json", "r") as metadata_f:
+                new_metadata = json.load(metadata_f)
+        except FileNotFoundError:
+            logger.warning(
+                "Could not find metadata file in cache directory <{}>. "
+                + "Creating {} with default metadata.",
+                cache_dir,
+                cls.__name__,
+            )
+            new_metadata = None
+
+        new = cls.from_dict(new_configs, **kwargs)
+        if new_metadata is not None:
+            new.metadata = new_metadata
+            logger.debug(
+                "Reseting chat_id from cache: {} --> {}.",
+                new.id,
+                new.metadata["chat_id"],
+            )
+            new.id = new.metadata["chat_id"]
+
         return new

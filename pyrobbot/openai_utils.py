@@ -5,6 +5,7 @@ import shutil
 from typing import TYPE_CHECKING, Optional
 
 import openai
+from loguru import logger
 
 from . import GeneralDefinitions
 from .chat_configs import OpenAiApiCallOptions
@@ -50,6 +51,7 @@ class OpenAiClientWrapper(openai.OpenAI):
             if not all(
                 (directory / fname).exists() for fname in self.required_cache_files
             ):
+                logger.debug(f"Removing invalid cache directory: {directory}")
                 shutil.rmtree(directory, ignore_errors=True)
 
     def get_cache_dir(self, private_mode: Optional[bool] = None):
