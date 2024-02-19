@@ -3,15 +3,21 @@ import pytest
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat import Chat
+from pyrobbot.chat_configs import ChatOptions
 
 
 @pytest.mark.order(1)
 @pytest.mark.usefixtures("_input_builtin_mocker")
 @pytest.mark.no_chat_completion_create_mocking()
 @pytest.mark.parametrize("user_input", ["regular-input"])
-def testbed_doesnt_actually_connect_to_openai(default_chat, caplog):
-    default_chat.start()
-    success = default_chat.response_failure_message() in caplog.text
+def testbed_doesnt_actually_connect_to_openai(caplog):
+    llm = ChatOptions.get_allowed_values("model")[0]
+    context_model = ChatOptions.get_allowed_values("context_model")[0]
+    chat_configs = ChatOptions(model=llm, context_model=context_model)
+    chat = Chat(configs=chat_configs)
+
+    chat.start()
+    success = chat.response_failure_message() in caplog.text
 
     err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
     err_msg += f"\nThis is what the logger says:\n{caplog.text}"
