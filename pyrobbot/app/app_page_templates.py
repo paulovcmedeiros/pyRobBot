@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import streamlit as st
+from audiorecorder import audiorecorder
 from PIL import Image
 
 from pyrobbot import GeneralDefinitions
@@ -195,69 +196,91 @@ class ChatBotPage(AppPage):
         <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
 
         """
-        st.header(self.title, divider="rainbow")
-        self.render_chat_history()
+        title_container = st.empty()
+        title_container.header(self.title, divider="rainbow")
 
-        # Accept user input
         placeholder = (
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
         )
-        if prompt := st.chat_input(
-            placeholder=placeholder,
-            on_submit=lambda: self.state.update({"chat_started": True}),
-        ):
-            time_now = datetime.datetime.now().replace(microsecond=0)
-            # Display user message in chat message container
-            with st.chat_message("user", avatar=self.avatars["user"]):
-                st.caption(time_now)
-                st.markdown(prompt)
-            self.chat_history.append(
-                {
-                    "role": "user",
-                    "name": self.chat_obj.username,
-                    "content": prompt,
-                    "timestamp": time_now,
-                }
-            )
 
-            # Display (stream) assistant response in chat message container
-            with st.chat_message(
-                "assistant", avatar=self.avatars["assistant"]
-            ), st.empty():
-                st.markdown("▌")
-                full_response = ""
-                for chunk in self.chat_obj.respond_user_prompt(prompt):
-                    full_response += chunk
-                    st.markdown(full_response + "▌")
-                st.caption(datetime.datetime.now().replace(microsecond=0))
-                st.markdown(full_response)
+        use_microphone_input = st.session_state.get("toggle_mic_input", False)
+        if use_microphone_input:
+            prompt = self.state.pop("recorded_prompt", None)
+        else:
+            prompt = st.chat_input(placeholder=placeholder)
 
-            self.chat_history.append(
-                {
-                    "role": "assistant",
-                    "name": self.chat_obj.assistant_name,
-                    "content": full_response,
-                }
-            )
+        with st.container(height=600, border=False):
+            self.render_chat_history()
+            # Process user input
+            if prompt:
+                time_now = datetime.datetime.now().replace(microsecond=0)
+                self.state.update({"chat_started": True})
+                # Display user message in chat message container
+                with st.chat_message("user", avatar=self.avatars["user"]):
+                    st.caption(time_now)
+                    st.markdown(prompt)
+                self.chat_history.append(
+                    {
+                        "role": "user",
+                        "name": self.chat_obj.username,
+                        "content": prompt,
+                        "timestamp": time_now,
+                    }
+                )
 
-            # Reset title according to conversation initial contents
-            min_history_len_for_summary = 3
-            if (
-                "page_title" not in self.state
-                and len(self.chat_history) > min_history_len_for_summary
-            ):
-                with st.spinner("Working out conversation topic..."):
-                    prompt = "Summarize the previous messages in max 4 words"
-                    title = "".join(
-                        self.chat_obj.respond_system_prompt(prompt, add_to_history=False)
-                    )
-                    self.chat_obj.metadata["page_title"] = title
-                    self.chat_obj.metadata["sidebar_title"] = title
-                    self.chat_obj.save_cache()
+                # Display (stream) assistant response in chat message container
+                with st.chat_message(
+                    "assistant", avatar=self.avatars["assistant"]
+                ), st.empty():
+                    st.markdown("▌")
+                    full_response = ""
+                    for chunk in self.chat_obj.respond_user_prompt(prompt):
+                        full_response += chunk
+                        st.markdown(full_response + "▌")
+                    st.caption(datetime.datetime.now().replace(microsecond=0))
+                    st.markdown(full_response)
 
-                    self.title = title
-                    self.sidebar_title = title
-                    st.header(title, divider="rainbow")
+                self.chat_history.append(
+                    {
+                        "role": "assistant",
+                        "name": self.chat_obj.assistant_name,
+                        "content": full_response,
+                    }
+                )
+
+                # Reset title according to conversation initial contents
+                min_history_len_for_summary = 3
+                if (
+                    "page_title" not in self.state
+                    and len(self.chat_history) > min_history_len_for_summary
+                ):
+                    with st.spinner("Working out conversation topic..."):
+                        prompt = "Summarize the previous messages in max 4 words"
+                        title = "".join(self.chat_obj.respond_system_prompt(prompt))
+                        self.chat_obj.metadata["page_title"] = title
+                        self.chat_obj.metadata["sidebar_title"] = title
+                        self.chat_obj.save_cache()
+
+                        self.title = title
+                        self.sidebar_title = title
+                        title_container.header(title, divider="rainbow")
+
+        if use_microphone_input and ("recorded_prompt" not in self.state):
+            _left, center, _right = st.columns([1, 1, 1])
+            with center:
+                audio = audiorecorder(
+                    start_prompt=placeholder.replace("Send", "Record"),
+                    stop_prompt="Stop and send prompt",
+                    pause_prompt="",
+                    key="audiorecorder_widget",
+                )
+
+            min_audio_duration_seconds = 0.1
+            if audio.duration_seconds > min_audio_duration_seconds:
+                self.state["recorded_prompt"] = self.chat_obj.stt(audio)
+                self.state.update({"chat_started": True})
+                del st.session_state["audiorecorder_widget"]
+                st.rerun()
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""

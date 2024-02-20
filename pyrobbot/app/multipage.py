@@ -241,12 +241,21 @@ class MultipageChatbotApp(AbstractMultipageApp):
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
-                # Add button to show the costs table
-                st.toggle(
-                    key="toggle_show_costs",
-                    label=":moneybag:",
-                    help="Show estimated token usage and associated costs",
-                )
+                left, center, _right = st.columns(3)
+                with left:
+                    # Add button to show the costs table
+                    st.toggle(
+                        key="toggle_show_costs",
+                        label=":moneybag:",
+                        help="Show estimated token usage and associated costs",
+                    )
+                with center:
+                    # Add button to toggle typing/recording
+                    st.toggle(
+                        key="toggle_mic_input",
+                        label=":studio_microphone:",
+                        help="Toggle typing/recording input types",
+                    )
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
 

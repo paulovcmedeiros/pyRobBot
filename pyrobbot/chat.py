@@ -11,6 +11,7 @@ from typing import Optional
 
 import openai
 from loguru import logger
+from pydub import AudioSegment
 from tzlocal import get_localzone
 
 from . import GeneralDefinitions
@@ -19,6 +20,7 @@ from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
 from .internet_utils import websearch
 from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
+from .sst_and_tts import SpeechToText
 from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
 
 
@@ -216,9 +218,17 @@ class Chat(AlternativeConstructors):
         """Respond to a user prompt."""
         yield from self._respond_prompt(prompt=prompt, role="user", **kwargs)
 
-    def respond_system_prompt(self, prompt: str, **kwargs):
+    def respond_system_prompt(
+        self, prompt: str, add_to_history=False, skip_check=True, **kwargs
+    ):
         """Respond to a system prompt."""
-        yield from self._respond_prompt(prompt=prompt, role="system", **kwargs)
+        yield from self._respond_prompt(
+            prompt=prompt,
+            role="system",
+            add_to_history=add_to_history,
+            skip_check=skip_check,
+            **kwargs,
+        )
 
     def yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, **kwargs
@@ -279,6 +289,17 @@ class Chat(AlternativeConstructors):
             logger.opt(exception=True).debug(error)
         return msg
 
+    def stt(self, speech: AudioSegment):
+        """Convert audio to text."""
+        return SpeechToText(
+            speech=speech,
+            openai_client=self.openai_client,
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+            language=self.language,
+            timeout=self.timeout,
+        ).text
+
     def _yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
     ):
@@ -307,11 +328,7 @@ class Chat(AlternativeConstructors):
                 "or have either of you asked or implied the need for a web search?\n"
             )
 
-            reply = "".join(
-                self.respond_system_prompt(
-                    prompt=system_check_msg, add_to_history=False, skip_check=True
-                )
-            )
+            reply = "".join(self.respond_system_prompt(prompt=system_check_msg))
             reply = reply.strip(".' ").lower()
             if ("yes" in reply) or (self._translate("yes") in reply):
                 instructions_for_web_search = (
@@ -328,11 +345,7 @@ class Chat(AlternativeConstructors):
                 )
                 instructions_for_web_search += f"\n\n{last_msg_exchange}"
                 internet_query = "".join(
-                    self.respond_system_prompt(
-                        prompt=instructions_for_web_search,
-                        add_to_history=False,
-                        skip_check=True,
-                    )
+                    self.respond_system_prompt(prompt=instructions_for_web_search)
                 )
                 yield "\n\n" + self._translate(
                     "Searching the web now. My search is: "
@@ -371,9 +384,7 @@ class Chat(AlternativeConstructors):
 
                     full_reply_content += " "
                     yield "\n\n"
-                    for chunk in self.respond_system_prompt(
-                        prompt=prompt, add_to_history=False, skip_check=True
-                    ):
+                    for chunk in self.respond_system_prompt(prompt=prompt):
                         full_reply_content += chunk
                         yield chunk
                 else:
@@ -406,11 +417,7 @@ class Chat(AlternativeConstructors):
         translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
         translation_prompt += f"If the text is already in {lang}, then just return ''.\n"
         translation_prompt += f"'''{text}'''"
-        translation = "".join(
-            self.respond_system_prompt(
-                prompt=translation_prompt, add_to_history=False, skip_check=True
-            )
-        )
+        translation = "".join(self.respond_system_prompt(prompt=translation_prompt))
 
         translation = translation.strip(" '\"")
         if not translation.strip():

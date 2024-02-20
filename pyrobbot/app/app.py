@@ -7,7 +7,9 @@ from pyrobbot.app.multipage import MultipageChatbotApp
 def run_app():
     """Create and run an instance of the pacage's app."""
     MultipageChatbotApp(
-        page_title=GeneralDefinitions.APP_NAME, page_icon=":speech_balloon:"
+        page_title=GeneralDefinitions.APP_NAME,
+        page_icon=":speech_balloon:",
+        layout="wide",
     ).render()
 
 
