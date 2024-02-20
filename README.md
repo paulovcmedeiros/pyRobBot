@@ -1,21 +1,29 @@
+<div align="center">
+
+[![pyrobbot-logo](./pyrobbot/app/data/assistant_avatar.png)]((https://github.com/paulovcmedeiros/pyRobBot))
+# <code>[pyRobBot](https://github.com/paulovcmedeiros/pyRobBot)</code><br>Chat with GPT LLMs over voice, UI & terminal.<br>All with access to the internet.
+
+[![Pepy Total Downlods](https://img.shields.io/pepy/dt/pyrobbot?style=flat&label=Downloads)](https://www.pepy.tech/projects/pyrobbot)
+[![PyPI - Version](https://img.shields.io/pypi/v/pyrobbot)](https://pypi.org/project/pyrobbot/)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pyrobbot.streamlit.app)
+[<img src="./pyrobbot/app/data/powered-by-openai-badge-outlined-on-dark.svg" width="100">](https://openai.com/blog/openai-api)
 
-[![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/paulovcmedeiros/pyRobBot)
 
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 [![Contributors Welcome](https://img.shields.io/badge/Contributors-welcome-<COLOR>.svg)](https://github.com/paulovcmedeiros/pyRobBot/pulls)
 [![Linting](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/linting.yaml/badge.svg)](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/linting.yaml)
 [![Tests](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml/badge.svg)](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml)
 [![codecov](https://codecov.io/gh/paulovcmedeiros/pyRobBot/graph/badge.svg?token=XI8G1WH9O6)](https://codecov.io/gh/paulovcmedeiros/pyRobBot)
 
-# pyRobBot: Chat with GPT LLMs over voice, UI & terminal, with access to internet
+</div>
 
-A python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
-* A fully configurable personal assistant that can speak and listen to you
-* An equally fully configurable text-based chatbot that can be used either via web UI or terminal
+PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
+* A fully configurable **personal assistant** that can speak and listen to you
+* An equally fully configurable text-based **chatbot** that can be used either via web UI or terminal
 
 
 ## Features
-- [x] Text to speech and speech to text
+- [x] Personal assistant with text-to-speech and speech-to-text capabilities
   - Talk to the GPT assistant and the assistant will talk back to you!
   - Choose your preferred language (e.g., `rob --lang pt-br`)
   - Choose your preferred Text-to-Speech (TTS) engine (e.g., `rob --tts google`)
@@ -26,9 +34,11 @@ A python package that uses OpenAI's [GPT large language models (LLMs)](https://p
 - [x] Web browser UI (made with [Streamlit](https://pyrobbot.streamlit.app))
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
+  - Input via text or voice
 - [x] Terminal UI
   - For a more "Wake up, Neo" experience
-- [x] The chat will **search the web** and try to find the answers it does not have (e.g. current events)
+- [x] Internet access: The assistent will **search the web** and to find the answers it doesn't have in its training data
+  - E.g. current events, weather forecasts, etc.
 - [x] Fully configurable
   - Support for multiple GPT LLMs
   - Control over the parameters passed to the OpenAI API, with (hopefully) sensible defaults
@@ -91,7 +101,7 @@ rob
 ```shell
 rob ui
 ```
-
+See also our [demo Streamlit app](https://pyrobbot.streamlit.app)!
 
 ### Running on the Terminal
 ```shell
@@ -105,4 +115,4 @@ While it does not claim to be the best or more robust OpenAI-powered chatbot out
 
 Feel free to open an [issue](https://github.com/paulovcmedeiros/pyRobBot/issues) or, even better, [submit a pull request](https://github.com/paulovcmedeiros/pyRobBot/pulls) if you find a bug or have a suggestion.
 
-Last but not least: this project is **not** affiliated with OpenAI in any way.
+Last but not least: This project is **independently developed** and **not** affiliated, endorsed, or sponsored by OpenAI in any way. It is separate and distinct from OpenAI’s own products and services.
