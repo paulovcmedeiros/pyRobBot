@@ -7,7 +7,7 @@
 [![Tests](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml/badge.svg)](https://github.com/paulovcmedeiros/pyRobBot/actions/workflows/tests.yaml)
 [![codecov](https://codecov.io/gh/paulovcmedeiros/pyRobBot/graph/badge.svg?token=XI8G1WH9O6)](https://codecov.io/gh/paulovcmedeiros/pyRobBot)
 
-# pyRobBot: Talk and Chat with GPT LLMs
+# pyRobBot: Chat with GPT LLMs over voice, UI & terminal, with access to internet
 
 A python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
 * A fully configurable personal assistant that can speak and listen to you

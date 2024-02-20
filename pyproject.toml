@@ -1,10 +1,10 @@
 [tool.poetry]
   authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
-  description = "GPT chatbot using OpenAI API"
+  description = "Chat with GPT LLMs over voice, UI & terminal, with access to internet. Uses the OpenAI API."
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.6.0"
+  version = "0.6.1"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -43,6 +43,7 @@
   sounddevice = "^0.4.6"
   soundfile = "^0.12.1"
   speechrecognition = "^3.10.0"
+  streamlit-audiorecorder = "^0.0.4"
   tzlocal = "^5.2"
   unidecode = "^1.3.7"
   webrtcvad-wheels = "^2.0.11.post1"

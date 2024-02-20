@@ -143,7 +143,7 @@ class ChatOptions(OpenAiApiCallOptions):
         default="", description="Initial greeting given by the assistant"
     )
     private_mode: Optional[bool] = Field(
-        default=None,
+        default=False,
         description="Toggle private mode. If this flag is used, the chat will not "
         + "be logged and the chat history will not be saved.",
     )

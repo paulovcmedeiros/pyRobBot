@@ -3,11 +3,12 @@
 import contextlib
 import datetime
 import os
-import shutil
+import sys
 from abc import ABC, abstractmethod, abstractproperty
+from json.decoder import JSONDecodeError
 
-import openai
 import streamlit as st
+from loguru import logger
 from pydantic import ValidationError
 
 from pyrobbot import GeneralDefinitions
@@ -19,6 +20,7 @@ from pyrobbot.app.app_page_templates import (
 )
 from pyrobbot.chat import Chat
 from pyrobbot.chat_configs import ChatOptions
+from pyrobbot.openai_utils import OpenAiClientWrapper
 
 
 class AbstractMultipageApp(ABC):
@@ -62,7 +64,6 @@ class AbstractMultipageApp(ABC):
 
     def _remove_page(self, page: AppPage):
         """Remove a page from the app."""
-        self.pages[page.page_id].chat_obj.private_mode = True
         self.pages[page.page_id].chat_obj.clear_cache()
         del self.pages[page.page_id]
         try:
@@ -126,11 +127,26 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return st.session_state[app_state_id]
 
     @property
-    def openai_client(self) -> openai.OpenAI:
+    def openai_client(self) -> OpenAiClientWrapper:
         """Return the OpenAI client."""
         if "openai_client" not in self.state:
-            self.state["openai_client"] = openai.OpenAI(api_key=self.openai_api_key)
+            logger.debug("Creating OpenAI client for multipage app")
+            self.state["openai_client"] = OpenAiClientWrapper(
+                api_key=self.openai_api_key, private_mode=self.chat_configs.private_mode
+            )
         return self.state["openai_client"]
+
+    @property
+    def chat_configs(self) -> ChatOptions:
+        """Return the configs used for the page's chat object."""
+        if "chat_configs" not in self.state:
+            try:
+                chat_options_file_path = sys.argv[-1]
+                self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
+            except (FileNotFoundError, JSONDecodeError):
+                logger.warning("Could not retrieve cli args. Using default chat options.")
+                self.state["chat_configs"] = ChatOptions()
+        return self.state["chat_configs"]
 
     def create_api_key_element(self):
         """Create an input element for the OpenAI API key."""
@@ -180,26 +196,6 @@ class MultipageChatbotApp(AbstractMultipageApp):
             st.session_state.get(element_key)
         )
 
-    def get_saved_chat_cache_dir_paths(self):
-        """Get the filepaths of saved chat contexts, sorted by last modified."""
-        required_files = [
-            "chat_token_usage.db",
-            "configs.json",
-            "embeddings.db",
-            "metadata.json",
-        ]
-        openai_client_cache_dir = GeneralDefinitions.get_openai_client_cache_dir(
-            openai_client=self.openai_client
-        )
-        for directory in sorted(
-            (direc for direc in openai_client_cache_dir.glob("chat_*/")),
-            key=lambda fpath: fpath.stat().st_ctime,
-        ):
-            if all((directory / fname).exists() for fname in required_files):
-                yield directory
-            else:
-                shutil.rmtree(directory, ignore_errors=True)
-
     def handle_ui_page_selection(self):
         """Control page selection and removal in the UI sidebar."""
         _set_button_style()
@@ -245,21 +241,32 @@ class MultipageChatbotApp(AbstractMultipageApp):
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
-                # Add button to show the costs table
-                st.toggle(
-                    key="toggle_show_costs",
-                    label=":moneybag:",
-                    help="Show estimated token usage and associated costs",
-                )
+                left, center, _right = st.columns(3)
+                with left:
+                    # Add button to show the costs table
+                    st.toggle(
+                        key="toggle_show_costs",
+                        label=":moneybag:",
+                        help="Show estimated token usage and associated costs",
+                    )
+                with center:
+                    # Add button to toggle typing/recording
+                    st.toggle(
+                        key="toggle_mic_input",
+                        label=":studio_microphone:",
+                        help="Toggle typing/recording input types",
+                    )
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
 
                 # Reopen chats from cache (if any)
                 if not self.state.get("saved_chats_reloaded", False):
                     self.state["saved_chats_reloaded"] = True
-                    for cache_dir_path in self.get_saved_chat_cache_dir_paths():
+                    for cache_dir_path in self.openai_client.saved_chat_cache_paths:
                         try:
-                            chat = Chat.from_cache(cache_dir=cache_dir_path)
+                            chat = Chat.from_cache(
+                                cache_dir=cache_dir_path, openai_client=self.openai_client
+                            )
                         except ValidationError:
                             st.warning(
                                 f"Failed to load cached chat {cache_dir_path}: "
@@ -268,6 +275,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                             )
                             continue
 
+                        logger.debug("Init chat from cache: {}", chat.id)
                         new_page = ChatBotPage(
                             parent=self,
                             chat_obj=chat,

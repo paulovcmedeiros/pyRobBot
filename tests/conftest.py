@@ -174,7 +174,7 @@ def default_voice_chat_configs(llm_model, context_model):
 def cli_args_overrides(default_chat_configs):
     args = []
     for field, value in default_chat_configs.model_dump().items():
-        if value is not None:
+        if value not in [None, True, False]:
             args = [*args, *[f"--{field.replace('_', '-')}", str(value)]]
     return args
 
