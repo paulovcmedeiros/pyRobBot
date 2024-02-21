@@ -87,13 +87,14 @@ class Chat(AlternativeConstructors):
             f"\nYou must follow all directives by {self.system_name} "
             f"unless otherwise instructed by {self.username}\n"
             f"You must reply in {self.language} unless otherwise instructed\n"
-            "> If asked to look up online, web internet etc, *you MUST ALWAYS AGREE*\n"
+            "> If asked to look up online, web, internet etc, *you MUST ALWAYS AGREE*\n"
             "\n*IMPORTANT*: If you can't find information neither in your training data "
-            "nor in the the conversation context, then, unless you have already looked up"
-            "online, do as follows:\n"
-            "  > Do *NOT* apologise. Do NOT say you are sorry.\n"
-            "  > Do NOT give any excuses. Do NOT ask permission to lookup online.\n"
-            "  > STATE CLEARLY that you will look it up online\n"
+            "nor in the conversation context then, unless you have either already "
+            f"looked up online or not understood {self.username}'s prompt, you must "
+            "do as follows:\n"
+            "  > Do *NOT* apologise nor say you are sorry nor give any excuses.\n"
+            "  > Do *NOT* ask for permission to lookup online.\n"
+            "  > STATE CLEARLY that you will look it up online.\n"
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -318,19 +319,21 @@ class Chat(AlternativeConstructors):
         if not skip_check:
             last_msg_exchange = (
                 f"`user` says: {prompt_msg['content']}\n"
-                f"`you` reply: {full_reply_content}"
+                f"`you` replies: {full_reply_content}"
             )
             system_check_msg = (
-                "Consider the following dialogue AND NOTHING MORE:\n\n"
+                "Consider the following dialogue between `user` and `you` "
+                "AND NOTHING MORE:\n\n"
                 f"{last_msg_exchange}\n\n"
                 "Now answer the following question using only 'yes' or 'no':\n"
-                "Were `you` unable to fully answer the request made by `user`, "
-                "or have either of you asked or implied the need for a web search?\n"
+                "Were `you` able to provide a good answer the `user`s prompt, without "
+                "neither `you` nor `user` asking or implying the need or intention to "
+                "perform a search or lookup online, on the web or the internet?\n"
             )
 
             reply = "".join(self.respond_system_prompt(prompt=system_check_msg))
             reply = reply.strip(".' ").lower()
-            if ("yes" in reply) or (self._translate("yes") in reply):
+            if ("no" in reply) or (self._translate("no") in reply):
                 instructions_for_web_search = (
                     "You are a professional web searcher. You will be presented with a "
                     "dialogue between `user` and `you`. Considering the dialogue and "
@@ -389,7 +392,7 @@ class Chat(AlternativeConstructors):
                         yield chunk
                 else:
                     yield self._translate(
-                        "I couldn't find anything on the web this time. Sorry."
+                        "Sorry, but I couldn't find anything on the web this time."
                     )
 
         if add_to_history:
