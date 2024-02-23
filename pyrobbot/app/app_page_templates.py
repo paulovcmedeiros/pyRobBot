@@ -1,5 +1,6 @@
 """Utilities for creating pages in a streamlit app."""
 
+import base64
 import contextlib
 import datetime
 import uuid
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING
 import streamlit as st
 from audiorecorder import audiorecorder
 from PIL import Image
+from pydub import AudioSegment
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat import Chat
@@ -26,6 +28,21 @@ _USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
 
 # Sentinel object for when a chat is recovered from cache
 _RecoveredChat = object()
+
+
+def autoplay_audio(audio: AudioSegment):
+    """Autoplay an audio segment in the streamlit app."""
+    # Adaped from: <https://discuss.streamlit.io/t/
+    #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
+    #    in-streamlit/33201/2>
+    data = audio.export(format="mp3").read()
+    b64 = base64.b64encode(data).decode()
+    md = f"""
+                <audio controls autoplay="true">
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                </audio>
+                """
+    st.markdown(md, unsafe_allow_html=True)
 
 
 class AppPage(ABC):
@@ -203,11 +220,12 @@ class ChatBotPage(AppPage):
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
         )
 
-        use_microphone_input = st.session_state.get("toggle_mic_input", False)
-        if use_microphone_input:
-            prompt = self.state.pop("recorded_prompt", None)
-        else:
-            prompt = st.chat_input(placeholder=placeholder)
+        mic_input = st.session_state.get("toggle_mic_input", False)
+        prompt = (
+            self.state.pop("recorded_prompt", None)
+            if mic_input
+            else st.chat_input(placeholder=placeholder)
+        )
 
         with st.container(height=600, border=False):
             self.render_chat_history()
@@ -229,16 +247,18 @@ class ChatBotPage(AppPage):
                 )
 
                 # Display (stream) assistant response in chat message container
-                with st.chat_message(
-                    "assistant", avatar=self.avatars["assistant"]
-                ), st.empty():
-                    st.markdown("▌")
-                    full_response = ""
-                    for chunk in self.chat_obj.respond_user_prompt(prompt):
-                        full_response += chunk
-                        st.markdown(full_response + "▌")
-                    st.caption(datetime.datetime.now().replace(microsecond=0))
-                    st.markdown(full_response)
+                with st.chat_message("assistant", avatar=self.avatars["assistant"]):
+                    with st.empty():
+                        st.markdown("▌")
+                        full_response = ""
+                        for chunk in self.chat_obj.respond_user_prompt(prompt):
+                            full_response += chunk
+                            st.markdown(full_response + "▌")
+                        st.caption(datetime.datetime.now().replace(microsecond=0))
+                        st.markdown(full_response)
+                    if mic_input:
+                        autoplay_audio(self.chat_obj.tts(full_response).speech)
+                prompt = None
 
                 self.chat_history.append(
                     {
@@ -265,7 +285,7 @@ class ChatBotPage(AppPage):
                         self.sidebar_title = title
                         title_container.header(title, divider="rainbow")
 
-        if use_microphone_input and ("recorded_prompt" not in self.state):
+        if mic_input and ("recorded_prompt" not in self.state):
             _left, center, _right = st.columns([1, 1, 1])
             with center:
                 audio = audiorecorder(
@@ -274,11 +294,9 @@ class ChatBotPage(AppPage):
                     pause_prompt="",
                     key="audiorecorder_widget",
                 )
-
             min_audio_duration_seconds = 0.1
             if audio.duration_seconds > min_audio_duration_seconds:
-                self.state["recorded_prompt"] = self.chat_obj.stt(audio)
-                self.state.update({"chat_started": True})
+                self.state["recorded_prompt"] = self.chat_obj.stt(audio).text
                 del st.session_state["audiorecorder_widget"]
                 st.rerun()
 

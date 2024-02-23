@@ -157,11 +157,6 @@ class ChatOptions(OpenAiApiCallOptions):
         description="Initial language adopted by the assistant. Use either the ISO-639-1 "
         "format (e.g. 'pt'), or an RFC5646 language tag (e.g. 'pt-br').",
     )
-
-
-class VoiceAssistantConfigs(BaseConfigModel):
-    """Model for the text-to-speech assistant's configuration options."""
-
     tts_engine: Literal["openai", "google"] = Field(
         default="openai",
         description="The text-to-speech engine to use. The `google` engine is free "
@@ -176,6 +171,10 @@ class VoiceAssistantConfigs(BaseConfigModel):
     openai_tts_voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = (
         Field(default="onyx", description="Voice to use for OpenAI's TTS")
     )
+
+
+class VoiceAssistantConfigs(BaseConfigModel):
+    """Model for the text-to-speech assistant's configuration options."""
 
     exit_expressions: list[str] = Field(
         default=["bye-bye", "ok bye-bye", "okay bye-bye"],

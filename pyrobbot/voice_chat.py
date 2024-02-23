@@ -20,7 +20,7 @@ from pydub import AudioSegment
 from .chat import Chat
 from .chat_configs import VoiceChatConfigs
 from .general_utils import _get_lower_alphanumeric, str2_minus_str1
-from .sst_and_tts import SpeechToText, TextToSpeech
+from .sst_and_tts import TextToSpeech
 
 try:
     import sounddevice as sd
@@ -217,15 +217,7 @@ class VoiceChat(Chat):
         while not self.exit_chat.is_set():
             try:
                 msgs_to_compare = check_for_interrupt_expressions_queue.get()
-                recorded_prompt = SpeechToText(
-                    openai_client=self.openai_client,
-                    speech=msgs_to_compare["user_audio"],
-                    engine=self.stt_engine,
-                    language=self.language,
-                    timeout=self.timeout,
-                    general_token_usage_db=self.general_token_usage_db,
-                    token_usage_db=self.token_usage_db,
-                ).text
+                recorded_prompt = self.stt(speech=msgs_to_compare["user_audio"]).text
 
                 recorded_prompt = _get_lower_alphanumeric(recorded_prompt).strip()
                 assistant_msg = _get_lower_alphanumeric(
@@ -349,15 +341,7 @@ class VoiceChat(Chat):
                 if audio.duration_seconds < minimum_prompt_duration_seconds:
                     continue
 
-                question = SpeechToText(
-                    openai_client=self.openai_client,
-                    speech=audio,
-                    engine=self.stt_engine,
-                    language=self.language,
-                    timeout=self.timeout,
-                    general_token_usage_db=self.general_token_usage_db,
-                    token_usage_db=self.token_usage_db,
-                ).text
+                question = self.stt(speech=audio).text
 
                 # Check for the exit expressions
                 if any(
@@ -393,17 +377,7 @@ class VoiceChat(Chat):
             try:
                 text = text_queue.get()
                 if text and not self.interrupt_reply.is_set():
-                    tts = TextToSpeech(
-                        openai_client=self.openai_client,
-                        text=text,
-                        engine=self.tts_engine,
-                        openai_tts_voice=self.openai_tts_voice,
-                        language=self.language,
-                        timeout=self.timeout,
-                        general_token_usage_db=self.general_token_usage_db,
-                        token_usage_db=self.token_usage_db,
-                    )
-
+                    tts = self.tts(text)
                     # Trigger the TTS conversion
                     _ = tts.speech
 

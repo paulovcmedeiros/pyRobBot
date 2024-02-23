@@ -20,7 +20,7 @@ from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
 from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
 from .internet_utils import websearch
 from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
-from .sst_and_tts import SpeechToText
+from .sst_and_tts import SpeechToText, TextToSpeech
 from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
 
 
@@ -295,11 +295,25 @@ class Chat(AlternativeConstructors):
         return SpeechToText(
             speech=speech,
             openai_client=self.openai_client,
-            general_token_usage_db=self.general_token_usage_db,
-            token_usage_db=self.token_usage_db,
+            engine=self.stt_engine,
             language=self.language,
             timeout=self.timeout,
-        ).text
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+        )
+
+    def tts(self, text: str):
+        """Convert text to audio."""
+        return TextToSpeech(
+            text=text,
+            openai_client=self.openai_client,
+            language=self.language,
+            engine=self.tts_engine,
+            openai_tts_voice=self.openai_tts_voice,
+            timeout=self.timeout,
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+        )
 
     def _yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
