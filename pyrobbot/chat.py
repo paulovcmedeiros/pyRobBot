@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import openai
+from attr import dataclass
 from loguru import logger
 from pydub import AudioSegment
 from tzlocal import get_localzone
@@ -22,6 +23,14 @@ from .internet_utils import websearch
 from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
 from .sst_and_tts import SpeechToText, TextToSpeech
 from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
+
+
+@dataclass
+class AssistantResponseChunk:
+    """A chunk of the assistant's response."""
+
+    content: str
+    chunk_type: str = "text"
 
 
 class Chat(AlternativeConstructors):
@@ -52,6 +61,8 @@ class Chat(AlternativeConstructors):
         self.id = str(uuid.uuid4())
         logger.debug("Init chat {}", self.id)
 
+        self._code_marker = "\uE001"  # TEST
+
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
             setattr(self, field, self._passed_configs[field])
@@ -74,13 +85,14 @@ class Chat(AlternativeConstructors):
     @property
     def base_directive(self):
         """Return the base directive for the LLM."""
+        code_marker = self._code_marker
         local_datetime = datetime.now(get_localzone()).isoformat(timespec="seconds")
         msg_content = (
             f"Your name is {self.assistant_name}. Your model is {self.model}\n"
             f"You are a helpful assistant to {self.username}\n"
             f"You have internet access\n"
-            + "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
-            + "\n"
+            f"You MUST ALWAYS write {code_marker} before AND after code blocks. Example: "
+            f"```foo ... ``` MUST become {code_marker}```foo ... ```{code_marker}\n"
             f"The current city is {GeneralDefinitions.IPINFO['city']} in "
             f"{GeneralDefinitions.IPINFO['country_name']}\n"
             f"The local datetime is {local_datetime}\n"
@@ -95,6 +107,7 @@ class Chat(AlternativeConstructors):
             "  > Do *NOT* apologise nor say you are sorry nor give any excuses.\n"
             "  > Do *NOT* ask for permission to lookup online.\n"
             "  > STATE CLEARLY that you will look it up online.\n"
+            "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -223,22 +236,34 @@ class Chat(AlternativeConstructors):
         self, prompt: str, add_to_history=False, skip_check=True, **kwargs
     ):
         """Respond to a system prompt."""
-        yield from self._respond_prompt(
+        for response_chunk in self._respond_prompt(
             prompt=prompt,
             role="system",
             add_to_history=add_to_history,
             skip_check=skip_check,
             **kwargs,
-        )
+        ):
+            yield response_chunk.content
 
     def yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, **kwargs
     ):
         """Yield response from a prompt message."""
+        code_marker = self._code_marker
         try:
-            yield from self._yield_response_from_msg(
+            inside_code_block = False
+            for answer_chunk in self._yield_response_from_msg(
                 prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
-            )
+            ):
+                code_marker_detected = code_marker in answer_chunk
+                inside_code_block = (code_marker_detected and not inside_code_block) or (
+                    inside_code_block and not code_marker_detected
+                )
+                yield AssistantResponseChunk(
+                    content=answer_chunk.strip(code_marker),
+                    chunk_type="code" if inside_code_block else "text",
+                )
+
         except (ReachedMaxNumberOfAttemptsError, openai.OpenAIError) as error:
             yield self.response_failure_message(error=error)
 
@@ -253,7 +278,7 @@ class Chat(AlternativeConstructors):
                     continue
                 print(f"{self.assistant_name}> ", end="", flush=True)
                 for chunk in self.respond_user_prompt(prompt=question):
-                    print(chunk, end="", flush=True)
+                    print(chunk.content, end="", flush=True)
                 print()
                 print()
         except (KeyboardInterrupt, EOFError):
@@ -288,7 +313,7 @@ class Chat(AlternativeConstructors):
             msg += f" The reason seems to be: {error} "
             msg += "Please check your connection or OpenAI API key."
             logger.opt(exception=True).debug(error)
-        return msg
+        return AssistantResponseChunk(msg)
 
     def stt(self, speech: AudioSegment):
         """Convert audio to text."""

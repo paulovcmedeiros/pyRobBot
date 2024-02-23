@@ -12,15 +12,16 @@ from loguru import logger
 from pydantic import ValidationError
 
 from pyrobbot import GeneralDefinitions
-from pyrobbot.app.app_page_templates import (
+from pyrobbot.chat_configs import VoiceChatConfigs
+from pyrobbot.openai_utils import OpenAiClientWrapper
+
+from .app_page_templates import (
     _ASSISTANT_AVATAR_IMAGE,
     AppPage,
     ChatBotPage,
+    WebAppChat,
     _RecoveredChat,
 )
-from pyrobbot.chat import Chat
-from pyrobbot.chat_configs import ChatOptions
-from pyrobbot.openai_utils import OpenAiClientWrapper
 
 
 class AbstractMultipageApp(ABC):
@@ -137,15 +138,17 @@ class MultipageChatbotApp(AbstractMultipageApp):
         return self.state["openai_client"]
 
     @property
-    def chat_configs(self) -> ChatOptions:
+    def chat_configs(self) -> VoiceChatConfigs:
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
             try:
                 chat_options_file_path = sys.argv[-1]
-                self.state["chat_configs"] = ChatOptions.from_file(chat_options_file_path)
+                self.state["chat_configs"] = VoiceChatConfigs.from_file(
+                    chat_options_file_path
+                )
             except (FileNotFoundError, JSONDecodeError):
                 logger.warning("Could not retrieve cli args. Using default chat options.")
-                self.state["chat_configs"] = ChatOptions()
+                self.state["chat_configs"] = VoiceChatConfigs()
         return self.state["chat_configs"]
 
     def create_api_key_element(self):
@@ -208,9 +211,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
             # Present the user with the model and instructions fields first
             field_names = ["model", "ai_instructions", "context_model"]
-            field_names += list(ChatOptions.model_fields)
+            field_names += list(VoiceChatConfigs.model_fields)
             field_names = list(dict.fromkeys(field_names))
-            model_fields = {k: ChatOptions.model_fields[k] for k in field_names}
+            model_fields = {k: VoiceChatConfigs.model_fields[k] for k in field_names}
 
             updates_to_chat_configs = self._handle_chat_configs_value_selection(
                 current_chat_configs, model_fields
@@ -219,7 +222,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
         if updates_to_chat_configs:
             new_chat_configs = current_chat_configs.model_dump()
             new_chat_configs.update(updates_to_chat_configs)
-            new_chat = Chat.from_dict(new_chat_configs)
+            new_chat = WebAppChat.from_dict(new_chat_configs)
             self.selected_page.chat_obj = new_chat
 
     def render(self, **kwargs):
@@ -264,7 +267,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                     self.state["saved_chats_reloaded"] = True
                     for cache_dir_path in self.openai_client.saved_chat_cache_paths:
                         try:
-                            chat = Chat.from_cache(
+                            chat = WebAppChat.from_cache(
                                 cache_dir=cache_dir_path, openai_client=self.openai_client
                             )
                         except ValidationError:
@@ -357,9 +360,9 @@ class MultipageChatbotApp(AbstractMultipageApp):
         updates_to_chat_configs = {}
         for field_name, field in model_fields.items():
             title = field_name.replace("_", " ").title()
-            choices = ChatOptions.get_allowed_values(field=field_name)
-            description = ChatOptions.get_description(field=field_name)
-            field_type = ChatOptions.get_type(field=field_name)
+            choices = VoiceChatConfigs.get_allowed_values(field=field_name)
+            description = VoiceChatConfigs.get_description(field=field_name)
+            field_type = VoiceChatConfigs.get_type(field=field_name)
 
             # Check if the field is frozen and disable corresponding UI element if so
             chat_started = self.selected_page.state.get("chat_started", False)

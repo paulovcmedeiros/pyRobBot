@@ -3,6 +3,7 @@
 import base64
 import contextlib
 import datetime
+import time
 import uuid
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -10,11 +11,11 @@ from typing import TYPE_CHECKING
 import streamlit as st
 from audiorecorder import audiorecorder
 from PIL import Image
-from pydub import AudioSegment
 
 from pyrobbot import GeneralDefinitions
-from pyrobbot.chat import Chat
-from pyrobbot.chat_configs import ChatOptions
+from pyrobbot.chat_configs import VoiceChatConfigs
+from pyrobbot.sst_and_tts import TextToSpeech
+from pyrobbot.voice_chat import VoiceChat
 
 if TYPE_CHECKING:
     from pyrobbot.app.multipage import MultipageChatbotApp
@@ -30,19 +31,28 @@ _USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
 _RecoveredChat = object()
 
 
-def autoplay_audio(audio: AudioSegment):
-    """Autoplay an audio segment in the streamlit app."""
-    # Adaped from: <https://discuss.streamlit.io/t/
-    #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
-    #    in-streamlit/33201/2>
-    data = audio.export(format="mp3").read()
-    b64 = base64.b64encode(data).decode()
-    md = f"""
+class WebAppChat(VoiceChat):
+    """A chat object for web apps."""
+
+    def __init__(self, **kwargs):
+        """Initialize a new instance of the WebAppChat class."""
+        super().__init__(**kwargs)
+        self.tts_conversion_watcher_thread.start()
+
+    def speak(self, tts: TextToSpeech):
+        """Autoplay an audio segment in the streamlit app."""
+        # Adaped from: <https://discuss.streamlit.io/t/
+        #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
+        #    in-streamlit/33201/2>
+        data = tts.speech.export(format="mp3").read()
+        b64 = base64.b64encode(data).decode()
+        md = f"""
                 <audio controls autoplay="true">
                 <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                 </audio>
                 """
-    st.markdown(md, unsafe_allow_html=True)
+        st.markdown(md, unsafe_allow_html=True)
+        time.sleep(tts.speech.duration_seconds)
 
 
 class AppPage(ABC):
@@ -115,15 +125,15 @@ class ChatBotPage(AppPage):
     def __init__(
         self,
         parent: "MultipageChatbotApp",
-        chat_obj: Chat = None,
+        chat_obj: WebAppChat = None,
         sidebar_title: str = "",
         page_title: str = "",
     ):
-        """Initialize new instance of the ChatBotPage class with an optional Chat object.
+        """Initialize new instance of the ChatBotPage class with an opt WebAppChat object.
 
         Args:
             parent (MultipageChatbotApp): The parent app of the page.
-            chat_obj (Chat): The chat object. Defaults to None.
+            chat_obj (WebAppChat): The chat object. Defaults to None.
             sidebar_title (str): The sidebar title for the chatbot page.
                 Defaults to an empty string.
             page_title (str): The title for the chatbot page.
@@ -139,29 +149,29 @@ class ChatBotPage(AppPage):
         self.avatars = {"assistant": _ASSISTANT_AVATAR_IMAGE, "user": _USER_AVATAR_IMAGE}
 
     @property
-    def chat_configs(self) -> ChatOptions:
+    def chat_configs(self) -> VoiceChatConfigs:
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
             self.state["chat_configs"] = self.parent.state["chat_configs"]
         return self.state["chat_configs"]
 
     @chat_configs.setter
-    def chat_configs(self, value: ChatOptions):
-        self.state["chat_configs"] = ChatOptions.model_validate(value)
+    def chat_configs(self, value: VoiceChatConfigs):
+        self.state["chat_configs"] = VoiceChatConfigs.model_validate(value)
         if "chat_obj" in self.state:
             del self.state["chat_obj"]
 
     @property
-    def chat_obj(self) -> Chat:
+    def chat_obj(self) -> WebAppChat:
         """Return the chat object responsible for the queries on this page."""
         if "chat_obj" not in self.state:
-            self.chat_obj = Chat(
+            self.chat_obj = WebAppChat(
                 configs=self.chat_configs, openai_client=self.parent.openai_client
             )
         return self.state["chat_obj"]
 
     @chat_obj.setter
-    def chat_obj(self, new_chat_obj: Chat):
+    def chat_obj(self, new_chat_obj: WebAppChat):
         current_chat = self.state.get("chat_obj")
         if current_chat:
             current_chat.save_cache()
@@ -221,6 +231,7 @@ class ChatBotPage(AppPage):
         )
 
         mic_input = st.session_state.get("toggle_mic_input", False)
+        self.chat_obj.reply_only_as_text = not mic_input
         prompt = (
             self.state.pop("recorded_prompt", None)
             if mic_input
@@ -251,13 +262,15 @@ class ChatBotPage(AppPage):
                     with st.empty():
                         st.markdown("▌")
                         full_response = ""
-                        for chunk in self.chat_obj.respond_user_prompt(prompt):
-                            full_response += chunk
+                        for chunk in self.chat_obj.answer_question(prompt):
+                            full_response += chunk.content
                             st.markdown(full_response + "▌")
                         st.caption(datetime.datetime.now().replace(microsecond=0))
                         st.markdown(full_response)
                     if mic_input:
-                        autoplay_audio(self.chat_obj.tts(full_response).speech)
+                        while not self.chat_obj.play_speech_queue.empty():
+                            self.chat_obj.speak(self.chat_obj.play_speech_queue.get())
+                            self.chat_obj.play_speech_queue.task_done()
                 prompt = None
 
                 self.chat_history.append(

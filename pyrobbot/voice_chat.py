@@ -51,9 +51,9 @@ class VoiceChat(Chat):
 
     default_configs = VoiceChatConfigs()
 
-    def __init__(self, configs: VoiceChatConfigs = default_configs):
+    def __init__(self, configs: VoiceChatConfigs = default_configs, **kwargs):
         """Initializes a chat instance."""
-        super().__init__(configs=configs)
+        super().__init__(configs=configs, **kwargs)
         _check_needed_imports()
 
         self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
@@ -82,7 +82,7 @@ class VoiceChat(Chat):
         )
         self.play_speech_thread = threading.Thread(
             target=self.handle_speech_queue, args=(self.play_speech_queue,), daemon=True
-        )
+        )  # TODO: Do not start this in webchat
         # 3. Watching for expressions that cancel the reply or exit the chat
         self.check_for_interrupt_expressions_queue = queue.Queue()
         self.check_for_interrupt_expressions_thread = threading.Thread(
@@ -129,16 +129,27 @@ class VoiceChat(Chat):
                 self.interrupt_reply.clear()
                 logger.debug(f"{self.assistant_name}> Waiting for user input...")
                 question = self.questions_queue.get()
+                self.questions_queue.task_done()
 
                 if question is None:
                     self.exit_chat.set()
                 else:
                     chime.success()
-                    self.answer_question(question)
-            except (KeyboardInterrupt, EOFError):  # noqa: PERF203
+                    info_printed = False
+                    for chunk in self.answer_question(question):
+                        if chunk.chunk_type != "code":
+                            continue
+                        if not info_printed:
+                            msg = self._translate(
+                                "I'll write the code in the text output."
+                            )
+                            self.tts_conversion_queue.put(msg)
+                            info_printed = True
+                        print(chunk.content, end="", flush=True)
+                    if info_printed:
+                        print("\n")
+            except (KeyboardInterrupt, EOFError):
                 self.exit_chat.set()
-            finally:
-                self.questions_queue.task_done()
 
         chime.info()
         logger.debug("Leaving chat")
@@ -146,52 +157,29 @@ class VoiceChat(Chat):
     def answer_question(self, question: str):
         """Answer a question."""
         logger.debug("{}> Getting response to '{}'...", self.assistant_name, question)
-        sentence = ""
-        inside_code_block = False
-        at_least_one_code_line_written = False
+        sentence_for_tts = ""
         for answer_chunk in self.respond_user_prompt(prompt=question):
             if self.interrupt_reply.is_set() or self.exit_chat.is_set():
-                return
+                raise StopIteration
+            yield answer_chunk
 
-            fmtd_chunk = answer_chunk.strip(" \n")
-            code_block_start_detected = fmtd_chunk.startswith("``")
-
-            if code_block_start_detected and not inside_code_block:
-                # Toggle the code block state
-                inside_code_block = True
-
-            if inside_code_block:
-                code_chunk = answer_chunk
-                if at_least_one_code_line_written:
-                    inside_code_block = not fmtd_chunk.endswith("``")  # Code block ends
-                    if not inside_code_block:
-                        code_chunk = answer_chunk.rstrip("`") + "```\n"
-                print(
-                    code_chunk,
-                    end="" if inside_code_block else "\n",
-                    flush=True,
-                )
-                at_least_one_code_line_written = True
-            else:
+            if answer_chunk.chunk_type == "text" and not self.reply_only_as_text:
                 # The answer chunk is to be spoken
-                sentence += answer_chunk
-                stripd_chunk = answer_chunk.strip()
+                sentence_for_tts += answer_chunk.content
+                stripd_chunk = answer_chunk.content.strip()
                 if stripd_chunk.endswith(("?", "!", ".")):
                     # Check if second last character is a number, to avoid splitting
                     if stripd_chunk.endswith("."):
                         with contextlib.suppress(IndexError):
-                            previous_char = sentence.strip()[-2]
+                            previous_char = sentence_for_tts.strip()[-2]
                             if previous_char.isdigit():
                                 continue
                     # Send sentence for TTS even if the request hasn't finished
-                    self.tts_conversion_queue.put(sentence)
-                    sentence = ""
-        if sentence:
-            self.tts_conversion_queue.put(sentence)
-        if at_least_one_code_line_written:
-            spoken_info_to_user = "The code has been written to the console"
-            spoken_info_to_user = self._translate(spoken_info_to_user)
-            self.tts_conversion_queue.put(spoken_info_to_user)
+                    self.tts_conversion_queue.put(sentence_for_tts)
+                    sentence_for_tts = ""
+
+        if sentence_for_tts and not self.reply_only_as_text:
+            self.tts_conversion_queue.put(sentence_for_tts)
 
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
