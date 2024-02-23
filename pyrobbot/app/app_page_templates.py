@@ -39,15 +39,16 @@ class WebAppChat(VoiceChat):
         super().__init__(**kwargs)
         self.tts_conversion_watcher_thread.start()
 
-    def speak(self, tts: TextToSpeech):
+    def speak(self, tts: TextToSpeech, autoplay: bool = True):
         """Autoplay an audio segment in the streamlit app."""
         # Adaped from: <https://discuss.streamlit.io/t/
         #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
         #    in-streamlit/33201/2>
+        autoplay = "true" if autoplay else "false"
         data = tts.speech.export(format="mp3").read()
         b64 = base64.b64encode(data).decode()
         md = f"""
-                <audio controls autoplay="true">
+                <audio controls autoplay="{autoplay}">
                 <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
                 </audio>
                 """
@@ -201,6 +202,8 @@ class ChatBotPage(AppPage):
                 with contextlib.suppress(KeyError):
                     st.caption(message["timestamp"])
                 st.markdown(message["content"])
+                with contextlib.suppress(KeyError):
+                    st.audio(message["assistant_reply_audio_file"], format="audio/mp3")
 
     def render_cost_estimate_page(self):
         """Render the estimated costs information in the chat."""
@@ -262,15 +265,18 @@ class ChatBotPage(AppPage):
                     with st.empty():
                         st.markdown("▌")
                         full_response = ""
+                        # When the chat object answers the user's question, it will
+                        # put the response in the tts queue, then in the play speech
+                        # queue, assynchronously
                         for chunk in self.chat_obj.answer_question(prompt):
                             full_response += chunk.content
                             st.markdown(full_response + "▌")
                         st.caption(datetime.datetime.now().replace(microsecond=0))
                         st.markdown(full_response)
-                    if mic_input:
-                        while not self.chat_obj.play_speech_queue.empty():
-                            self.chat_obj.speak(self.chat_obj.play_speech_queue.get())
-                            self.chat_obj.play_speech_queue.task_done()
+                    while not self.chat_obj.play_speech_queue.empty():
+                        self.chat_obj.speak(self.chat_obj.play_speech_queue.get())
+                        self.chat_obj.play_speech_queue.task_done()
+
                 prompt = None
 
                 self.chat_history.append(

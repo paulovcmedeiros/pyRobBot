@@ -93,6 +93,8 @@ class VoiceChat(Chat):
         self.interrupt_reply = threading.Event()
         self.exit_chat = threading.Event()
 
+        self.current_answer_audios_queue = queue.Queue()
+
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
@@ -158,6 +160,9 @@ class VoiceChat(Chat):
         """Answer a question."""
         logger.debug("{}> Getting response to '{}'...", self.assistant_name, question)
         sentence_for_tts = ""
+        with self.current_answer_audios_queue.mutex:
+            self.current_answer_audios_queue.queue.clear()
+
         for answer_chunk in self.respond_user_prompt(prompt=question):
             if self.interrupt_reply.is_set() or self.exit_chat.is_set():
                 raise StopIteration
@@ -180,6 +185,22 @@ class VoiceChat(Chat):
 
         if sentence_for_tts and not self.reply_only_as_text:
             self.tts_conversion_queue.put(sentence_for_tts)
+
+        # Merge all AudioSegments in self.current_answer_audios_queue into a single one
+        self.tts_conversion_queue.join()
+        merged_audio = AudioSegment.empty()
+        while not self.current_answer_audios_queue.empty():
+            merged_audio += self.current_answer_audios_queue.get()
+            self.current_answer_audios_queue.task_done()
+
+        # Save the combined audio as an mp3 file in the cache directory
+        audio_file_path = self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
+        merged_audio.export(audio_file_path, format="mp3")
+
+        # Update the chat history with the audio file path
+        self.context_handler.database.update_last_message_exchange_with_audio(
+            assistant_reply_audio_file=audio_file_path
+        )
 
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
@@ -371,6 +392,9 @@ class VoiceChat(Chat):
 
                     # Dispatch the audio to be played
                     self.play_speech_queue.put(tts)
+
+                    # Keep track of audios played for the current answer
+                    self.current_answer_audios_queue.put(tts.speech)
             except Exception as error:  # noqa: PERF203, BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
@@ -387,6 +411,12 @@ class VoiceChat(Chat):
             format="wav",
             subtype="PCM_16",
         )
+
+    def audio_cache_dir(self):
+        """Return the audio cache directory."""
+        directory = self.cache_dir / "audio_files"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     def _assistant_still_replying(self):
         """Check if the assistant is still talking."""

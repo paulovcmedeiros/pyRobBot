@@ -42,6 +42,7 @@ class EmbeddingsDatabase:
             timestamp INTEGER NOT NULL,
             chat_model TEXT NOT NULL,
             message_exchange TEXT NOT NULL,
+            assistant_reply_audio_file TEXT,
             embedding TEXT
         )
         """
@@ -65,7 +66,10 @@ class EmbeddingsDatabase:
             conn.execute(
                 """
             CREATE TRIGGER IF NOT EXISTS prevent_messages_modification
-            BEFORE UPDATE ON messages
+            BEFORE UPDATE OF
+                timestamp, chat_model, message_exchange, embedding
+            ON
+                messages
             BEGIN
                 SELECT RAISE(FAIL, 'modification not allowed');
             END;
@@ -124,6 +128,19 @@ class EmbeddingsDatabase:
         sql += "(timestamp, chat_model, message_exchange, embedding) VALUES (?, ?, ?, ?);"
         with conn:
             conn.execute(sql, (timestamp, chat_model, message_exchange, embedding))
+        conn.close()
+
+    def update_last_message_exchange_with_audio(self, assistant_reply_audio_file: Path):
+        """Update the last message exchange in the database's 'messages' table.
+
+        Args:
+            assistant_reply_audio_file (Path): Path to the assistant's reply audio file.
+        """
+        conn = sqlite3.connect(self.db_path)
+        sql = "UPDATE messages SET assistant_reply_audio_file = ? WHERE "
+        sql += "rowid = (SELECT MAX(rowid) FROM messages);"
+        with conn:
+            conn.execute(sql, (assistant_reply_audio_file.as_posix(),))
         conn.close()
 
     def get_messages_dataframe(self):

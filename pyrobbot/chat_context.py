@@ -48,7 +48,7 @@ class ChatContext(ABC):
 
     def load_history(self) -> list[dict]:
         """Load the chat history."""
-        selected_columns = ["timestamp", "message_exchange"]
+        selected_columns = ["timestamp", "message_exchange", "assistant_reply_audio_file"]
         messages_df = self.database.get_messages_dataframe()[selected_columns]
 
         # Convert unix timestamps to datetime objs at the local timezone
@@ -60,9 +60,11 @@ class ChatContext(ABC):
         )
 
         msg_exchanges = messages_df["message_exchange"].apply(ast.literal_eval).tolist()
-        # Add timestamps to messages
+        # Add timestamps and path to eventual audio files to messages
         for i_msg_exchange, timestamp in enumerate(messages_df["timestamp"]):
             msg_exchanges[i_msg_exchange][0]["timestamp"] = timestamp
+            path = messages_df["assistant_reply_audio_file"].iloc[i_msg_exchange]
+            msg_exchanges[i_msg_exchange][1]["assistant_reply_audio_file"] = path
 
         return list(itertools.chain.from_iterable(msg_exchanges))
 
