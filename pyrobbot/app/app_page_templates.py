@@ -234,6 +234,36 @@ class ChatBotPage(AppPage):
                 st.write()
             st.caption(df.attrs["disclaimer"])
 
+    @property
+    def voice_output(self) -> bool:
+        """Return the state of the voice output toggle."""
+        return st.session_state.get("toggle_voice_output", False)
+
+    def get_chat_input(self):
+        """Render chat inut widgets and return the user's input."""
+        placeholder = (
+            f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
+        )
+        min_audio_duration_seconds = 0.1
+        with st.container():
+            left, right = st.columns([0.95, 0.05])
+            with left:
+                text_prompt = st.chat_input(
+                    placeholder=placeholder, key=f"text_input_widget_{self.page_id}"
+                )
+            with right:
+                audio = audiorecorder(
+                    start_prompt="Rec",
+                    stop_prompt="Stop",
+                    pause_prompt="",
+                    key=f"audiorecorder_widget_{self.page_id}",
+                )
+                recorded_prompt = None
+                if audio.duration_seconds > min_audio_duration_seconds:
+                    recorded_prompt = self.chat_obj.stt(audio).text
+
+        return text_prompt or recorded_prompt
+
     def _render_chatbot_page(self):
         """Render a chatbot page.
 
@@ -241,22 +271,14 @@ class ChatBotPage(AppPage):
         <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
 
         """
+        self.chat_obj.reply_only_as_text = not self.voice_output
+
         title_container = st.empty()
         title_container.header(self.title, divider="rainbow")
+        chat_msgs_container = st.container(height=600, border=False)
+        prompt = self.get_chat_input()
 
-        placeholder = (
-            f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
-        )
-
-        mic_input = st.session_state.get("toggle_mic_input", False)
-        self.chat_obj.reply_only_as_text = not mic_input
-        prompt = (
-            self.state.pop("recorded_prompt", None)
-            if mic_input
-            else st.chat_input(placeholder=placeholder)
-        )
-
-        with st.container(height=600, border=False):
+        with chat_msgs_container:
             self.render_chat_history()
             # Process user input
             if prompt:
@@ -276,7 +298,6 @@ class ChatBotPage(AppPage):
                 )
 
                 # Display (stream) assistant response in chat message container
-
                 with st.chat_message("assistant", avatar=self.avatars["assistant"]):
                     with st.empty():
                         st.markdown("▌")
@@ -291,7 +312,7 @@ class ChatBotPage(AppPage):
                         st.markdown(full_response)
 
                     full_audio = AudioSegment.silent(duration=0)
-                    if not self.chat_obj.reply_only_as_text:
+                    if self.voice_output:
                         audio_placeholder_container = st.empty()
                         while not self.chat_obj.play_speech_queue.empty():
                             current_tts = self.chat_obj.play_speech_queue.get()
@@ -336,20 +357,9 @@ class ChatBotPage(AppPage):
                         self.sidebar_title = title
                         title_container.header(title, divider="rainbow")
 
-        if mic_input and ("recorded_prompt" not in self.state):
-            _left, center, _right = st.columns([1, 1, 1])
-            with center:
-                audio = audiorecorder(
-                    start_prompt=placeholder.replace("Send", "Record"),
-                    stop_prompt="Stop and send prompt",
-                    pause_prompt="",
-                    key=f"audiorecorder_widget_{self.page_id}",
-                )
-            min_audio_duration_seconds = 0.1
-            if audio.duration_seconds > min_audio_duration_seconds:
-                self.state["recorded_prompt"] = self.chat_obj.stt(audio).text
-                del st.session_state[f"audiorecorder_widget_{self.page_id}"]
-                st.rerun()
+        # Need to delete the audiorecorder widget from the session state to prevent the
+        # previous audio from being used as input again
+        del st.session_state[f"audiorecorder_widget_{self.page_id}"]
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""

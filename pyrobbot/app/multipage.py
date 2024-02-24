@@ -253,11 +253,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         help="Show estimated token usage and associated costs",
                     )
                 with center:
-                    # Add button to toggle typing/recording
+                    # Add button to toggle voice output
                     st.toggle(
-                        key="toggle_mic_input",
+                        key="toggle_voice_output",
                         label=":studio_microphone:",
-                        help="Toggle typing/recording input types",
+                        help="Toggle voice output",
                     )
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
