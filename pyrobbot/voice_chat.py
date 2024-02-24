@@ -94,7 +94,11 @@ class VoiceChat(Chat):
         self.exit_chat = threading.Event()
 
         self.current_answer_audios_queue = queue.Queue()
-        self.latest_answer_audio = None
+        self.handle_update_audio_history_thread = threading.Thread(
+            target=self.handle_update_audio_history,
+            args=(self.current_answer_audios_queue,),
+            daemon=True,
+        )
 
     def start(self):
         """Start the chat."""
@@ -107,11 +111,13 @@ class VoiceChat(Chat):
                 pygame.time.wait(50)
         self.questions_listening_watcher_thread.start()
         self.check_for_interrupt_expressions_thread.start()
+        self.handle_update_audio_history_thread.start()
 
         while not self.exit_chat.is_set():
             try:
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
+                self.current_answer_audios_queue.join()
 
                 if self.interrupt_reply.is_set():
                     logger.opt(colors=True).debug(
@@ -187,24 +193,41 @@ class VoiceChat(Chat):
         if sentence_for_tts and not self.reply_only_as_text:
             self.tts_conversion_queue.put(sentence_for_tts)
 
+    def handle_update_audio_history(self, current_answer_audios_queue: queue.Queue):
+        """Handle updating the chat history with the latest reply's audio file path."""
         # Merge all AudioSegments in self.current_answer_audios_queue into a single one
-        self.tts_conversion_queue.join()
-        merged_audio = AudioSegment.empty()
-        while not self.current_answer_audios_queue.empty():
-            merged_audio += self.current_answer_audios_queue.get()
-            self.current_answer_audios_queue.task_done()
-
         min_audio_duration_seconds = 0.01
-        if merged_audio.duration_seconds > min_audio_duration_seconds:
-            # Save the combined audio as an mp3 file in the cache directory
-            audio_file_path = self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
-            merged_audio.export(audio_file_path, format="mp3")
-            self.latest_answer_audio = merged_audio
+        merged_audio = AudioSegment.silent(duration=0)
+        while not self.exit_chat.is_set():
+            try:
+                new_audio = current_answer_audios_queue.get()
+                if new_audio is not None:
+                    merged_audio += new_audio
+                    current_answer_audios_queue.task_done()
+                    continue
+                if merged_audio.duration_seconds < min_audio_duration_seconds:
+                    current_answer_audios_queue.task_done()
+                    continue
 
-            # Update the chat history with the audio file path
-            self.context_handler.database.update_last_message_exchange_with_audio(
-                assistant_reply_audio_file=audio_file_path
-            )
+                # Update the chat history with the audio file path
+                audio_file_path = (
+                    self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
+                )
+                logger.debug(
+                    "Updating chat history with audio file path {}", audio_file_path
+                )
+                self.context_handler.database.update_last_message_exchange_with_audio(
+                    assistant_reply_audio_file=audio_file_path
+                )
+
+                # Save the combined audio as an mp3 file in the cache directory
+                merged_audio.export(audio_file_path, format="mp3")
+                logger.debug("File {} stored", audio_file_path)
+                merged_audio = AudioSegment.empty()
+
+                current_answer_audios_queue.task_done()
+            except Exception as error:  # noqa: BLE001
+                logger.opt(exception=True).debug(error)
 
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
@@ -391,14 +414,19 @@ class VoiceChat(Chat):
                 text = text_queue.get()
                 if text and not self.interrupt_reply.is_set():
                     tts = self.tts(text)
+
                     # Trigger the TTS conversion
                     _ = tts.speech
+
+                    # Keep track of audios played for the current answer
+                    self.current_answer_audios_queue.put(tts.speech)
+                    if text_queue.empty():
+                        # Signal that the current anwer is finished
+                        self.current_answer_audios_queue.put(None)
 
                     # Dispatch the audio to be played
                     self.play_speech_queue.put(tts)
 
-                    # Keep track of audios played for the current answer
-                    self.current_answer_audios_queue.put(tts.speech)
             except Exception as error:  # noqa: PERF203, BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)

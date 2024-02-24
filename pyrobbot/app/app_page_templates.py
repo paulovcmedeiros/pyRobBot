@@ -39,6 +39,7 @@ class WebAppChat(VoiceChat):
         """Initialize a new instance of the WebAppChat class."""
         super().__init__(**kwargs)
         self.tts_conversion_watcher_thread.start()
+        self.handle_update_audio_history_thread.start()
 
 
 class AppPage(ABC):
@@ -212,9 +213,10 @@ class ChatBotPage(AppPage):
                     st.caption(message["timestamp"])
                 st.markdown(message["content"])
                 with contextlib.suppress(KeyError):
-                    if audio_path := message["assistant_reply_audio_file"]:
+                    if audio := message.get("assistant_reply_audio_file"):
                         with contextlib.suppress(CouldntDecodeError):
-                            audio = AudioSegment.from_file(audio_path, format="mp3")
+                            if not isinstance(audio, AudioSegment):
+                                audio = AudioSegment.from_file(audio, format="mp3")
                             if len(audio) > 0:
                                 self.render_custom_audio_player(audio, autoplay=False)
 
@@ -313,9 +315,7 @@ class ChatBotPage(AppPage):
                         "role": "assistant",
                         "name": self.chat_obj.assistant_name,
                         "content": full_response,
-                        "assistant_reply_audio_file": full_audio.export(
-                            format="mp3"
-                        ).read(),
+                        "assistant_reply_audio_file": full_audio,
                     }
                 )
 
