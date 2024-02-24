@@ -172,12 +172,16 @@ def get_n_tokens_from_msgs(messages: list[dict], model: str):
         encoding = tiktoken.get_encoding("cl100k_base")
 
     # OpenAI's original function was implemented for gpt-3.5-turbo-0613, but we'll use
-    # it for all models for now. We are only intereste dinestimates, after all.
+    # it for all models for now. We are only interested in estimates, after all.
     num_tokens = 0
     for message in messages:
         # every message follows <im_start>{role/name}\n{content}<im_end>\n
         num_tokens += 4
         for key, value in message.items():
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"Value for key '{key}' has type {type(value)}. Expected str: {value}"
+                )
             num_tokens += len(encoding.encode(value))
             if key == "name":  # if there's a name, the role is omitted
                 num_tokens += -1  # role is always required and always 1 token

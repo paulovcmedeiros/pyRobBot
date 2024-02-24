@@ -27,6 +27,7 @@ class ChatContext(ABC):
         self.database = EmbeddingsDatabase(
             db_path=self.context_file_path, embedding_model=self.embedding_model
         )
+        self._msg_fields_for_context = ["role", "content"]
 
     @property
     def embedding_model(self):
@@ -95,8 +96,12 @@ class FullHistoryChatContext(ChatContext):
     def select_relevant_history(self, msg: dict):  # noqa: ARG002
         """Select chat history msgs to use as context for `msg`."""
         history = []
-        for history_msg in self.load_history():
-            history_msg.pop("timestamp", None)
+        for full_history_msg in self.load_history():
+            history_msg = {
+                k: v
+                for k, v in full_history_msg.items()
+                if k in self._msg_fields_for_context
+            }
             history.append(history_msg)
         return history
 
@@ -133,10 +138,18 @@ class EmbeddingBasedChatContext(ChatContext):
 
     def select_relevant_history(self, msg: dict):
         """Select chat history msgs to use as context for `msg`."""
-        return _select_relevant_history(
+        relevant_history = []
+        for full_context_msg in _select_relevant_history(
             history_df=self.database.get_messages_dataframe(),
             embedding=self.request_embedding_for_text(text=msg["content"]),
-        )
+        ):
+            context_msg = {
+                k: v
+                for k, v in full_context_msg.items()
+                if k in self._msg_fields_for_context
+            }
+            relevant_history.append(context_msg)
+        return relevant_history
 
 
 @retry()
