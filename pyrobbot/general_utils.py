@@ -32,7 +32,11 @@ def str2_minus_str1(str1: str, str2: str):
 
 def retry(
     max_n_attempts: int = 5,
-    handled_errors: tuple[Exception, ...] = (openai.APITimeoutError, httpx.HTTPError),
+    handled_errors: tuple[Exception, ...] = (
+        openai.APITimeoutError,
+        httpx.HTTPError,
+        RuntimeError,
+    ),
     error_msg: Optional[str] = None,
 ):
     """Retry executing the decorated function/generator."""

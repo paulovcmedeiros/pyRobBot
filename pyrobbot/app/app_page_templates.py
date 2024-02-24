@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING
 import streamlit as st
 from audiorecorder import audiorecorder
 from PIL import Image
+from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat_configs import VoiceChatConfigs
-from pyrobbot.sst_and_tts import TextToSpeech
 from pyrobbot.voice_chat import VoiceChat
 
 if TYPE_CHECKING:
@@ -38,22 +39,6 @@ class WebAppChat(VoiceChat):
         """Initialize a new instance of the WebAppChat class."""
         super().__init__(**kwargs)
         self.tts_conversion_watcher_thread.start()
-
-    def speak(self, tts: TextToSpeech, autoplay: bool = True):
-        """Autoplay an audio segment in the streamlit app."""
-        # Adaped from: <https://discuss.streamlit.io/t/
-        #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
-        #    in-streamlit/33201/2>
-        autoplay = "true" if autoplay else "false"
-        data = tts.speech.export(format="mp3").read()
-        b64 = base64.b64encode(data).decode()
-        md = f"""
-                <audio controls autoplay="{autoplay}">
-                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-                </audio>
-                """
-        st.markdown(md, unsafe_allow_html=True)
-        time.sleep(tts.speech.duration_seconds)
 
 
 class AppPage(ABC):
@@ -118,6 +103,30 @@ class AppPage(ABC):
     @abstractmethod
     def render(self):
         """Create the page."""
+
+    def render_custom_audio_player(
+        self,
+        audio: AudioSegment,
+        parent_element=None,
+        autoplay: bool = True,
+        start_sec: int = 0,
+    ):
+        """Autoplay an audio segment in the streamlit app."""
+        # Adaped from: <https://discuss.streamlit.io/t/
+        #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
+        #    in-streamlit/33201/2>
+        autoplay = "autoplay" if autoplay else ""
+        data = audio.export(format="mp3").read()
+        b64 = base64.b64encode(data).decode()
+        md = f"""
+                <audio controls {autoplay} preload="auto">
+                <source src="data:audio/mp3;base64,{b64}#{start_sec}" type="audio/mp3">
+                </audio>
+                """
+        parent_element = parent_element or st
+        parent_element.markdown(md, unsafe_allow_html=True)
+        if autoplay:
+            time.sleep(audio.duration_seconds)
 
 
 class ChatBotPage(AppPage):
@@ -203,7 +212,11 @@ class ChatBotPage(AppPage):
                     st.caption(message["timestamp"])
                 st.markdown(message["content"])
                 with contextlib.suppress(KeyError):
-                    st.audio(message["assistant_reply_audio_file"], format="audio/mp3")
+                    if audio_path := message["assistant_reply_audio_file"]:
+                        with contextlib.suppress(CouldntDecodeError):
+                            audio = AudioSegment.from_file(audio_path, format="mp3")
+                            if len(audio) > 0:
+                                self.render_custom_audio_player(audio, autoplay=False)
 
     def render_cost_estimate_page(self):
         """Render the estimated costs information in the chat."""
@@ -261,6 +274,7 @@ class ChatBotPage(AppPage):
                 )
 
                 # Display (stream) assistant response in chat message container
+
                 with st.chat_message("assistant", avatar=self.avatars["assistant"]):
                     with st.empty():
                         st.markdown("▌")
@@ -273,9 +287,24 @@ class ChatBotPage(AppPage):
                             st.markdown(full_response + "▌")
                         st.caption(datetime.datetime.now().replace(microsecond=0))
                         st.markdown(full_response)
-                    while not self.chat_obj.play_speech_queue.empty():
-                        self.chat_obj.speak(self.chat_obj.play_speech_queue.get())
-                        self.chat_obj.play_speech_queue.task_done()
+
+                    full_audio = AudioSegment.silent(duration=0)
+                    if not self.chat_obj.reply_only_as_text:
+                        audio_placeholder_container = st.empty()
+                        while not self.chat_obj.play_speech_queue.empty():
+                            current_tts = self.chat_obj.play_speech_queue.get()
+                            full_audio += current_tts.speech
+                            self.render_custom_audio_player(
+                                current_tts.speech,
+                                parent_element=audio_placeholder_container,
+                            )
+                            audio_placeholder_container.empty()
+                            self.chat_obj.play_speech_queue.task_done()
+                        self.render_custom_audio_player(
+                            full_audio,
+                            parent_element=audio_placeholder_container,
+                            autoplay=False,
+                        )
 
                 prompt = None
 
@@ -284,6 +313,9 @@ class ChatBotPage(AppPage):
                         "role": "assistant",
                         "name": self.chat_obj.assistant_name,
                         "content": full_response,
+                        "assistant_reply_audio_file": full_audio.export(
+                            format="mp3"
+                        ).read(),
                     }
                 )
 
@@ -311,12 +343,12 @@ class ChatBotPage(AppPage):
                     start_prompt=placeholder.replace("Send", "Record"),
                     stop_prompt="Stop and send prompt",
                     pause_prompt="",
-                    key="audiorecorder_widget",
+                    key=f"audiorecorder_widget_{self.page_id}",
                 )
             min_audio_duration_seconds = 0.1
             if audio.duration_seconds > min_audio_duration_seconds:
                 self.state["recorded_prompt"] = self.chat_obj.stt(audio).text
-                del st.session_state["audiorecorder_widget"]
+                del st.session_state[f"audiorecorder_widget_{self.page_id}"]
                 st.rerun()
 
     def render(self):

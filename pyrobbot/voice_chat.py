@@ -94,6 +94,7 @@ class VoiceChat(Chat):
         self.exit_chat = threading.Event()
 
         self.current_answer_audios_queue = queue.Queue()
+        self.latest_answer_audio = None
 
     def start(self):
         """Start the chat."""
@@ -193,14 +194,17 @@ class VoiceChat(Chat):
             merged_audio += self.current_answer_audios_queue.get()
             self.current_answer_audios_queue.task_done()
 
-        # Save the combined audio as an mp3 file in the cache directory
-        audio_file_path = self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
-        merged_audio.export(audio_file_path, format="mp3")
+        min_audio_duration_seconds = 0.01
+        if merged_audio.duration_seconds > min_audio_duration_seconds:
+            # Save the combined audio as an mp3 file in the cache directory
+            audio_file_path = self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
+            merged_audio.export(audio_file_path, format="mp3")
+            self.latest_answer_audio = merged_audio
 
-        # Update the chat history with the audio file path
-        self.context_handler.database.update_last_message_exchange_with_audio(
-            assistant_reply_audio_file=audio_file_path
-        )
+            # Update the chat history with the audio file path
+            self.context_handler.database.update_last_message_exchange_with_audio(
+                assistant_reply_audio_file=audio_file_path
+            )
 
     def speak(self, tts: TextToSpeech):
         """Reproduce audio from a pygame Sound object."""
