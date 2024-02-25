@@ -93,11 +93,13 @@ def raw_websearch(
     region: str = GeneralDefinitions.IPINFO["country_name"],
 ):
     """Search the web using DuckDuckGo Search API."""
-    results = asyncio.run(
+    raw_results = asyncio.run(
         async_raw_websearch(query=query, max_results=max_results, region=region)
     )
+    raw_results = raw_results or []
 
-    for result in results:
+    results = []
+    for result in raw_results:
         if not isinstance(result, dict):
             logger.error("Expected a `dict`, got type {}: {}", type(result), result)
             results.append({})
