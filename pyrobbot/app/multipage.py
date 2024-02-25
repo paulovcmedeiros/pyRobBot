@@ -254,9 +254,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
                     )
                 with center:
                     # Add button to toggle voice output
+                    speaking_head_in_silhouette = "\U0001F5E3"
                     st.toggle(
                         key="toggle_voice_output",
-                        label=":studio_microphone:",
+                        label=speaking_head_in_silhouette,
                         help="Toggle voice output",
                     )
                 # Add button to create a new chat

@@ -252,9 +252,11 @@ class ChatBotPage(AppPage):
                     placeholder=placeholder, key=f"text_input_widget_{self.page_id}"
                 )
             with right:
+                studio_microphone = "\U0001F399"
+                red_square = "\U0001F7E5"
                 audio = audiorecorder(
-                    start_prompt="Rec",
-                    stop_prompt="Stop",
+                    start_prompt=studio_microphone,
+                    stop_prompt=red_square,
                     pause_prompt="",
                     key=f"audiorecorder_widget_{self.page_id}",
                 )
