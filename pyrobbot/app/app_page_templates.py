@@ -357,9 +357,10 @@ class ChatBotPage(AppPage):
                         self.sidebar_title = title
                         title_container.header(title, divider="rainbow")
 
-        # Need to delete the audiorecorder widget from the session state to prevent the
-        # previous audio from being used as input again
-        del st.session_state[f"audiorecorder_widget_{self.page_id}"]
+        with contextlib.suppress(KeyError):
+            # Need to delete the audiorecorder widget from the session state to prevent
+            # the previous audio from being used as input again
+            del st.session_state[f"audiorecorder_widget_{self.page_id}"]
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
