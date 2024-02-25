@@ -43,7 +43,7 @@
   sounddevice = "^0.4.6"
   soundfile = "^0.12.1"
   speechrecognition = "^3.10.0"
-  streamlit-audiorecorder = "^0.0.4"
+  streamlit-mic-recorder = "^0.0.4"
   tzlocal = "^5.2"
   unidecode = "^1.3.7"
   webrtcvad-wheels = "^2.0.11.post1"

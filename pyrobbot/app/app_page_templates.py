@@ -9,10 +9,10 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import streamlit as st
-from audiorecorder import audiorecorder
 from PIL import Image
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
+from streamlit_mic_recorder import mic_recorder
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat_configs import VoiceChatConfigs
@@ -104,6 +104,32 @@ class AppPage(ABC):
     @abstractmethod
     def render(self):
         """Create the page."""
+
+    def manual_switch_mic_recorder(self):
+        """Record audio from the microphone."""
+        studio_microphone = "\U0001F399"
+        red_square = "\U0001F7E5"
+
+        recording = mic_recorder(
+            key=f"audiorecorder_widget_{self.page_id}",
+            start_prompt=studio_microphone,
+            stop_prompt=red_square,
+            just_once=True,
+            use_container_width=True,
+            callback=None,
+            args=(),
+            kwargs={},
+        )
+
+        if recording is None:
+            return AudioSegment.silent(duration=0)
+
+        return AudioSegment(
+            data=recording["bytes"],
+            sample_width=recording["sample_width"],
+            frame_rate=recording["sample_rate"],
+            channels=1,
+        )
 
     def render_custom_audio_player(
         self,
@@ -252,14 +278,7 @@ class ChatBotPage(AppPage):
                     placeholder=placeholder, key=f"text_input_widget_{self.page_id}"
                 )
             with right:
-                studio_microphone = "\U0001F399"
-                red_square = "\U0001F7E5"
-                audio = audiorecorder(
-                    start_prompt=studio_microphone,
-                    stop_prompt=red_square,
-                    pause_prompt="",
-                    key=f"audiorecorder_widget_{self.page_id}",
-                )
+                audio = self.manual_switch_mic_recorder()
                 recorded_prompt = None
                 if audio.duration_seconds > min_audio_duration_seconds:
                     recorded_prompt = self.chat_obj.stt(audio).text
@@ -358,11 +377,6 @@ class ChatBotPage(AppPage):
                         self.title = title
                         self.sidebar_title = title
                         title_container.header(title, divider="rainbow")
-
-        with contextlib.suppress(KeyError):
-            # Need to delete the audiorecorder widget from the session state to prevent
-            # the previous audio from being used as input again
-            del st.session_state[f"audiorecorder_widget_{self.page_id}"]
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
