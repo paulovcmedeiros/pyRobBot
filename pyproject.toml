@@ -4,7 +4,7 @@
   license = "MIT"
   name = "pyrobbot"
   readme = "README.md"
-  version = "0.6.2"
+  version = "0.6.3"
 
 [build-system]
   build-backend = "poetry.core.masonry.api"
@@ -33,7 +33,7 @@
   # Text to speech
   beautifulsoup4 = "^4.12.3"
   chime = "^0.7.0"
-  duckduckgo-search = "^4.4.3"
+  duckduckgo-search = "^4.5.0"
   gtts = "^2.5.1"
   httpx = "^0.26.0"
   ipinfo = "^5.0.1"

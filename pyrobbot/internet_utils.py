@@ -1,12 +1,13 @@
 """Internet search module for the package."""
 
+import asyncio
 import re
 
 import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from bs4.element import Comment
-from duckduckgo_search import DDGS
+from duckduckgo_search import AsyncDDGS
 from loguru import logger
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -67,56 +68,75 @@ def find_whole_word_index(my_string, my_substring):
     return -1  # Substring not found
 
 
+async def async_raw_websearch(
+    query: str,
+    max_results: int = 5,
+    region: str = GeneralDefinitions.IPINFO["country_name"],
+):
+    """Search the web using DuckDuckGo Search API."""
+    async with AsyncDDGS() as ddgs:
+        async_results = [
+            result
+            async for result in ddgs.text(
+                keywords=query,
+                region=region,
+                max_results=max_results,
+                backend="html",
+            )
+        ]
+        return async_results
+
+
 def raw_websearch(
     query: str,
     max_results: int = 5,
     region: str = GeneralDefinitions.IPINFO["country_name"],
 ):
     """Search the web using DuckDuckGo Search API."""
-    with DDGS() as ddgs:
-        for result in ddgs.text(
-            keywords=query,
-            region=region,
-            max_results=max_results,
-            backend="html",
-        ):
-            if not isinstance(result, dict):
-                logger.error("Expected a `dict`, got type {}: {}", type(result), result)
-                yield {}
+    results = asyncio.run(
+        async_raw_websearch(query=query, max_results=max_results, region=region)
+    )
+
+    for result in results:
+        if not isinstance(result, dict):
+            logger.error("Expected a `dict`, got type {}: {}", type(result), result)
+            results.append({})
+            continue
+
+        if result.get("body") is None:
+            continue
+
+        try:
+            response = requests.get(result["href"], allow_redirects=False, timeout=10)
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+            continue
+        else:
+            content_type = response.headers.get("content-type")
+            if (not content_type) or ("text/html" not in content_type):
                 continue
+            html = unidecode(extract_text_from_html(response.text))
 
-            if result["body"] is None:
-                continue
+        summary = unidecode(result["body"])
+        relevance = cosine_similarity_sentences(query.lower(), summary.lower())
 
-            try:
-                response = requests.get(result["href"], allow_redirects=False, timeout=10)
-            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-                continue
-            else:
-                content_type = response.headers.get("content-type")
-                if (not content_type) or ("text/html" not in content_type):
-                    continue
-                html = unidecode(extract_text_from_html(response.text))
+        relevance_threshold = 1e-2
+        if relevance < relevance_threshold:
+            continue
 
-            summary = unidecode(result["body"])
-            relevance = cosine_similarity_sentences(query.lower(), summary.lower())
-
-            relevance_threshold = 1e-2
-            if relevance < relevance_threshold:
-                continue
-
-            yield {
-                "href": result["href"],
-                "summary": summary,
-                "detailed": html,
-                "relevance": relevance,
-            }
+        new_results = {
+            "href": result["href"],
+            "summary": summary,
+            "detailed": html,
+            "relevance": relevance,
+        }
+        results.append(new_results)
+    return results
 
 
 @retry(error_msg="Error performing web search")
 def websearch(query, **kwargs):
     """Search the web using DuckDuckGo Search API."""
-    raw_results = list(raw_websearch(query, **kwargs))
+    raw_results = raw_websearch(query, **kwargs)
     raw_results = iter(
         sorted(raw_results, key=lambda x: x.get("relevance", 0.0), reverse=True)
     )
