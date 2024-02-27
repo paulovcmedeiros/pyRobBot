@@ -270,6 +270,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         key="toggle_voice_output",
                         label=speaking_head_in_silhouette,
                         help="Toggle voice output",
+                        value=True,
                     )
                 with right:
                     # Add button to toggle continuous voice input

@@ -18,6 +18,7 @@ from loguru import logger
 from PIL import Image
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
+from pydub.playback import play
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 from streamlit_mic_recorder import mic_recorder
 from streamlit_webrtc import RTCConfiguration, WebRtcMode, webrtc_streamer
@@ -70,6 +71,7 @@ class AppPage(ABC):
         self.page_id = str(uuid.uuid4())
         self.parent = parent
         self.page_number = self.parent.state.get("n_created_pages", 0) + 1
+        self.reply_ongoing = threading.Event()
 
         chat_number_for_title = f"Chat #{self.page_number}"
         if page_title is _RecoveredChat:
@@ -157,6 +159,7 @@ class AppPage(ABC):
         audio: AudioSegment,
         parent_element=None,
         autoplay: bool = True,
+        hidden=False,
         start_sec: int = 0,
     ):
         """Autoplay an audio segment in the streamlit app."""
@@ -164,17 +167,21 @@ class AppPage(ABC):
         #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
         #    in-streamlit/33201/2>
         autoplay = "autoplay" if autoplay else ""
+        hidden = "hidden" if hidden else ""
+
         data = audio.export(format="mp3").read()
         b64 = base64.b64encode(data).decode()
         md = f"""
-                <audio controls {autoplay} preload="auto">
+                <audio controls {autoplay} {hidden} preload="metadata">
                 <source src="data:audio/mp3;base64,{b64}#{start_sec}" type="audio/mp3">
                 </audio>
                 """
         parent_element = parent_element or st
         parent_element.markdown(md, unsafe_allow_html=True)
         if autoplay:
+            self.reply_ongoing.set()
             time.sleep(audio.duration_seconds)
+            self.reply_ongoing.clear()
 
 
 class ChatBotPage(AppPage):
@@ -217,27 +224,12 @@ class ChatBotPage(AppPage):
         self.text_prompt_queue = queue.Queue()
         self.possible_speech_chunks_queue = queue.Queue()
         self.audio_playing_chunks_queue = queue.Queue()
-        self.reply_ongoing = threading.Event()
         self.incoming_frame_queue = queue.Queue()
 
-        self.chat_for_async = self.chat_obj
-
-        self.listen_thread = threading.Thread(
-            target=self.listen,
-            args=(self.chat_for_async, self.possible_speech_chunks_queue),
-            daemon=True,
-        )
-
+        self.listen_thread = threading.Thread(target=self.listen, daemon=True)
         self.continuous_user_prompt_thread = threading.Thread(
-            target=self.handle_continuous_user_prompt,
-            args=(
-                self.possible_speech_chunks_queue,
-                self.audio_playing_chunks_queue,
-                self.continuous_user_prompt_queue,
-            ),
-            daemon=True,
+            target=self.handle_continuous_user_prompt, daemon=True
         )
-
         # See <https://github.com/streamlit/streamlit/issues/1326#issuecomment-1597918085>
         add_script_run_ctx(self.listen_thread)
         add_script_run_ctx(self.continuous_user_prompt_thread)
@@ -268,7 +260,7 @@ class ChatBotPage(AppPage):
 
         return self.stream_audio_context
 
-    def listen(self, chat_obj, possible_speech_chunks_queue):
+    def listen(self):
         """Listen for speech from the browser."""
         # This deque will be employed to keep a moving window of audio chunks to monitor
         # voice activity. The length of the deque is calculated such that the concatenated
@@ -279,6 +271,7 @@ class ChatBotPage(AppPage):
         # changing-session-state-not-reflecting-in-active-python-thread/37683
 
         logger.debug("Listening for speech from the browser...")
+        chat_obj = self.chat_obj
         moving_window_speech_likelihood = 0.0
         user_has_been_speaking = False
         audio_chunks_moving_window = deque(
@@ -344,39 +337,33 @@ class ChatBotPage(AppPage):
                     >= chat_obj.speech_likelihood_threshold
                 )
                 if user_has_been_speaking:
-                    if user_speaking_now:
-                        possible_speech_chunks_queue.put(audio_chunk)
-                    else:
-                        logger.info("User has stopped speaking.")
+                    self.possible_speech_chunks_queue.put(audio_chunk)
+                    if not user_speaking_now:
+                        logger.info("No more voice activity detected")
                         user_has_been_speaking = False
-                        possible_speech_chunks_queue.put(None)
+                        self.possible_speech_chunks_queue.put(None)
                         continue
                 elif user_speaking_now:
-                    logger.info("User has started speaking.")
+                    logger.info("Voice activity detected")
                     user_has_been_speaking = True
                     for past_audio_chunk in audio_chunks_moving_window:
-                        possible_speech_chunks_queue.put(past_audio_chunk["audio"])
+                        self.possible_speech_chunks_queue.put(past_audio_chunk["audio"])
 
             except Exception as error:  # noqa: BLE001
                 logger.error(error)
             finally:
                 self.incoming_frame_queue.task_done()
 
-    def handle_continuous_user_prompt(
-        self,
-        possible_speech_chunks_queue,
-        audio_playing_chunks_queue,
-        continuous_user_prompt_queue,
-    ):
+    def handle_continuous_user_prompt(self):
         """Play audio."""
         logger.debug("Handling continuous user prompt...")
         while True:
             try:
                 logger.trace("Waiting for new speech chunk...")
-                new_audio_chunk = possible_speech_chunks_queue.get()
+                new_audio_chunk = self.possible_speech_chunks_queue.get()
                 if self.reply_ongoing.is_set():
                     logger.debug("Reply is ongoing. Discardig audio chunk")
-                    possible_speech_chunks_queue.task_done()
+                    self.possible_speech_chunks_queue.task_done()
                     continue
 
                 logger.trace("Processing new speech chunk")
@@ -385,15 +372,15 @@ class ChatBotPage(AppPage):
                     # play_audio_queue and send the result to be played
                     logger.debug("Preparing audio to send as user input...")
                     concatenated_audio = AudioSegment.empty()
-                    while not audio_playing_chunks_queue.empty():
-                        concatenated_audio += audio_playing_chunks_queue.get()
-                    audio_playing_chunks_queue.task_done()
-                    continuous_user_prompt_queue.put(trim_silence(concatenated_audio))
+                    while not self.audio_playing_chunks_queue.empty():
+                        concatenated_audio += self.audio_playing_chunks_queue.get()
+                    self.audio_playing_chunks_queue.task_done()
+                    self.continuous_user_prompt_queue.put(concatenated_audio)
                     logger.debug("Done preparing audio to send as user input.")
                 else:
-                    audio_playing_chunks_queue.put(new_audio_chunk)
+                    self.audio_playing_chunks_queue.put(new_audio_chunk)
 
-                possible_speech_chunks_queue.task_done()
+                self.possible_speech_chunks_queue.task_done()
             except Exception as error:  # noqa: BLE001
                 logger.error(error)
 
@@ -482,6 +469,18 @@ class ChatBotPage(AppPage):
         """Return the state of the voice output toggle."""
         return st.session_state.get("toggle_voice_output", False)
 
+    def play_chime(self, type: str = "correct-answer-tone"):
+        """Sound a chime to send notificatons to the user."""
+        type2filename = {
+            "correct-answer-tone": "mixkit-correct-answer-tone-2870.wav",
+            "option-select": "mixkit-interface-option-select-2573.wav",
+        }
+
+        chime = AudioSegment.from_file(
+            GeneralDefinitions.APP_DIR / "data" / type2filename[type], format="wav"
+        )
+        self.render_custom_audio_player(chime, hidden=True, autoplay=True)
+
     def get_chat_input(self):
         """Render chat inut widgets and return the user's input."""
         placeholder = (
@@ -508,7 +507,9 @@ class ChatBotPage(AppPage):
                         raise ValueError("The listen thread is not alive")
 
                     self.render_continuous_audio_input_widget()
-                    if not self.stream_audio_context.state.playing:
+                    if self.stream_audio_context.state.playing:
+                        self.play_chime()
+                    else:
                         logger.debug("Waiting for the audio stream to start...")
                         time.sleep(0.5)
                         if not text_prompt:
@@ -528,6 +529,7 @@ class ChatBotPage(AppPage):
 
                 recorded_prompt = ""
                 if audio.duration_seconds > min_audio_duration_seconds:
+                    # play(audio)
                     recorded_prompt = self.chat_obj.stt(audio).text
                     self.text_prompt_queue.put(recorded_prompt)
 
@@ -547,7 +549,9 @@ class ChatBotPage(AppPage):
         self.get_chat_input()
         logger.debug("Waiting for user text prompt...")
         try:
-            prompt = self.text_prompt_queue.get(timeout=2)
+            prompt = self.text_prompt_queue.get(
+                timeout=self.chat_obj.inactivity_timeout_seconds
+            )
             self.text_prompt_queue.task_done()
         except queue.Empty:
             prompt = None
@@ -566,6 +570,7 @@ class ChatBotPage(AppPage):
             self.render_chat_history()
             # Process user input
             if prompt:
+                self.play_chime("option-select")
                 time_now = datetime.datetime.now().replace(microsecond=0)
                 self.state.update({"chat_started": True})
                 # Display user message in chat message container
@@ -641,8 +646,11 @@ class ChatBotPage(AppPage):
                         self.sidebar_title = title
                         title_container.header(title, divider="rainbow")
 
-        self.reply_ongoing.clear()
-        st.rerun()
+                self.reply_ongoing.clear()
+
+        if prompt is None or not self.reply_ongoing.is_set():
+            logger.debug("Rerunning the app")
+            st.rerun()
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
