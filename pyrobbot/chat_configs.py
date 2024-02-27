@@ -201,10 +201,10 @@ class VoiceAssistantConfigs(BaseConfigModel):
     # sample_rate and frame_duration have to be consistent with the values uaccepted by
     # the webrtcvad package
     sample_rate: Literal[8000, 16000, 32000, 48000] = Field(
-        default=32000, description="Sample rate for audio recording, in Hz."
+        default=48000, description="Sample rate for audio recording, in Hz."
     )
     frame_duration: Literal[10, 20, 30] = Field(
-        default=30, description="Frame duration for audio recording, in milliseconds."
+        default=20, description="Frame duration for audio recording, in milliseconds."
     )
     reply_only_as_text: Optional[bool] = Field(
         default=None, description="Reply only as text. The assistant will not speak."

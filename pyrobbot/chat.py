@@ -18,7 +18,11 @@ from tzlocal import get_localzone
 from . import GeneralDefinitions
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
-from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
+from .general_utils import (
+    AlternativeConstructors,
+    ReachedMaxNumberOfAttemptsError,
+    get_call_traceback,
+)
 from .internet_utils import websearch
 from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
 from .sst_and_tts import SpeechToText, TextToSpeech
@@ -59,6 +63,9 @@ class Chat(AlternativeConstructors):
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = str(uuid.uuid4())
+        logger.trace(
+            "Init chat {}, as requested by from <{}>", self.id, get_call_traceback()
+        )
         logger.debug("Init chat {}", self.id)
 
         self._code_marker = "\uE001"  # TEST
@@ -469,8 +476,11 @@ class Chat(AlternativeConstructors):
         return translation
 
     def __del__(self):
+        """Delete the chat instance."""
+        logger.debug("Deleting chat {}", self.id)
         chat_started = self.context_handler.database.n_entries > 0
         if self.private_mode or not chat_started:
             self.clear_cache()
         else:
             self.save_cache()
+            self.clear_cache()

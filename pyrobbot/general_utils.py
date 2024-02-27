@@ -12,6 +12,8 @@ from typing import Optional
 import httpx
 import openai
 from loguru import logger
+from pydub import AudioSegment
+from pydub.silence import detect_leading_silence
 
 
 class ReachedMaxNumberOfAttemptsError(Exception):
@@ -28,6 +30,48 @@ def str2_minus_str1(str1: str, str2: str):
     output_list = [diff for diff in difflib.ndiff(str1, str2) if diff[0] == "+"]
     str_diff = "".join(el.replace("+ ", "") for el in output_list if el.startswith("+"))
     return str_diff
+
+
+def get_call_traceback(depth=5):
+    """Get the traceback of the call to the function."""
+    curframe = inspect.currentframe()
+    callframe = inspect.getouterframes(curframe)
+    call_path = []
+    for iframe, frame in enumerate(callframe):
+        fpath = frame.filename
+        lineno = frame.lineno
+        function = frame.function
+        code_context = frame.code_context[0].strip()
+        call_path.append(
+            {
+                "fpath": fpath,
+                "lineno": lineno,
+                "function": function,
+                "code_context": code_context,
+            }
+        )
+        if iframe == depth:
+            break
+    return call_path
+
+
+def trim_beginning(audio: AudioSegment, **kwargs):
+    """Trim the beginning of the audio to remove silence."""
+    beginning = detect_leading_silence(audio, **kwargs)
+    return audio[beginning:]
+
+
+def trim_ending(audio: AudioSegment, **kwargs):
+    """Trim the ending of the audio to remove silence."""
+    audio = trim_beginning(audio.reverse(), **kwargs)
+    return audio.reverse()
+
+
+def trim_silence(audio: AudioSegment, **kwargs):
+    """Trim the silence from the beginning and ending of the audio."""
+    kwargs["silence_threshold"] = kwargs.get("silence_threshold", -40.0)
+    audio = trim_beginning(audio, **kwargs)
+    return trim_ending(audio, **kwargs)
 
 
 def retry(

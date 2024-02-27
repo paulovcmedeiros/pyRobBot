@@ -172,6 +172,7 @@ class VoiceChat(Chat):
 
         for answer_chunk in self.respond_user_prompt(prompt=question):
             if self.interrupt_reply.is_set() or self.exit_chat.is_set():
+                logger.debug("Reply interrupted.")
                 raise StopIteration
             yield answer_chunk
 

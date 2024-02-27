@@ -255,7 +255,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
             self.sidebar_tabs = {"chats": tab1, "settings": tab2}
             with tab1:
-                left, center, _right = st.columns(3)
+                left, center, right = st.columns(3)
                 with left:
                     # Add button to show the costs table
                     st.toggle(
@@ -271,6 +271,15 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         label=speaking_head_in_silhouette,
                         help="Toggle voice output",
                     )
+                with right:
+                    # Add button to toggle continuous voice input
+                    st.toggle(
+                        key="toggle_continuous_voice_input",
+                        label=":microphone:",
+                        help="Toggle continuous voice input",
+                        value=True,
+                    )
+
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
 
