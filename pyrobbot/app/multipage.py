@@ -182,7 +182,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
         """
         if page is None:
+            logger.debug("Resquest to add page without passing a page. Creating defaut.")
             page = ChatBotPage(parent=self, **page_obj_kwargs)
+        else:
+            logger.debug("Resquest to a specific page. Adding it.")
         return super().add_page(page=page, selected=selected)
 
     def get_widget_previous_value(self, widget_key, default=None):
@@ -218,12 +221,20 @@ class MultipageChatbotApp(AbstractMultipageApp):
             updates_to_chat_configs = self._handle_chat_configs_value_selection(
                 current_chat_configs, model_fields
             )
-
-        if updates_to_chat_configs:
-            new_chat_configs = current_chat_configs.model_dump()
-            new_chat_configs.update(updates_to_chat_configs)
-            new_chat = WebAppChat.from_dict(new_chat_configs)
-            self.selected_page.chat_obj = new_chat
+            if updates_to_chat_configs:
+                current_chat_configs = self.selected_page.chat_obj.configs.copy()
+                new_configs = current_chat_configs.model_dump()
+                new_configs.update(updates_to_chat_configs)
+                new_configs = self.selected_page.chat_obj.configs.model_validate(
+                    new_configs
+                )
+                if new_configs != current_chat_configs:
+                    logger.debug(
+                        "Chat configs for page <{}> changed. Update page chat <{}>",
+                        self.selected_page.sidebar_title,
+                        self.selected_page.chat_obj.id,
+                    )
+                    self.selected_page.chat_obj = WebAppChat.from_dict(new_configs)
 
     def render(self, **kwargs):
         """Renders the multipage chatbot app in the  UI according to the selected page."""

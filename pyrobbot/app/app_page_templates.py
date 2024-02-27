@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import streamlit as st
+from audio_recorder_streamlit import audio_recorder
 from PIL import Image
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
