@@ -2,17 +2,27 @@
 
 import contextlib
 import datetime
+import hashlib
 import os
+import queue
 import sys
+import threading
+import time
 from abc import ABC, abstractmethod, abstractproperty
+from collections import defaultdict, deque
 from json.decoder import JSONDecodeError
 
 import streamlit as st
+import streamlit_webrtc
 from loguru import logger
 from pydantic import ValidationError
+from pydub import AudioSegment
+from streamlit.runtime.scriptrunner import add_script_run_ctx
+from streamlit_webrtc import RTCConfiguration, WebRtcMode
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat_configs import VoiceChatConfigs
+from pyrobbot.general_utils import trim_beginning
 from pyrobbot.openai_utils import OpenAiClientWrapper
 
 from .app_page_templates import (
@@ -21,6 +31,252 @@ from .app_page_templates import (
     ChatBotPage,
     WebAppChat,
     _RecoveredChat,
+)
+
+incoming_frame_queue = queue.Queue()
+possible_speech_chunks_queue = queue.Queue()
+audio_playing_chunks_queue = queue.Queue()
+continuous_user_prompt_queue = queue.Queue(maxsize=1)
+text_prompt_queue = queue.Queue()
+reply_ongoing = threading.Event()
+
+
+@st.cache_resource
+def listen():  # noqa: PLR0912, PLR0915
+    """Listen for speech from the browser."""
+    # This deque will be employed to keep a moving window of audio chunks to monitor
+    # voice activity. The length of the deque is calculated such that the concatenated
+    # audio chunks will produce an audio at most inactivity_timeout_seconds long
+    #
+    # Mind that none of Streamlit's APIs are safe to call from any thread other than
+    # the main one. See, e.g., <https://discuss.streamlit.io/t/
+    # changing-session-state-not-reflecting-in-active-python-thread/37683
+    logger.debug("Listener thread started")
+
+    all_users_audio_chunks_moving_windows = {}
+    user_has_been_speaking = defaultdict(lambda: False)
+    all_users_moving_window_speech_likelihood = defaultdict(lambda: 0.0)
+
+    while True:
+        try:
+            logger.trace("Waiting for audio frame from the stream...")
+            received_audio_frame_info = incoming_frame_queue.get()
+            received_audio_frame = received_audio_frame_info["frame"]
+
+            app_page = received_audio_frame_info["page"]
+            chat_obj = app_page.chat_obj
+            try:
+                audio_chunks_moving_window = all_users_audio_chunks_moving_windows[
+                    app_page.page_id
+                ]
+            except KeyError:
+                audio_chunks_moving_window = deque(
+                    maxlen=int(
+                        (1000.0 * chat_obj.inactivity_timeout_seconds)
+                        / chat_obj.frame_duration
+                    )
+                )
+                all_users_audio_chunks_moving_windows[app_page.page_id] = (
+                    audio_chunks_moving_window
+                )
+
+            logger.trace(
+                "Received audio frame from the stream on page '{}', chat {}",
+                app_page.title,
+                chat_obj.id,
+            )
+
+            moving_window_speech_likelihood = all_users_moving_window_speech_likelihood[
+                app_page.page_id
+            ]
+
+            if received_audio_frame.sample_rate != chat_obj.sample_rate:
+                raise ValueError(
+                    f"audio_frame.sample_rate = {received_audio_frame.sample_rate} "
+                    f"!= chat_obj.sample_rate = {chat_obj.sample_rate}"
+                )
+
+            # Convert the received audio frame to an AudioSegment object
+            raw_samples = received_audio_frame.to_ndarray()
+            audio_chunk = AudioSegment(
+                data=raw_samples.tobytes(),
+                sample_width=received_audio_frame.format.bytes,
+                frame_rate=received_audio_frame.sample_rate,
+                channels=len(received_audio_frame.layout.channels),
+            )
+            if audio_chunk.duration_seconds != chat_obj.frame_duration / 1000:
+                raise ValueError(
+                    f"sound_chunk.duration_seconds = {audio_chunk.duration_seconds} "
+                    "!= chat_obj.frame_duration / 1000 = "
+                    f"{chat_obj.frame_duration / 1000}"
+                )
+
+            # Resample the AudioSegment to be compatible with the VAD engine
+            audio_chunk = audio_chunk.set_frame_rate(chat_obj.sample_rate).set_channels(1)
+
+            # Now do the VAD
+            # Check if the current sound chunk is likely to be speech
+            vad_thinks_this_chunk_is_speech = chat_obj.vad.is_speech(
+                audio_chunk.raw_data, chat_obj.sample_rate
+            )
+
+            # Monitor voice activity within moving window of length
+            # inactivity_timeout_seconds
+            audio_chunks_moving_window.append(
+                {"audio": audio_chunk, "is_speech": vad_thinks_this_chunk_is_speech}
+            )
+            all_users_audio_chunks_moving_windows[app_page.page_id] = (
+                audio_chunks_moving_window
+            )
+
+            moving_window_length = len(audio_chunks_moving_window)
+            if moving_window_length == audio_chunks_moving_window.maxlen:
+                voice_activity = (
+                    chunk["is_speech"] for chunk in audio_chunks_moving_window
+                )
+                moving_window_speech_likelihood = (
+                    sum(voice_activity) / moving_window_length
+                )
+                all_users_moving_window_speech_likelihood[app_page.page_id] = (
+                    moving_window_speech_likelihood
+                )
+
+            user_speaking_now = (
+                moving_window_speech_likelihood >= chat_obj.speech_likelihood_threshold
+            )
+            logger.trace("User speaking: {}", user_speaking_now)
+            if user_has_been_speaking[app_page.page_id]:
+                speech_chunk_info = {"audio": audio_chunk, "page": app_page}
+                possible_speech_chunks_queue.put(speech_chunk_info)
+                if not user_speaking_now:
+                    user_has_been_speaking[app_page.page_id] = False
+                    speech_chunk_info = {"audio": None, "page": app_page}
+                    possible_speech_chunks_queue.put(speech_chunk_info)
+                    logger.info("No more voice activity detected. Signal end of speech.")
+                    continue
+            elif user_speaking_now:
+                logger.info("Voice activity detected")
+                user_has_been_speaking[app_page.page_id] = True
+                for past_audio_chunk in audio_chunks_moving_window:
+                    speech_chunk_info = {
+                        "audio": past_audio_chunk["audio"],
+                        "page": app_page,
+                    }
+                    possible_speech_chunks_queue.put(speech_chunk_info)
+        except Exception as error:  # noqa: BLE001
+            logger.opt(exception=True).debug(error)
+            logger.error(error)
+        finally:
+            incoming_frame_queue.task_done()
+
+
+@st.cache_resource
+def handle_continuous_user_prompt():
+    """Play audio."""
+    logger.debug("Continuous user audio prompt handling thread started")
+    min_audio_duration_seconds = 0.1
+    while True:
+        try:
+            logger.trace("Waiting for new speech chunk...")
+            new_audio_chunk_info = possible_speech_chunks_queue.get()
+            new_audio_chunk = new_audio_chunk_info["audio"]
+            app_page = new_audio_chunk_info["page"]
+
+            logger.trace("Processing new speech chunk for page '{}'", app_page.title)
+            if new_audio_chunk is None:
+                # User has stopped speaking. Concatenate all audios from
+                # play_audio_queue and send the result to be played
+
+                logger.debug(
+                    "Gathering {} frames received to send as user input for page '{}'",
+                    audio_playing_chunks_queue.qsize(),
+                    app_page.title,
+                )
+                concatenated_audio = AudioSegment.empty()
+                with audio_playing_chunks_queue.mutex:
+                    new_audio_playing_chunks_queue = queue.Queue()
+                    while audio_playing_chunks_queue.queue:
+                        audio_chunk_info = audio_playing_chunks_queue.queue.popleft()
+                        if audio_chunk_info["page"].page_id != app_page.page_id:
+                            new_audio_playing_chunks_queue.put(audio_chunk_info)
+                            continue
+                        concatenated_audio += audio_chunk_info["audio"]
+
+                    audio_playing_chunks_queue.queue = (
+                        new_audio_playing_chunks_queue.queue
+                    )
+
+                logger.debug(
+                    "Done gathering frames ({}s) for page '{}'. Trimming...",
+                    concatenated_audio.duration_seconds,
+                    app_page.title,
+                )
+                concatenated_audio = trim_beginning(concatenated_audio)
+                if concatenated_audio.duration_seconds > min_audio_duration_seconds:
+                    logger.debug(
+                        'Removing page "{}"\'s eventual old audio prompts the queue...',
+                        app_page.title,
+                    )
+                    # Make sure the queue has only the latest audio
+                    with continuous_user_prompt_queue.mutex:
+                        other_pages_continuous_prompt_queue = queue.Queue()
+                        while continuous_user_prompt_queue.queue:
+                            past_info_for_stt = (
+                                continuous_user_prompt_queue.queue.popleft()
+                            )
+                            if past_info_for_stt["page"].page_id == app_page.page_id:
+                                continue
+                            other_pages_continuous_prompt_queue.put(past_info_for_stt)
+                        continuous_user_prompt_queue.queue = (
+                            other_pages_continuous_prompt_queue.queue
+                        )
+
+                    new_info_for_stt = {"page": app_page, "audio": concatenated_audio}
+                    continuous_user_prompt_queue.put(new_info_for_stt)
+                    logger.debug("Audio input for page '{}' sent for STT", app_page.title)
+                else:
+                    logger.debug(
+                        'Page "{}"\'s audio input too short ({} < {} sec). Discarding.',
+                        concatenated_audio.duration_seconds,
+                        min_audio_duration_seconds,
+                    )
+            else:
+                new_audio_chunk_info = {"page": app_page, "audio": new_audio_chunk}
+                audio_playing_chunks_queue.put(new_audio_chunk_info)
+
+            possible_speech_chunks_queue.task_done()
+        except Exception as error:  # noqa: BLE001
+            logger.opt(exception=True).debug(error)
+            logger.error(error)
+
+
+@st.cache_resource
+def handle_stt():
+    """Handle speech to text."""
+    logger.debug("Speech to text handling thread started")
+
+    min_audio_duration_seconds = 0.1
+    while True:
+        try:
+            info_for_stt = continuous_user_prompt_queue.get()
+            audio = info_for_stt["audio"]
+            if audio.duration_seconds > min_audio_duration_seconds:
+                chat_obj = info_for_stt["page"].chat_obj
+                recorded_prompt = chat_obj.stt(audio).text
+                if recorded_prompt:
+                    text_prompt_queue.put(recorded_prompt)
+        except Exception as error:  # noqa: BLE001, PERF203
+            logger.error(error)
+
+
+listen_thread = threading.Thread(name="listener_thread", target=listen, daemon=True)
+continuous_user_prompt_thread = threading.Thread(
+    name="continuous_user_prompt_thread",
+    target=handle_continuous_user_prompt,
+    daemon=True,
+)
+handle_stt_thread = threading.Thread(
+    name="stt_handling_thread", target=handle_stt, daemon=True
 )
 
 
@@ -36,6 +292,77 @@ class AbstractMultipageApp(ABC):
     def __init__(self, **kwargs) -> None:
         """Initialise streamlit page configs."""
         st.set_page_config(**kwargs)
+
+        self.listen_thread = listen_thread
+        self.continuous_user_prompt_thread = continuous_user_prompt_thread
+        if not listen_thread.is_alive():
+            for thread in [
+                listen_thread,
+                continuous_user_prompt_thread,
+                handle_stt_thread,
+            ]:
+                # See <https://github.com/streamlit/streamlit/issues/1326#issuecomment-1597918085>
+                add_script_run_ctx(thread)
+                thread.start()
+
+        self.incoming_frame_queue = incoming_frame_queue
+        self.possible_speech_chunks_queue = possible_speech_chunks_queue
+        self.audio_playing_chunks_queue = audio_playing_chunks_queue
+        self.continuous_user_prompt_queue = continuous_user_prompt_queue
+        self.text_prompt_queue = text_prompt_queue
+        self.reply_ongoing = reply_ongoing
+
+    def render_continuous_audio_input_widget(self):
+        """Render the continuous audio input widget."""
+        # Definitions related to webrtc_streamer
+        rtc_configuration = RTCConfiguration(
+            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
+
+        try:
+            selected_page = self.selected_page
+        except StopIteration:
+            selected_page = None
+
+        def audio_frame_callback(frame):
+            logger.trace("Received raw audio frame from the stream")
+
+            if selected_page is None:
+                logger.trace("No page selected. Discardig audio chunk")
+                return frame
+
+            if self.reply_ongoing.is_set():
+                logger.trace("Reply is ongoing. Discardig audio chunk")
+                return frame
+
+            if not self.continuous_user_prompt_queue.empty():
+                logger.trace(
+                    "There are still {} items in the audio input queue. Discardig chunk",
+                    self.continuous_user_prompt_queue.qsize(),
+                )
+                return frame
+
+            frame_info = {"frame": frame, "page": selected_page}
+            self.incoming_frame_queue.put(frame_info)
+            logger.trace("Raw audio frame sent to the processing queue")
+            return frame
+
+        add_script_run_ctx(audio_frame_callback)
+
+        self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
+            key="sendonly-audio",
+            mode=WebRtcMode.SENDONLY,
+            rtc_configuration=rtc_configuration,
+            media_stream_constraints={"audio": True, "video": False},
+            desired_playing_state=True,
+            audio_frame_callback=audio_frame_callback,
+        )
+
+        while not self.stream_audio_context.state.playing:
+            logger.debug("Waiting for the audio stream to start...")
+            time.sleep(1)
+
+        return self.stream_audio_context
 
     @property
     def n_created_pages(self):
@@ -61,14 +388,14 @@ class AbstractMultipageApp(ABC):
         self.pages[page.page_id] = page
         self.n_created_pages += 1
         if selected:
-            self.register_selected_page(page)
+            self.selected_page = page
 
     def _remove_page(self, page: AppPage):
         """Remove a page from the app."""
         self.pages[page.page_id].chat_obj.clear_cache()
         del self.pages[page.page_id]
         try:
-            self.register_selected_page(next(iter(self.pages.values())))
+            self.selected_page = next(iter(self.pages.values()))
         except StopIteration:
             self.add_page()
 
@@ -86,16 +413,17 @@ class AbstractMultipageApp(ABC):
                 use_container_width=True,
             )
 
-    def register_selected_page(self, page: AppPage):
-        """Register a page as selected."""
-        self.state["selected_page"] = page
-
     @property
     def selected_page(self) -> ChatBotPage:
         """Return the selected page."""
         if "selected_page" not in self.state:
-            return next(iter(self.pages.values()))
+            self.selected_page = next(iter(self.pages.values()), None)
         return self.state["selected_page"]
+
+    @selected_page.setter
+    def selected_page(self, page: ChatBotPage):
+        self.state["selected_page"] = page
+        st.session_state["currently_active_page"] = page
 
     def render(self, **kwargs):
         """Render the multipage app with focus on the selected page."""
@@ -120,12 +448,22 @@ class MultipageChatbotApp(AbstractMultipageApp):
     """
 
     @property
+    def current_user_id(self):
+        """Return the user id."""
+        return hashlib.sha256(self.openai_api_key.encode("utf-8")).hexdigest()
+
+    @property
+    def current_user_st_state_id(self):
+        """Return the user id for streamlit state."""
+        return f"app_state_{self.current_user_id}"
+
+    @property
     def state(self):
         """Return the state of the app, for persistence of data."""
-        app_state_id = f"app_state_{self.openai_api_key}"
-        if app_state_id not in st.session_state:
-            st.session_state[app_state_id] = {}
-        return st.session_state[app_state_id]
+        user_st_state_key = self.current_user_st_state_id
+        if user_st_state_key not in st.session_state:
+            st.session_state[user_st_state_key] = {}
+        return st.session_state[user_st_state_key]
 
     @property
     def openai_client(self) -> OpenAiClientWrapper:
@@ -135,6 +473,7 @@ class MultipageChatbotApp(AbstractMultipageApp):
             self.state["openai_client"] = OpenAiClientWrapper(
                 api_key=self.openai_api_key, private_mode=self.chat_configs.private_mode
             )
+            logger.debug("OpenAI client created for multipage app")
         return self.state["openai_client"]
 
     @property
@@ -281,6 +620,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         value=True,
                     )
 
+                # Create a container for the continuous audio input widget, which will
+                # be rendered only later
+                continuous_audio_input_widget_container = st.container()
+
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
 
@@ -309,11 +652,14 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         )
                         new_page.state["messages"] = chat.load_history()
                         self.add_page(page=new_page)
-                    self.register_selected_page(next(iter(self.pages.values()), None))
+                    self.selected_page = next(iter(self.pages.values()), None)
 
                 # Create a new chat upon request or if there is none yet
                 if new_chat_button or not self.pages:
                     self.add_page()
+
+                with continuous_audio_input_widget_container:
+                    self.render_continuous_audio_input_widget()
 
         return super().render(**kwargs)
 
@@ -359,11 +705,16 @@ class MultipageChatbotApp(AbstractMultipageApp):
                             mtime = page.chat_obj.context_file_path.stat().st_mtime
                             mtime = datetime.datetime.fromtimestamp(mtime)
                             mtime = mtime.replace(microsecond=0)
+
+                        def _set_page(page):
+                            """Help setting the selected page."""
+                            self.selected_page = page
+
                         st.button(
                             label=page.sidebar_title,
                             key=f"select_{page.page_id}",
                             help=f"Latest backup: {mtime}" if mtime else None,
-                            on_click=self.register_selected_page,
+                            on_click=_set_page,
                             kwargs={"page": page},
                             use_container_width=True,
                             disabled=page.page_id == self.selected_page.page_id,
@@ -403,11 +754,20 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 element_key, default=current_config_value
             )
             if choices:
+                index = None
+                with contextlib.suppress(ValueError):
+                    index = choices.index(widget_previous_value)
+                    logger.warning(
+                        "Index not found for value {}. The present values are {}",
+                        widget_previous_value,
+                        choices,
+                    )
+
                 new_field_value = st.selectbox(
                     title,
                     key=element_key,
                     options=choices,
-                    index=choices.index(widget_previous_value),
+                    index=index,
                     help=description,
                     disabled=disable_ui_element,
                     on_change=self.save_widget_previous_values,

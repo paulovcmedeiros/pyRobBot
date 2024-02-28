@@ -1,5 +1,6 @@
 """Management of token usage and costs for OpenAI API."""
 
+import contextlib
 import datetime
 import sqlite3
 from pathlib import Path
@@ -166,10 +167,9 @@ def get_n_tokens_from_msgs(messages: list[dict], model: str):
     """Returns the number of tokens used by a list of messages."""
     # Adapted from
     # <https://platform.openai.com/docs/guides/text-generation/managing-tokens>
-    try:
+    encoding = tiktoken.get_encoding("cl100k_base")
+    with contextlib.suppress(KeyError):
         encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
 
     # OpenAI's original function was implemented for gpt-3.5-turbo-0613, but we'll use
     # it for all models for now. We are only interested in estimates, after all.

@@ -206,7 +206,7 @@ class VoiceChat(Chat):
                     merged_audio += new_audio
                     current_answer_audios_queue.task_done()
                     continue
-                if merged_audio.duration_seconds < min_audio_duration_seconds:
+                if merged_audio.duration_seconds <= min_audio_duration_seconds:
                     current_answer_audios_queue.task_done()
                     continue
 
