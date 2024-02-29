@@ -42,7 +42,7 @@ text_prompt_queue = queue.Queue()
 reply_ongoing = threading.Event()
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Initialising listening engine...")
 def listen():  # noqa: PLR0912, PLR0915
     """Listen for speech from the browser."""
     # This deque will be employed to keep a moving window of audio chunks to monitor
@@ -171,7 +171,7 @@ def listen():  # noqa: PLR0912, PLR0915
             incoming_frame_queue.task_done()
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Initialising listening engine...")
 def handle_continuous_user_prompt():
     """Play audio."""
     logger.debug("Continuous user audio prompt handling thread started")
@@ -241,7 +241,7 @@ def handle_continuous_user_prompt():
             logger.error(error)
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Initialising listening engine...")
 def handle_stt():
     """Handle speech to text."""
     logger.debug("Speech to text handling thread started")

@@ -346,13 +346,14 @@ class ChatBotPage(AppPage):
         question_answer_chunks_queue = queue.Queue()
         partial_audios_queue = queue.Queue()
 
-        with st.container(height=75, border=False):
+        with st.container(height=70, border=False):
             title_container = st.empty()
-        with st.container(height=55, border=False):
+        with st.container(height=35, border=False):
             left, _ = st.columns([0.7, 0.3])
             with left:
                 status_msg_container = st.empty()
-        title_container.header(self.title, divider="rainbow")
+
+        title_container.subheader(self.title, divider="rainbow")
         chat_msgs_container = st.container(height=600, border=False)
         with chat_msgs_container:
             self.render_chat_history()
@@ -537,8 +538,7 @@ class ChatBotPage(AppPage):
         """Render the app's chatbot or costs page, depending on user choice."""
 
         def _trim_page_padding():
-            st.markdown(
-                """
+            md = """
                 <style>
                     .block-container {
                         padding-top: 0rem;
@@ -547,9 +547,8 @@ class ChatBotPage(AppPage):
                         padding-right: 5rem;
                     }
                 </style>
-                """,
-                unsafe_allow_html=True,
-            )
+                """
+            st.markdown(md, unsafe_allow_html=True)
 
         _trim_page_padding()
         if st.session_state.get("toggle_show_costs"):
