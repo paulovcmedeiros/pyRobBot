@@ -237,6 +237,7 @@ def handle_continuous_user_prompt():
                 else:
                     logger.debug(
                         'Page "{}"\'s audio input too short ({} < {} sec). Discarding.',
+                        app_page.title,
                         concatenated_audio.duration_seconds,
                         min_audio_duration_seconds,
                     )
@@ -325,26 +326,31 @@ class AbstractMultipageApp(ABC):
             selected_page = None
 
         def audio_frame_callback(frame):
-            logger.trace("Received raw audio frame from the stream")
+            try:
+                logger.trace("Received raw audio frame from the stream")
 
-            if selected_page is None:
-                logger.trace("No page selected. Discardig audio chunk")
-                return frame
+                if selected_page is None:
+                    logger.trace("No page selected. Discardig audio chunk")
+                    return frame
 
-            if self.reply_ongoing.is_set():
-                logger.trace("Reply is ongoing. Discardig audio chunk")
-                return frame
+                if self.reply_ongoing.is_set():
+                    logger.trace("Reply is ongoing. Discardig audio chunk")
+                    return frame
 
-            if not self.continuous_user_prompt_queue.empty():
-                logger.trace(
-                    "There are still {} items in the audio input queue. Discardig chunk",
-                    self.continuous_user_prompt_queue.qsize(),
-                )
-                return frame
+                if not self.continuous_user_prompt_queue.empty():
+                    logger.trace(
+                        "Audio input queue not empty {} items). Discardig chunk",
+                        self.continuous_user_prompt_queue.qsize(),
+                    )
+                    return frame
+            except Exception as error:  # noqa: BLE001
+                logger.opt(exception=True).debug(error)
+                logger.error(error)
+            else:
+                frame_info = {"frame": frame, "page": selected_page}
+                self.incoming_frame_queue.put(frame_info)
+                logger.trace("Raw audio frame sent to the processing queue")
 
-            frame_info = {"frame": frame, "page": selected_page}
-            self.incoming_frame_queue.put(frame_info)
-            logger.trace("Raw audio frame sent to the processing queue")
             return frame
 
         add_script_run_ctx(audio_frame_callback)

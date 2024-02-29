@@ -194,6 +194,9 @@ class VoiceChat(Chat):
         if sentence_for_tts and not self.reply_only_as_text:
             self.tts_conversion_queue.put(sentence_for_tts)
 
+        # Signal that the current answer is finished
+        self.tts_conversion_queue.put(None)
+
     def handle_update_audio_history(self, current_answer_audios_queue: queue.Queue):
         """Handle updating the chat history with the latest reply's audio file path."""
         # Merge all AudioSegments in self.current_answer_audios_queue into a single one
@@ -203,9 +206,12 @@ class VoiceChat(Chat):
             try:
                 new_audio = current_answer_audios_queue.get()
                 if new_audio is not None:
+                    # Reply not yet finished
                     merged_audio += new_audio
                     current_answer_audios_queue.task_done()
                     continue
+
+                # Now the reply has finished
                 if merged_audio.duration_seconds <= min_audio_duration_seconds:
                     current_answer_audios_queue.task_done()
                     continue
@@ -413,6 +419,13 @@ class VoiceChat(Chat):
         while not self.exit_chat.is_set():
             try:
                 text = text_queue.get()
+                if text is None:
+                    # Signal that the current anwer is finished
+                    self.current_answer_audios_queue.put(None)
+                    self.play_speech_queue.put(None)
+                    continue
+
+                text = text.strip()
                 if text and not self.interrupt_reply.is_set():
                     tts = self.tts(text)
                     logger.debug("Received text '{}' for TTS", text)
@@ -420,19 +433,13 @@ class VoiceChat(Chat):
                     # Trigger the TTS conversion
                     _ = tts.speech
 
+                    logger.debug("Sending TTS for '{}' to the playing queue", text)
                     # Keep track of audios for the current answer (for the history db)
                     self.current_answer_audios_queue.put(tts.speech)
-
                     # Dispatch the audio to be played
-                    logger.debug("Sending audio for text '{}' to the playing queue", text)
                     self.play_speech_queue.put(tts)
 
-                    if text_queue.empty():
-                        # Signal that the current anwer is finished
-                        self.current_answer_audios_queue.put(None)
-                        self.play_speech_queue.put(None)
-
-            except Exception as error:  # noqa: PERF203, BLE001
+            except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
             finally:
