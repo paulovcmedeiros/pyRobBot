@@ -353,36 +353,46 @@ class ChatBotPage(AppPage):
 
         """
         self.chat_obj.reply_only_as_text = not self.voice_output
+        question_answer_chunks_queue = queue.Queue()
+        partial_audios_queue = queue.Queue()
 
-        title_container = st.empty()
+        with st.container(height=75, border=False):
+            title_container = st.empty()
+        with st.container(height=55, border=False):
+            left, _ = st.columns([0.7, 0.3])
+            with left:
+                status_msg_container = st.empty()
         title_container.header(self.title, divider="rainbow")
         chat_msgs_container = st.container(height=600, border=False)
         with chat_msgs_container:
-            status_msg_container = st.empty()
             self.render_chat_history()
-
         self.render_chat_input_widgets()
 
         with status_msg_container:
-            self.play_chime()
-            st.status(f"{self.chat_obj.assistant_name} is listening...")
             logger.debug("Waiting for user text prompt...")
-            while True:
-                with contextlib.suppress(queue.Empty):
-                    if prompt := self.parent.text_prompt_queue.get_nowait():
-                        break
-                with contextlib.suppress(queue.Empty):
-                    if prompt := self.text_prompt_queue.get_nowait():
-                        break
-                logger.trace("Still waiting for user text prompt...")
-                time.sleep(0.1)
+            self.play_chime()
+            with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
+                while True:
+                    with contextlib.suppress(queue.Empty):
+                        if prompt := self.parent.text_prompt_queue.get_nowait():
+                            break
+                    with contextlib.suppress(queue.Empty):
+                        if prompt := self.text_prompt_queue.get_nowait():
+                            break
+                    logger.trace("Still waiting for user text prompt...")
+                    time.sleep(0.1)
 
         if prompt := prompt.strip():
+            status_msg_container.success("Got your message!")
             self.play_chime("option-select")
             self.parent.reply_ongoing.set()
             logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
-            status_msg_container.empty()
+            question_answer_chunks_queue.queue.clear()
+            partial_audios_queue.queue.clear()
         else:
+            status_msg_container.warning(
+                "Could not understand your message. Please try again."
+            )
             logger.opt(colors=True).debug("<yellow>Received empty prompt</yellow>")
             self.parent.reply_ongoing.clear()
 
@@ -408,16 +418,14 @@ class ChatBotPage(AppPage):
                 with st.chat_message("assistant", avatar=self.avatars["assistant"]):
                     text_reply_container = st.empty()
                     audio_reply_container = st.empty()
-                    question_answer_chunks_queue = queue.Queue()
-                    partial_audios_queue = queue.Queue()
 
-                    # Create separate threads to process text and audio replies
+                    # Create threads to process text and audio replies asynchronously
                     answer_question_thread = threading.Thread(
-                        target=answer_question,
+                        target=_put_chat_reply_chunks_in_queue,
                         args=(self.chat_obj, prompt, question_answer_chunks_queue),
                     )
                     play_partial_audios_thread = threading.Thread(
-                        target=play_partial_audios,
+                        target=_play_queued_audios,
                         args=(
                             partial_audios_queue,
                             self.render_custom_audio_player,
@@ -435,6 +443,7 @@ class ChatBotPage(AppPage):
                     current_audio = AudioSegment.empty()
                     full_audio = AudioSegment.silent(duration=0)
                     text_reply_container.markdown("▌")
+                    status_msg_container.empty()
                     while (chunk is not None) or (current_audio is not None):
                         logger.trace("Waiting for text or audio chunks...")
                         # Render text
@@ -475,7 +484,7 @@ class ChatBotPage(AppPage):
                     )
 
                     while play_partial_audios_thread.is_alive():
-                        logger.debug("Waiting for partial audios to finish playing...")
+                        logger.trace("Waiting for partial audios to finish playing...")
                         time.sleep(0.1)
 
                     if full_audio.duration_seconds > 0:
@@ -491,16 +500,16 @@ class ChatBotPage(AppPage):
                     "page_title" not in self.state
                     and len(self.chat_history) > min_history_len_for_summary
                 ):
-                    with st.spinner("Working out conversation topic..."):
-                        prompt = "Summarize the previous messages in max 4 words"
-                        title = "".join(self.chat_obj.respond_system_prompt(prompt))
-                        self.chat_obj.metadata["page_title"] = title
-                        self.chat_obj.metadata["sidebar_title"] = title
-                        self.chat_obj.save_cache()
+                    logger.debug("Working out conversation topic...")
+                    prompt = "Summarize the previous messages in max 4 words"
+                    title = "".join(self.chat_obj.respond_system_prompt(prompt))
+                    self.chat_obj.metadata["page_title"] = title
+                    self.chat_obj.metadata["sidebar_title"] = title
+                    self.chat_obj.save_cache()
 
-                        self.title = title
-                        self.sidebar_title = title
-                        title_container.header(title, divider="rainbow")
+                    self.title = title
+                    self.sidebar_title = title
+                    title_container.header(title, divider="rainbow")
 
                 self.parent.reply_ongoing.clear()
 
@@ -510,41 +519,54 @@ class ChatBotPage(AppPage):
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
+
+        def _trim_page_padding():
+            st.markdown(
+                """
+                <style>
+                    .block-container {
+                        padding-top: 0rem;
+                        padding-bottom: 0rem;
+                        padding-left: 5rem;
+                        padding-right: 5rem;
+                    }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        _trim_page_padding()
         if st.session_state.get("toggle_show_costs"):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
 
 
-def answer_question(chat_obj, prompt, question_answer_chunks_queue):
+def _put_chat_reply_chunks_in_queue(chat_obj, prompt, question_answer_chunks_queue):
     """Get chunks of the reply to the prompt and put them in the queue."""
     for chunk in chat_obj.answer_question(prompt):
         question_answer_chunks_queue.put(chunk.content)
     question_answer_chunks_queue.put(None)
 
 
-def play_partial_audios(
-    partial_audios_queue, audio_player_rendering_function, parent_element
-):
+def _play_queued_audios(audios_queue, audio_player_rendering_function, parent_element):
     """Play queued audio segments."""
-    logger.debug("Playing partial audios...")
+    logger.debug("Playing queued audios...")
     while True:
         try:
-            partial_audio = partial_audios_queue.get()
-            if partial_audio is None:
-                partial_audios_queue.task_done()
+            audio = audios_queue.get()
+            if audio is None:
+                audios_queue.task_done()
                 break
 
             logger.debug("Playing partial audio...")
             audio_player_rendering_function(
-                partial_audio,
-                parent_element=parent_element,
-                autoplay=True,
-                hidden=True,
+                audio, parent_element=parent_element, autoplay=True, hidden=True
             )
             parent_element.empty()
-            partial_audios_queue.task_done()
+            audios_queue.task_done()
         except Exception as error:  # noqa: BLE001
+            logger.opt(exception=True).debug("Error playing partial audio.")
             logger.error(error)
             break
-    logger.debug("Partial audios finished playing.")
+    logger.debug("Done playing queued audios.")
