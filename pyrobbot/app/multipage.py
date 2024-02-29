@@ -755,10 +755,11 @@ class MultipageChatbotApp(AbstractMultipageApp):
             )
             if choices:
                 index = None
-                with contextlib.suppress(ValueError):
+                try:
                     index = choices.index(widget_previous_value)
+                except ValueError:
                     logger.warning(
-                        "Index not found for value {}. The present values are {}",
+                        "Index not found for value '{}'. The present values are {}",
                         widget_previous_value,
                         choices,
                     )

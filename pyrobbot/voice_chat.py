@@ -415,18 +415,22 @@ class VoiceChat(Chat):
                 text = text_queue.get()
                 if text and not self.interrupt_reply.is_set():
                     tts = self.tts(text)
+                    logger.debug("Received text '{}' for TTS", text)
 
                     # Trigger the TTS conversion
                     _ = tts.speech
 
-                    # Keep track of audios played for the current answer
+                    # Keep track of audios for the current answer (for the history db)
                     self.current_answer_audios_queue.put(tts.speech)
+
+                    # Dispatch the audio to be played
+                    logger.debug("Sending audio for text '{}' to the playing queue", text)
+                    self.play_speech_queue.put(tts)
+
                     if text_queue.empty():
                         # Signal that the current anwer is finished
                         self.current_answer_audios_queue.put(None)
-
-                    # Dispatch the audio to be played
-                    self.play_speech_queue.put(tts)
+                        self.play_speech_queue.put(None)
 
             except Exception as error:  # noqa: PERF203, BLE001
                 logger.opt(exception=True).debug(error)

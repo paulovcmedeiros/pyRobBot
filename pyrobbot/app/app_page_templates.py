@@ -4,6 +4,7 @@ import base64
 import contextlib
 import datetime
 import queue
+import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -16,6 +17,7 @@ from loguru import logger
 from PIL import Image
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
+from streamlit.runtime.scriptrunner import add_script_run_ctx
 from streamlit_mic_recorder import mic_recorder
 
 from pyrobbot import GeneralDefinitions
@@ -402,30 +404,58 @@ class ChatBotPage(AppPage):
 
                 # Display (stream) assistant response in chat message container
                 with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                    full_response = st.write_stream(
-                        item.content for item in self.chat_obj.answer_question(prompt)
+                    text_reply_container = st.empty()
+                    audio_reply_container = st.empty()
+                    question_answer_chunks_queue = queue.Queue()
+
+                    def answer_question(prompt):
+                        for chunk in self.chat_obj.answer_question(prompt):
+                            question_answer_chunks_queue.put(chunk.content)
+                        question_answer_chunks_queue.put(None)
+
+                    answer_question_thread = threading.Thread(
+                        target=answer_question, args=(prompt,)
                     )
+                    add_script_run_ctx(answer_question_thread)
+                    answer_question_thread.start()
+
+                    # Render text reply
+                    chunk = ""
+                    full_response = ""
+                    current_audio = AudioSegment.empty()
+                    full_audio = AudioSegment.silent(duration=0)
+                    text_reply_container.markdown("▌")
+                    while (chunk is not None) or (current_audio is not None):
+                        logger.trace("Waiting for text or audio chunks...")
+                        with contextlib.suppress(queue.Empty):
+                            chunk = question_answer_chunks_queue.get_nowait()
+                            if chunk is not None:
+                                full_response += chunk
+                                text_reply_container.markdown(full_response + "▌")
+                            question_answer_chunks_queue.task_done()
+
+                        # Render audio (if any)
+                        with contextlib.suppress(queue.Empty):
+                            current_audio = self.chat_obj.play_speech_queue.get_nowait()
+                            if current_audio is not None:
+                                full_audio += current_audio.speech
+                                self.render_custom_audio_player(
+                                    current_audio.speech,
+                                    parent_element=audio_reply_container,
+                                )
+                                audio_reply_container.empty()
+                            self.chat_obj.play_speech_queue.task_done()
+
+                    text_reply_container.caption(
+                        datetime.datetime.now().replace(microsecond=0)
+                    )
+                    text_reply_container.markdown(full_response)
+
                     logger.opt(colors=True).debug(
                         "<yellow>Replied to user prompt '{}': {}</yellow>",
                         prompt,
                         full_response,
                     )
-
-                    full_audio = AudioSegment.silent(duration=0)
-                    if self.voice_output:
-                        # When the chat object answers the user's question, it will
-                        # put the response in its tts queue and the resulting objects are
-                        # then in the play speech queue (assynchronously)
-                        audio_placeholder_container = st.empty()
-                        while not self.chat_obj.play_speech_queue.empty():
-                            current_tts = self.chat_obj.play_speech_queue.get()
-                            full_audio += current_tts.speech
-                            self.render_custom_audio_player(
-                                current_tts.speech,
-                                parent_element=audio_placeholder_container,
-                            )
-                            audio_placeholder_container.empty()
-                            self.chat_obj.play_speech_queue.task_done()
 
                     self.chat_history.append(
                         {
@@ -439,7 +469,7 @@ class ChatBotPage(AppPage):
                     if full_audio.duration_seconds > 0:
                         self.render_custom_audio_player(
                             full_audio,
-                            parent_element=audio_placeholder_container,
+                            parent_element=audio_reply_container,
                             autoplay=False,
                         )
 
