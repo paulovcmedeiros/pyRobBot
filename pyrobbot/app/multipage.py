@@ -37,7 +37,7 @@ incoming_frame_queue = queue.Queue()
 possible_speech_chunks_queue = queue.Queue()
 audio_playing_chunks_queue = queue.Queue()
 continuous_user_prompt_queue = queue.Queue(maxsize=1)
-text_prompt_queue = queue.Queue()
+text_prompt_queue = queue.LifoQueue()
 reply_ongoing = threading.Event()
 
 
@@ -174,13 +174,13 @@ def listen():  # noqa: PLR0912, PLR0915
 def handle_continuous_user_prompt():
     """Play audio."""
     logger.debug("Continuous user audio prompt handling thread started")
-    min_audio_duration_seconds = 0.1
     while True:
         try:
             logger.trace("Waiting for new speech chunk...")
             new_audio_chunk_info = possible_speech_chunks_queue.get()
             new_audio_chunk = new_audio_chunk_info["audio"]
             app_page = new_audio_chunk_info["page"]
+            chat_obj = app_page.chat_obj
 
             logger.trace("Processing new speech chunk for page '{}'", app_page.title)
             if new_audio_chunk is None:
@@ -212,9 +212,12 @@ def handle_continuous_user_prompt():
                     app_page.title,
                 )
                 concatenated_audio = trim_beginning(concatenated_audio)
-                if concatenated_audio.duration_seconds > min_audio_duration_seconds:
+                if (
+                    concatenated_audio.duration_seconds
+                    >= chat_obj.min_speech_duration_seconds
+                ):
                     logger.debug(
-                        'Removing page "{}"\'s eventual old audio prompts the queue...',
+                        'Page "{}": Removing eventual old audio prompts the queue...',
                         app_page.title,
                     )
                     # Make sure the queue has only the latest audio
@@ -236,10 +239,10 @@ def handle_continuous_user_prompt():
                     logger.debug("Audio input for page '{}' sent for STT", app_page.title)
                 else:
                     logger.debug(
-                        'Page "{}"\'s audio input too short ({} < {} sec). Discarding.',
+                        'Page "{}": audio input too short ({} < {} sec). Discarding.',
                         app_page.title,
                         concatenated_audio.duration_seconds,
-                        min_audio_duration_seconds,
+                        chat_obj.min_speech_duration_seconds,
                     )
             else:
                 new_audio_chunk_info = {"page": app_page, "audio": new_audio_chunk}
@@ -256,13 +259,12 @@ def handle_stt():
     """Handle speech to text."""
     logger.debug("Speech to text handling thread started")
 
-    min_audio_duration_seconds = 0.1
     while True:
         try:
             info_for_stt = continuous_user_prompt_queue.get()
             audio = info_for_stt["audio"]
-            if audio.duration_seconds > min_audio_duration_seconds:
-                chat_obj = info_for_stt["page"].chat_obj
+            chat_obj = info_for_stt["page"].chat_obj
+            if audio.duration_seconds >= chat_obj.min_speech_duration_seconds:
                 recorded_prompt = chat_obj.stt(audio).text
                 if recorded_prompt:
                     text_prompt_queue.put(recorded_prompt)
@@ -364,9 +366,10 @@ class AbstractMultipageApp(ABC):
             audio_frame_callback=audio_frame_callback,
         )
 
+        logger.debug("Waiting for the audio stream to start...")
         while not self.stream_audio_context.state.playing:
-            logger.debug("Waiting for the audio stream to start...")
             time.sleep(1)
+        logger.debug("Audio stream started")
 
         return self.stream_audio_context
 

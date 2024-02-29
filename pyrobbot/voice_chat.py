@@ -100,6 +100,8 @@ class VoiceChat(Chat):
             daemon=True,
         )
 
+        self.last_answer_full_audio_fpath = queue.Queue(maxsize=1)
+
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
@@ -200,8 +202,7 @@ class VoiceChat(Chat):
     def handle_update_audio_history(self, current_answer_audios_queue: queue.Queue):
         """Handle updating the chat history with the latest reply's audio file path."""
         # Merge all AudioSegments in self.current_answer_audios_queue into a single one
-        min_audio_duration_seconds = 0.01
-        merged_audio = AudioSegment.silent(duration=0)
+        merged_audio = AudioSegment.empty()
         while not self.exit_chat.is_set():
             try:
                 new_audio = current_answer_audios_queue.get()
@@ -212,7 +213,9 @@ class VoiceChat(Chat):
                     continue
 
                 # Now the reply has finished
-                if merged_audio.duration_seconds <= min_audio_duration_seconds:
+                if merged_audio.duration_seconds < self.min_speech_duration_seconds:
+                    merged_audio = AudioSegment.empty()
+                    self.last_answer_full_audio_fpath.put(None)
                     current_answer_audios_queue.task_done()
                     continue
 
@@ -230,8 +233,9 @@ class VoiceChat(Chat):
                 # Save the combined audio as an mp3 file in the cache directory
                 merged_audio.export(audio_file_path, format="mp3")
                 logger.debug("File {} stored", audio_file_path)
-                merged_audio = AudioSegment.empty()
+                self.last_answer_full_audio_fpath.put(audio_file_path)
 
+                merged_audio = AudioSegment.empty()
                 current_answer_audios_queue.task_done()
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)

@@ -8,7 +8,8 @@ import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Union
 
 import streamlit as st
 import webrtcvad
@@ -151,7 +152,7 @@ class AppPage(ABC):
 
     def render_custom_audio_player(
         self,
-        audio: AudioSegment,
+        audio: Union[AudioSegment, str, Path, None],
         parent_element=None,
         autoplay: bool = True,
         hidden=False,
@@ -160,6 +161,15 @@ class AppPage(ABC):
         # Adaped from: <https://discuss.streamlit.io/t/
         #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
         #    in-streamlit/33201/2>
+
+        if audio is None:
+            logger.debug("No audio to play. Not rendering audio player.")
+            return
+
+        if isinstance(audio, (str, Path)):
+            audio = AudioSegment.from_file(audio, format="mp3")
+        elif not isinstance(audio, AudioSegment):
+            raise TypeError(f"Invalid type for audio: {type(audio)}")
 
         autoplay = "autoplay" if autoplay else ""
         hidden = "hidden" if hidden else ""
@@ -276,10 +286,7 @@ class ChatBotPage(AppPage):
                 with contextlib.suppress(KeyError):
                     if audio := message.get("assistant_reply_audio_file"):
                         with contextlib.suppress(CouldntDecodeError):
-                            if not isinstance(audio, AudioSegment):
-                                audio = AudioSegment.from_file(audio, format="mp3")
-                            if len(audio) > 0:
-                                self.render_custom_audio_player(audio, autoplay=False)
+                            self.render_custom_audio_player(audio, autoplay=False)
 
     def render_cost_estimate_page(self):
         """Render the estimated costs information in the chat."""
@@ -302,14 +309,7 @@ class ChatBotPage(AppPage):
 
     def play_chime(self, chime_type: str = "correct-answer-tone", parent_element=None):
         """Sound a chime to send notificatons to the user."""
-        type2filename = {
-            "correct-answer-tone": "mixkit-correct-answer-tone-2870.wav",
-            "option-select": "mixkit-interface-option-select-2573.wav",
-        }
-
-        chime = AudioSegment.from_file(
-            GeneralDefinitions.APP_DIR / "data" / type2filename[chime_type], format="wav"
-        )
+        chime = _load_chime(chime_type)
         self.render_custom_audio_player(
             chime, hidden=True, autoplay=True, parent_element=parent_element
         )
@@ -319,7 +319,6 @@ class ChatBotPage(AppPage):
         placeholder = (
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
         )
-        min_audio_duration_seconds = 0.1
         with st.container():
             left, right = st.columns([0.95, 0.05])
             with left:
@@ -342,7 +341,9 @@ class ChatBotPage(AppPage):
                         raise ValueError("The listen thread is not alive")
                 else:
                     audio = self.manual_switch_mic_recorder()
-                    if audio and (audio.duration_seconds > min_audio_duration_seconds):
+                    if audio and (
+                        audio.duration_seconds > self.chat_obj.min_speech_duration_seconds
+                    ):
                         self.text_prompt_queue.put(self.chat_obj.stt(audio).text)
 
     def _render_chatbot_page(self):  # noqa: PLR0915
@@ -375,6 +376,8 @@ class ChatBotPage(AppPage):
                 while True:
                     with contextlib.suppress(queue.Empty):
                         if prompt := self.parent.text_prompt_queue.get_nowait():
+                            with self.parent.text_prompt_queue.mutex:
+                                self.parent.text_prompt_queue.queue.clear()
                             break
                     with contextlib.suppress(queue.Empty):
                         if prompt := self.text_prompt_queue.get_nowait():
@@ -383,8 +386,8 @@ class ChatBotPage(AppPage):
                     time.sleep(0.1)
 
         if prompt := prompt.strip():
-            status_msg_container.success("Got your message!")
             self.play_chime("option-select")
+            status_msg_container.success("Got your message!")
             self.parent.reply_ongoing.set()
             logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
             question_answer_chunks_queue.queue.clear()
@@ -441,7 +444,6 @@ class ChatBotPage(AppPage):
                     chunk = ""
                     full_response = ""
                     current_audio = AudioSegment.empty()
-                    full_audio = AudioSegment.silent(duration=0)
                     text_reply_container.markdown("▌")
                     status_msg_container.empty()
                     while (chunk is not None) or (current_audio is not None):
@@ -462,7 +464,6 @@ class ChatBotPage(AppPage):
                                 partial_audios_queue.put(None)
                             else:
                                 partial_audios_queue.put(current_audio.speech)
-                                full_audio += current_audio.speech
 
                     logger.opt(colors=True).debug(
                         "<yellow>Replied to user prompt '{}': {}</yellow>",
@@ -474,22 +475,34 @@ class ChatBotPage(AppPage):
                     )
                     text_reply_container.markdown(full_response)
 
+                    while play_partial_audios_thread.is_alive():
+                        logger.trace("Waiting for partial audios to finish playing...")
+                        time.sleep(0.1)
+
+                    logger.debug("Getting path to full audio file...")
+                    try:
+                        full_audio_fpath = self.chat_obj.last_answer_full_audio_fpath.get(
+                            timeout=2
+                        )
+                    except queue.Empty:
+                        full_audio_fpath = None
+                        logger.warning("Problem getting path to full audio file")
+                    else:
+                        logger.debug("Got path to full audio file: {}", full_audio_fpath)
+                        self.chat_obj.last_answer_full_audio_fpath.task_done()
+
                     self.chat_history.append(
                         {
                             "role": "assistant",
                             "name": self.chat_obj.assistant_name,
                             "content": full_response,
-                            "assistant_reply_audio_file": full_audio,
+                            "assistant_reply_audio_file": full_audio_fpath,
                         }
                     )
 
-                    while play_partial_audios_thread.is_alive():
-                        logger.trace("Waiting for partial audios to finish playing...")
-                        time.sleep(0.1)
-
-                    if full_audio.duration_seconds > 0:
+                    if full_audio_fpath:
                         self.render_custom_audio_player(
-                            full_audio,
+                            full_audio_fpath,
                             parent_element=audio_reply_container,
                             autoplay=False,
                         )
@@ -540,6 +553,20 @@ class ChatBotPage(AppPage):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
+
+
+@st.cache_data
+def _load_chime(chime_type: str) -> AudioSegment:
+    """Load a chime sound from the data directory."""
+    type2filename = {
+        "correct-answer-tone": "mixkit-correct-answer-tone-2870.wav",
+        "option-select": "mixkit-interface-option-select-2573.wav",
+    }
+
+    return AudioSegment.from_file(
+        GeneralDefinitions.APP_DIR / "data" / type2filename[chime_type],
+        format="wav",
+    )
 
 
 def _put_chat_reply_chunks_in_queue(chat_obj, prompt, question_answer_chunks_queue):

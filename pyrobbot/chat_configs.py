@@ -186,8 +186,13 @@ class VoiceAssistantConfigs(BaseConfigModel):
         description="Word(s) to use in order to cancel the current reply",
     )
 
+    min_speech_duration_seconds: float = Field(
+        default=0.1,
+        gt=0,
+        description="Minimum duration of speech (in seconds) for the assistant to listen",
+    )
     inactivity_timeout_seconds: int = Field(
-        default=2,
+        default=1,
         gt=0,
         description="How much time user should be inactive "
         "for the assistant to stop listening",
