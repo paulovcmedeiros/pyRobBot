@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
 import streamlit as st
-import webrtcvad
 from audio_recorder_streamlit import audio_recorder
 from loguru import logger
 from PIL import Image
@@ -28,13 +27,6 @@ from pyrobbot.voice_chat import VoiceChat
 if TYPE_CHECKING:
 
     from pyrobbot.app.multipage import MultipageChatbotApp
-
-_AVATAR_FILES_DIR = GeneralDefinitions.APP_DIR / "data"
-_ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"
-_USER_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "user_avatar.png"
-_ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
-_USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
-
 
 # Sentinel object for when a chat is recovered from cache
 _RecoveredChat = object()
@@ -219,11 +211,7 @@ class ChatBotPage(AppPage):
             _ = self.chat_obj
             logger.debug("Default chat id=<{}>", self.chat_obj.id)
 
-        self.avatars = {"assistant": _ASSISTANT_AVATAR_IMAGE, "user": _USER_AVATAR_IMAGE}
-
-        # Definitions related to webrtc_streamer
-        self.vad = webrtcvad.Vad(2)
-        self.text_prompt_queue = queue.Queue()
+        self.avatars = get_avatar_images()
 
     @property
     def chat_configs(self) -> VoiceChatConfigs:
@@ -325,7 +313,7 @@ class ChatBotPage(AppPage):
                 if text_prompt := st.chat_input(
                     placeholder=placeholder, key=f"text_input_widget_{self.page_id}"
                 ):
-                    self.text_prompt_queue.put(text_prompt)
+                    self.parent.text_prompt_queue.put({"page": self, "text": text_prompt})
                     return
 
             with right:
@@ -344,7 +332,8 @@ class ChatBotPage(AppPage):
                     if audio and (
                         audio.duration_seconds > self.chat_obj.min_speech_duration_seconds
                     ):
-                        self.text_prompt_queue.put(self.chat_obj.stt(audio).text)
+                        new_input = {"page": self, "text": self.chat_obj.stt(audio).text}
+                        self.parent.text_prompt_queue.put(new_input)
 
     def _render_chatbot_page(self):  # noqa: PLR0915
         """Render a chatbot page.
@@ -375,23 +364,27 @@ class ChatBotPage(AppPage):
             with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
                 while True:
                     with contextlib.suppress(queue.Empty):
-                        if prompt := self.parent.text_prompt_queue.get_nowait():
-                            with self.parent.text_prompt_queue.mutex:
-                                self.parent.text_prompt_queue.queue.clear()
-                            break
-                    with contextlib.suppress(queue.Empty):
-                        if prompt := self.text_prompt_queue.get_nowait():
+                        this_page_prompt_queue = filter_page_info_from_queue(
+                            app_page=self, the_queue=self.parent.text_prompt_queue
+                        )
+                        if prompt := this_page_prompt_queue.get_nowait()["text"]:
                             break
                     logger.trace("Still waiting for user text prompt...")
                     time.sleep(0.1)
 
         if prompt := prompt.strip():
+            self.parent.reply_ongoing.set()
+            # Interrupt any ongoing reply in this page
+            with question_answer_chunks_queue.mutex:
+                question_answer_chunks_queue.queue.clear()
+            with partial_audios_queue.mutex:
+                partial_audios_queue.queue.clear()
+
+            logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
+
             self.play_chime("option-select")
             status_msg_container.success("Got your message!")
-            self.parent.reply_ongoing.set()
-            logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
-            question_answer_chunks_queue.queue.clear()
-            partial_audios_queue.queue.clear()
+            time.sleep(0.5)
         else:
             status_msg_container.warning(
                 "Could not understand your message. Please try again."
@@ -432,7 +425,7 @@ class ChatBotPage(AppPage):
                         args=(
                             partial_audios_queue,
                             self.render_custom_audio_player,
-                            audio_reply_container,
+                            status_msg_container,
                         ),
                         daemon=False,
                     )
@@ -524,6 +517,16 @@ class ChatBotPage(AppPage):
                     self.sidebar_title = title
                     title_container.header(title, divider="rainbow")
 
+                # Clear the prompt queue for this page, to remove old prompts
+                with self.parent.continuous_user_prompt_queue.mutex:
+                    filter_page_info_from_queue(
+                        app_page=self, the_queue=self.parent.continuous_user_prompt_queue
+                    )
+                with self.parent.text_prompt_queue.mutex:
+                    filter_page_info_from_queue(
+                        app_page=self, the_queue=self.parent.text_prompt_queue
+                    )
+
                 self.parent.reply_ongoing.clear()
 
         if not self.parent.reply_ongoing.is_set():
@@ -553,6 +556,49 @@ class ChatBotPage(AppPage):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
+
+
+def filter_page_info_from_queue(app_page: AppPage, the_queue: queue.Queue):
+    """Filter `app_page`'s data from `queue` inplace. Return queue of items in `app_page`.
+
+    **Use with original_queue.mutex!!**
+
+    Args:
+        app_page: The page whose entries should be removed.
+        the_queue: The queue to be filtered.
+
+    Returns:
+        queue.Queue: The queue with only the entries from `app_page`.
+
+    Example:
+    ```
+    with the_queue.mutex:
+        this_page_data = remove_page_info_from_queue(app_page, the_queue)
+    ```
+    """
+    queue_with_only_entries_from_other_pages = queue.Queue()
+    items_from_page_queue = queue.Queue()
+    while the_queue.queue:
+        original_queue_entry = the_queue.queue.popleft()
+        if original_queue_entry["page"].page_id == app_page.page_id:
+            items_from_page_queue.put(original_queue_entry)
+        else:
+            queue_with_only_entries_from_other_pages.put(original_queue_entry)
+
+    the_queue.queue = queue_with_only_entries_from_other_pages.queue
+    return items_from_page_queue
+
+
+@st.cache_data
+def get_avatar_images():
+    """Return the avatar images for the assistant and the user."""
+    avatar_files_dir = GeneralDefinitions.APP_DIR / "data"
+    assistant_avatar_file_path = avatar_files_dir / "assistant_avatar.png"
+    user_avatar_file_path = avatar_files_dir / "user_avatar.png"
+    assistant_avatar_image = Image.open(assistant_avatar_file_path)
+    user_avatar_image = Image.open(user_avatar_file_path)
+
+    return {"assistant": assistant_avatar_image, "user": user_avatar_image}
 
 
 @st.cache_data

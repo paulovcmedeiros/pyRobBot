@@ -26,18 +26,19 @@ from pyrobbot.general_utils import trim_beginning
 from pyrobbot.openai_utils import OpenAiClientWrapper
 
 from .app_page_templates import (
-    _ASSISTANT_AVATAR_IMAGE,
     AppPage,
     ChatBotPage,
     WebAppChat,
     _RecoveredChat,
+    filter_page_info_from_queue,
+    get_avatar_images,
 )
 
 incoming_frame_queue = queue.Queue()
 possible_speech_chunks_queue = queue.Queue()
 audio_playing_chunks_queue = queue.Queue()
-continuous_user_prompt_queue = queue.Queue(maxsize=1)
-text_prompt_queue = queue.LifoQueue()
+continuous_user_prompt_queue = queue.Queue()
+text_prompt_queue = queue.Queue()
 reply_ongoing = threading.Event()
 
 
@@ -194,17 +195,12 @@ def handle_continuous_user_prompt():
                 )
                 concatenated_audio = AudioSegment.empty()
                 with audio_playing_chunks_queue.mutex:
-                    new_audio_playing_chunks_queue = queue.Queue()
-                    while audio_playing_chunks_queue.queue:
-                        audio_chunk_info = audio_playing_chunks_queue.queue.popleft()
-                        if audio_chunk_info["page"].page_id != app_page.page_id:
-                            new_audio_playing_chunks_queue.put(audio_chunk_info)
-                            continue
-                        concatenated_audio += audio_chunk_info["audio"]
-
-                    audio_playing_chunks_queue.queue = (
-                        new_audio_playing_chunks_queue.queue
+                    this_page_audio_chunks = filter_page_info_from_queue(
+                        app_page=app_page, the_queue=audio_playing_chunks_queue
                     )
+                    while this_page_audio_chunks.queue:
+                        audio_chunk_info = this_page_audio_chunks.queue.popleft()
+                        concatenated_audio += audio_chunk_info["audio"]
 
                 logger.debug(
                     "Done gathering frames ({}s) for page '{}'. Trimming...",
@@ -217,21 +213,12 @@ def handle_continuous_user_prompt():
                     >= chat_obj.min_speech_duration_seconds
                 ):
                     logger.debug(
-                        'Page "{}": Removing eventual old audio prompts the queue...',
+                        'Page "{}": Make sure the queue has only the latest audio...',
                         app_page.title,
                     )
-                    # Make sure the queue has only the latest audio
                     with continuous_user_prompt_queue.mutex:
-                        other_pages_continuous_prompt_queue = queue.Queue()
-                        while continuous_user_prompt_queue.queue:
-                            past_info_for_stt = (
-                                continuous_user_prompt_queue.queue.popleft()
-                            )
-                            if past_info_for_stt["page"].page_id == app_page.page_id:
-                                continue
-                            other_pages_continuous_prompt_queue.put(past_info_for_stt)
-                        continuous_user_prompt_queue.queue = (
-                            other_pages_continuous_prompt_queue.queue
+                        filter_page_info_from_queue(
+                            app_page=app_page, the_queue=continuous_user_prompt_queue
                         )
 
                     new_info_for_stt = {"page": app_page, "audio": concatenated_audio}
@@ -249,7 +236,7 @@ def handle_continuous_user_prompt():
                 audio_playing_chunks_queue.put(new_audio_chunk_info)
 
             possible_speech_chunks_queue.task_done()
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001, PERF203
             logger.opt(exception=True).debug(error)
             logger.error(error)
 
@@ -265,9 +252,11 @@ def handle_stt():
             audio = info_for_stt["audio"]
             chat_obj = info_for_stt["page"].chat_obj
             if audio.duration_seconds >= chat_obj.min_speech_duration_seconds:
-                recorded_prompt = chat_obj.stt(audio).text
-                if recorded_prompt:
-                    text_prompt_queue.put(recorded_prompt)
+                recorded_prompt_as_txt = chat_obj.stt(audio).text
+                if recorded_prompt_as_txt:
+                    text_prompt_queue.put(
+                        {"page": info_for_stt["page"], "text": recorded_prompt_as_txt}
+                    )
         except Exception as error:  # noqa: BLE001, PERF203
             logger.error(error)
 
@@ -592,7 +581,8 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 st.title(GeneralDefinitions.APP_NAME)
                 with contextlib.suppress(AttributeError, ValueError, OSError):
                     # st image raises some exceptions occasionally
-                    st.image(_ASSISTANT_AVATAR_IMAGE, use_column_width=True)
+                    avatars = get_avatar_images()
+                    st.image(avatars["assistant"], use_column_width=True)
             st.subheader(
                 GeneralDefinitions.PACKAGE_DESCRIPTION,
                 divider="rainbow",
