@@ -302,7 +302,18 @@ class ChatBotPage(AppPage):
             chime, hidden=True, autoplay=True, parent_element=parent_element
         )
 
-    def render_chat_input_widgets(self):
+    def render_title(self):
+        """Render the title of the chatbot page."""
+        with st.container(height=70, border=False):
+            self.title_container = st.empty()
+        with st.container(height=50, border=False):
+            left, _ = st.columns([0.7, 0.3])
+            with left:
+                self.status_msg_container = st.empty()
+        self.title_container.subheader(self.title, divider="rainbow")
+
+    @property
+    def direct_text_prompt(self):
         """Render chat inut widgets and return the user's input."""
         placeholder = (
             f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
@@ -310,30 +321,48 @@ class ChatBotPage(AppPage):
         with st.container():
             left, right = st.columns([0.95, 0.05])
             with left:
-                if text_prompt := st.chat_input(
-                    placeholder=placeholder, key=f"text_input_widget_{self.page_id}"
-                ):
-                    self.parent.text_prompt_queue.put({"page": self, "text": text_prompt})
-                    return
-
+                text_from_chat_input_widget = st.chat_input(placeholder=placeholder)
             with right:
-                continuous_audio = st.session_state.get(
-                    "toggle_continuous_voice_input", False
-                )
-                continuous_audio = True  # TEST
-
-                audio = AudioSegment.empty()
-                if continuous_audio:
-                    # We won't handle this here. It is handled in listen, ..., sst threads
-                    if not self.parent.listen_thread.is_alive():
-                        raise ValueError("The listen thread is not alive")
+                text_from_manual_audio_recorder = ""
+                if st.session_state.get("toggle_continuous_voice_input"):
+                    st.empty()
                 else:
-                    audio = self.manual_switch_mic_recorder()
-                    if audio and (
-                        audio.duration_seconds > self.chat_obj.min_speech_duration_seconds
-                    ):
-                        new_input = {"page": self, "text": self.chat_obj.stt(audio).text}
-                        self.parent.text_prompt_queue.put(new_input)
+                    text_from_manual_audio_recorder = self.chat_obj.stt(
+                        self.manual_switch_mic_recorder()
+                    ).text
+        return text_from_chat_input_widget or text_from_manual_audio_recorder
+
+    @property
+    def continuous_text_prompt(self):
+        """Wait until a promp from the continuous stream is ready and return it."""
+        if not st.session_state.get("toggle_continuous_voice_input"):
+            return None
+
+        if not self.parent.continuous_audio_input_engine_is_running:
+            logger.warning("Continuous audio input engine is not running!!!")
+            self.status_msg_container.error(
+                "The continuous audio input engine is not running!!!"
+            )
+            return None
+
+        logger.debug("Running on continuous audio prompt. Waiting user input...")
+        with self.status_msg_container:
+            self.play_chime()
+            with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
+                while True:
+                    with contextlib.suppress(queue.Empty):
+                        with self.parent.text_prompt_queue.mutex:
+                            this_page_prompt_queue = filter_page_info_from_queue(
+                                app_page=self, the_queue=self.parent.text_prompt_queue
+                            )
+                        if prompt := this_page_prompt_queue.get_nowait()["text"]:
+                            this_page_prompt_queue.task_done()
+                            break
+                    logger.trace("Still waiting for user text prompt...")
+                    time.sleep(0.1)
+
+        logger.debug("Done getting user input: {}", prompt)
+        return prompt
 
     def _render_chatbot_page(self):  # noqa: PLR0915
         """Render a chatbot page.
@@ -346,192 +375,187 @@ class ChatBotPage(AppPage):
         question_answer_chunks_queue = queue.Queue()
         partial_audios_queue = queue.Queue()
 
-        with st.container(height=70, border=False):
-            title_container = st.empty()
-        with st.container(height=35, border=False):
-            left, _ = st.columns([0.7, 0.3])
-            with left:
-                status_msg_container = st.empty()
-
-        title_container.subheader(self.title, divider="rainbow")
+        self.render_title()
         chat_msgs_container = st.container(height=600, border=False)
         with chat_msgs_container:
             self.render_chat_history()
-        self.render_chat_input_widgets()
 
-        with status_msg_container:
-            logger.debug("Waiting for user text prompt...")
-            self.play_chime()
-            with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
-                while True:
-                    with contextlib.suppress(queue.Empty):
-                        this_page_prompt_queue = filter_page_info_from_queue(
-                            app_page=self, the_queue=self.parent.text_prompt_queue
-                        )
-                        if prompt := this_page_prompt_queue.get_nowait()["text"]:
-                            break
-                    logger.trace("Still waiting for user text prompt...")
-                    time.sleep(0.1)
-
-        if prompt := prompt.strip():
+        direct_text_prompt = self.direct_text_prompt
+        continuous_stt_prompt = self.continuous_text_prompt
+        prompt = direct_text_prompt or continuous_stt_prompt
+        if prompt:
+            logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
             self.parent.reply_ongoing.set()
+
             # Interrupt any ongoing reply in this page
             with question_answer_chunks_queue.mutex:
                 question_answer_chunks_queue.queue.clear()
             with partial_audios_queue.mutex:
                 partial_audios_queue.queue.clear()
 
-            logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
-
-            self.play_chime("option-select")
-            status_msg_container.success("Got your message!")
-            time.sleep(0.5)
-        else:
-            status_msg_container.warning(
+            if continuous_stt_prompt:
+                self.play_chime("option-select")
+                self.status_msg_container.success("Got your message!")
+                time.sleep(0.5)
+        elif continuous_stt_prompt:
+            self.status_msg_container.warning(
                 "Could not understand your message. Please try again."
             )
             logger.opt(colors=True).debug("<yellow>Received empty prompt</yellow>")
             self.parent.reply_ongoing.clear()
 
-        with chat_msgs_container:
-            # Process user input
-            if prompt:
-                time_now = datetime.datetime.now().replace(microsecond=0)
-                self.state.update({"chat_started": True})
-                # Display user message in chat message container
-                with st.chat_message("user", avatar=self.avatars["user"]):
-                    st.caption(time_now)
-                    st.markdown(prompt)
-                self.chat_history.append(
-                    {
-                        "role": "user",
-                        "name": self.chat_obj.username,
-                        "content": prompt,
-                        "timestamp": time_now,
-                    }
-                )
-
-                # Display (stream) assistant response in chat message container
-                with st.chat_message("assistant", avatar=self.avatars["assistant"]):
-                    text_reply_container = st.empty()
-                    audio_reply_container = st.empty()
-
-                    # Create threads to process text and audio replies asynchronously
-                    answer_question_thread = threading.Thread(
-                        target=_put_chat_reply_chunks_in_queue,
-                        args=(self.chat_obj, prompt, question_answer_chunks_queue),
-                    )
-                    play_partial_audios_thread = threading.Thread(
-                        target=_play_queued_audios,
-                        args=(
-                            partial_audios_queue,
-                            self.render_custom_audio_player,
-                            status_msg_container,
-                        ),
-                        daemon=False,
-                    )
-                    for thread in (answer_question_thread, play_partial_audios_thread):
-                        add_script_run_ctx(thread)
-                        thread.start()
-
-                    # Render the reply
-                    chunk = ""
-                    full_response = ""
-                    current_audio = AudioSegment.empty()
-                    text_reply_container.markdown("▌")
-                    status_msg_container.empty()
-                    while (chunk is not None) or (current_audio is not None):
-                        logger.trace("Waiting for text or audio chunks...")
-                        # Render text
-                        with contextlib.suppress(queue.Empty):
-                            chunk = question_answer_chunks_queue.get_nowait()
-                            if chunk is not None:
-                                full_response += chunk
-                                text_reply_container.markdown(full_response + "▌")
-                            question_answer_chunks_queue.task_done()
-
-                        # Render audio (if any)
-                        with contextlib.suppress(queue.Empty):
-                            current_audio = self.chat_obj.play_speech_queue.get_nowait()
-                            self.chat_obj.play_speech_queue.task_done()
-                            if current_audio is None:
-                                partial_audios_queue.put(None)
-                            else:
-                                partial_audios_queue.put(current_audio.speech)
-
-                    logger.opt(colors=True).debug(
-                        "<yellow>Replied to user prompt '{}': {}</yellow>",
-                        prompt,
-                        full_response,
-                    )
-                    text_reply_container.caption(
-                        datetime.datetime.now().replace(microsecond=0)
-                    )
-                    text_reply_container.markdown(full_response)
-
-                    while play_partial_audios_thread.is_alive():
-                        logger.trace("Waiting for partial audios to finish playing...")
-                        time.sleep(0.1)
-
-                    logger.debug("Getting path to full audio file...")
-                    try:
-                        full_audio_fpath = self.chat_obj.last_answer_full_audio_fpath.get(
-                            timeout=2
-                        )
-                    except queue.Empty:
-                        full_audio_fpath = None
-                        logger.warning("Problem getting path to full audio file")
-                    else:
-                        logger.debug("Got path to full audio file: {}", full_audio_fpath)
-                        self.chat_obj.last_answer_full_audio_fpath.task_done()
-
+        if prompt:
+            with chat_msgs_container:
+                # Process user input
+                if prompt:
+                    time_now = datetime.datetime.now().replace(microsecond=0)
+                    self.state.update({"chat_started": True})
+                    # Display user message in chat message container
+                    with st.chat_message("user", avatar=self.avatars["user"]):
+                        st.caption(time_now)
+                        st.markdown(prompt)
                     self.chat_history.append(
                         {
-                            "role": "assistant",
-                            "name": self.chat_obj.assistant_name,
-                            "content": full_response,
-                            "assistant_reply_audio_file": full_audio_fpath,
+                            "role": "user",
+                            "name": self.chat_obj.username,
+                            "content": prompt,
+                            "timestamp": time_now,
                         }
                     )
 
-                    if full_audio_fpath:
-                        self.render_custom_audio_player(
-                            full_audio_fpath,
-                            parent_element=audio_reply_container,
-                            autoplay=False,
+                    # Display (stream) assistant response in chat message container
+                    with st.chat_message("assistant", avatar=self.avatars["assistant"]):
+                        text_reply_container = st.empty()
+                        audio_reply_container = st.empty()
+
+                        # Create threads to process text and audio replies asynchronously
+                        answer_question_thread = threading.Thread(
+                            target=_put_chat_reply_chunks_in_queue,
+                            args=(self.chat_obj, prompt, question_answer_chunks_queue),
+                        )
+                        play_partial_audios_thread = threading.Thread(
+                            target=_play_queued_audios,
+                            args=(
+                                partial_audios_queue,
+                                self.render_custom_audio_player,
+                                self.status_msg_container,
+                            ),
+                            daemon=False,
+                        )
+                        for thread in (
+                            answer_question_thread,
+                            play_partial_audios_thread,
+                        ):
+                            add_script_run_ctx(thread)
+                            thread.start()
+
+                        # Render the reply
+                        chunk = ""
+                        full_response = ""
+                        current_audio = AudioSegment.empty()
+                        text_reply_container.markdown("▌")
+                        self.status_msg_container.empty()
+                        while (chunk is not None) or (current_audio is not None):
+                            logger.trace("Waiting for text or audio chunks...")
+                            # Render text
+                            with contextlib.suppress(queue.Empty):
+                                chunk = question_answer_chunks_queue.get_nowait()
+                                if chunk is not None:
+                                    full_response += chunk
+                                    text_reply_container.markdown(full_response + "▌")
+                                question_answer_chunks_queue.task_done()
+
+                            # Render audio (if any)
+                            with contextlib.suppress(queue.Empty):
+                                current_audio = (
+                                    self.chat_obj.play_speech_queue.get_nowait()
+                                )
+                                self.chat_obj.play_speech_queue.task_done()
+                                if current_audio is None:
+                                    partial_audios_queue.put(None)
+                                else:
+                                    partial_audios_queue.put(current_audio.speech)
+
+                        logger.opt(colors=True).debug(
+                            "<yellow>Replied to user prompt '{}': {}</yellow>",
+                            prompt,
+                            full_response,
+                        )
+                        text_reply_container.caption(
+                            datetime.datetime.now().replace(microsecond=0)
+                        )
+                        text_reply_container.markdown(full_response)
+
+                        while play_partial_audios_thread.is_alive():
+                            logger.trace(
+                                "Waiting for partial audios to finish playing..."
+                            )
+                            time.sleep(0.1)
+
+                        logger.debug("Getting path to full audio file...")
+                        try:
+                            full_audio_fpath = (
+                                self.chat_obj.last_answer_full_audio_fpath.get(timeout=2)
+                            )
+                        except queue.Empty:
+                            full_audio_fpath = None
+                            logger.warning("Problem getting path to full audio file")
+                        else:
+                            logger.debug(
+                                "Got path to full audio file: {}", full_audio_fpath
+                            )
+                            self.chat_obj.last_answer_full_audio_fpath.task_done()
+
+                        self.chat_history.append(
+                            {
+                                "role": "assistant",
+                                "name": self.chat_obj.assistant_name,
+                                "content": full_response,
+                                "assistant_reply_audio_file": full_audio_fpath,
+                            }
                         )
 
-                # Reset title according to conversation initial contents
-                min_history_len_for_summary = 3
-                if (
-                    "page_title" not in self.state
-                    and len(self.chat_history) > min_history_len_for_summary
-                ):
-                    logger.debug("Working out conversation topic...")
-                    prompt = "Summarize the previous messages in max 4 words"
-                    title = "".join(self.chat_obj.respond_system_prompt(prompt))
-                    self.chat_obj.metadata["page_title"] = title
-                    self.chat_obj.metadata["sidebar_title"] = title
-                    self.chat_obj.save_cache()
+                        if full_audio_fpath:
+                            self.render_custom_audio_player(
+                                full_audio_fpath,
+                                parent_element=audio_reply_container,
+                                autoplay=False,
+                            )
 
-                    self.title = title
-                    self.sidebar_title = title
-                    title_container.header(title, divider="rainbow")
+                    # Reset title according to conversation initial contents
+                    min_history_len_for_summary = 3
+                    if (
+                        "page_title" not in self.state
+                        and len(self.chat_history) > min_history_len_for_summary
+                    ):
+                        logger.debug("Working out conversation topic...")
+                        prompt = "Summarize the previous messages in max 4 words"
+                        title = "".join(self.chat_obj.respond_system_prompt(prompt))
+                        self.chat_obj.metadata["page_title"] = title
+                        self.chat_obj.metadata["sidebar_title"] = title
+                        self.chat_obj.save_cache()
 
-                # Clear the prompt queue for this page, to remove old prompts
-                with self.parent.continuous_user_prompt_queue.mutex:
-                    filter_page_info_from_queue(
-                        app_page=self, the_queue=self.parent.continuous_user_prompt_queue
-                    )
-                with self.parent.text_prompt_queue.mutex:
-                    filter_page_info_from_queue(
-                        app_page=self, the_queue=self.parent.text_prompt_queue
-                    )
+                        self.title = title
+                        self.sidebar_title = title
+                        self.title_container.header(title, divider="rainbow")
 
-                self.parent.reply_ongoing.clear()
+                    # Clear the prompt queue for this page, to remove old prompts
+                    with self.parent.continuous_user_prompt_queue.mutex:
+                        filter_page_info_from_queue(
+                            app_page=self,
+                            the_queue=self.parent.continuous_user_prompt_queue,
+                        )
+                    with self.parent.text_prompt_queue.mutex:
+                        filter_page_info_from_queue(
+                            app_page=self, the_queue=self.parent.text_prompt_queue
+                        )
 
-        if not self.parent.reply_ongoing.is_set():
-            logger.debug("Rerunning the app")
+                    self.parent.reply_ongoing.clear()
+
+        if continuous_stt_prompt and not self.parent.reply_ongoing.is_set():
+            logger.opt(colors=True).debug(
+                "<yellow>Rerunning the app to wait for new input...</yellow>"
+            )
             st.rerun()
 
     def render(self):
@@ -555,6 +579,7 @@ class ChatBotPage(AppPage):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
+        logger.debug("Reached the end of the chatbot page.")
 
 
 def filter_page_info_from_queue(app_page: AppPage, the_queue: queue.Queue):

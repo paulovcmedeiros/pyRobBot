@@ -254,6 +254,11 @@ def handle_stt():
             if audio.duration_seconds >= chat_obj.min_speech_duration_seconds:
                 recorded_prompt_as_txt = chat_obj.stt(audio).text
                 if recorded_prompt_as_txt:
+                    logger.debug(
+                        "Audio from page '{}' transcribed  '{}'. Input ready to fetch.",
+                        info_for_stt["page"].title,
+                        recorded_prompt_as_txt,
+                    )
                     text_prompt_queue.put(
                         {"page": info_for_stt["page"], "text": recorded_prompt_as_txt}
                     )
@@ -285,9 +290,24 @@ class AbstractMultipageApp(ABC):
         """Initialise streamlit page configs."""
         st.set_page_config(**kwargs)
 
+        hide_zero_height_elements = """
+            <style>
+            .element-container:has(iframe[height="0"]) {
+              display: none;
+              overflow: hidden;
+              max-height: 0;
+            }
+            </style>
+            """
+        st.markdown(hide_zero_height_elements, unsafe_allow_html=True)
+
         self.listen_thread = listen_thread
         self.continuous_user_prompt_thread = continuous_user_prompt_thread
-        if not listen_thread.is_alive():
+        self.handle_stt_thread = handle_stt_thread
+        if (
+            st.session_state.get("toggle_continuous_voice_input")
+            and not self.continuous_audio_input_engine_is_running
+        ):
             for thread in [
                 listen_thread,
                 continuous_user_prompt_thread,
@@ -303,6 +323,15 @@ class AbstractMultipageApp(ABC):
         self.continuous_user_prompt_queue = continuous_user_prompt_queue
         self.text_prompt_queue = text_prompt_queue
         self.reply_ongoing = reply_ongoing
+
+    @property
+    def continuous_audio_input_engine_is_running(self):
+        """Return whether the continuous audio input engine is running."""
+        return (
+            self.listen_thread.is_alive()
+            and self.continuous_user_prompt_thread.is_alive()
+            and self.handle_stt_thread.is_alive()
+        )
 
     def render_continuous_audio_input_widget(self):
         """Render the continuous audio input widget."""
@@ -346,19 +375,26 @@ class AbstractMultipageApp(ABC):
 
         add_script_run_ctx(audio_frame_callback)
 
-        self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
-            key="sendonly-audio",
-            mode=WebRtcMode.SENDONLY,
-            rtc_configuration=rtc_configuration,
-            media_stream_constraints={"audio": True, "video": False},
-            desired_playing_state=True,
-            audio_frame_callback=audio_frame_callback,
-        )
-
-        logger.debug("Waiting for the audio stream to start...")
-        while not self.stream_audio_context.state.playing:
-            time.sleep(1)
-        logger.debug("Audio stream started")
+        logger.debug("Initialising input audio stream...")
+        try:
+            with st.container(height=0, border=False):
+                self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
+                    key="sendonly-audio",
+                    mode=WebRtcMode.SENDONLY,
+                    rtc_configuration=rtc_configuration,
+                    media_stream_constraints={"audio": True, "video": False},
+                    desired_playing_state=True,
+                    audio_frame_callback=audio_frame_callback,
+                )
+        except TypeError:
+            logger.opt(exception=True).error("Failed to initialise audio stream")
+            logger.error("Failed to initialise audio stream")
+            self.stream_audio_context = None
+        else:
+            logger.debug("Audio stream initialised. Waiting for it to start...")
+            while not self.stream_audio_context.state.playing:
+                time.sleep(1)
+            logger.debug("Audio stream started")
 
         return self.stream_audio_context
 
@@ -588,11 +624,18 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 divider="rainbow",
                 help="https://github.com/paulovcmedeiros/pyRobBot",
             )
+
             self.create_api_key_element()
+
             # Create a sidebar with tabs for chats and settings
             tab1, tab2 = st.tabs(["Chats", "Settings for Current Chat"])
-            self.sidebar_tabs = {"chats": tab1, "settings": tab2}
+
             with tab1:
+                tab1_visible_container = st.container()
+                tab1_invisible_container = st.container(height=0, border=False)
+
+            self.sidebar_tabs = {"chats": tab1_visible_container, "settings": tab2}
+            with tab1_visible_container:
                 left, center, right = st.columns(3)
                 with left:
                     # Add button to show the costs table
@@ -616,12 +659,8 @@ class MultipageChatbotApp(AbstractMultipageApp):
                         key="toggle_continuous_voice_input",
                         label=":microphone:",
                         help="Toggle continuous voice input",
-                        value=True,
+                        value=False,
                     )
-
-                # Create a container for the continuous audio input widget, which will
-                # be rendered only later
-                continuous_audio_input_widget_container = st.container()
 
                 # Add button to create a new chat
                 new_chat_button = st.button(label=":heavy_plus_sign:  New Chat")
@@ -657,7 +696,10 @@ class MultipageChatbotApp(AbstractMultipageApp):
                 if new_chat_button or not self.pages:
                     self.add_page()
 
-                with continuous_audio_input_widget_container:
+            # We'l hide the webrtc input buttom because I don't know how to customise it.
+            # I'll use the component "toggle_continuous_voice_input" to toggle it
+            if st.session_state["toggle_continuous_voice_input"]:
+                with tab1_invisible_container:
                     self.render_continuous_audio_input_widget()
 
         return super().render(**kwargs)

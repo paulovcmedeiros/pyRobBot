@@ -234,6 +234,9 @@ class VoiceChat(Chat):
                 merged_audio.export(audio_file_path, format="mp3")
                 logger.debug("File {} stored", audio_file_path)
                 self.last_answer_full_audio_fpath.put(audio_file_path)
+                logger.debug(
+                    "File {} sent to last_answer_full_audio_fpath queue", audio_file_path
+                )
 
                 merged_audio = AudioSegment.empty()
                 current_answer_audios_queue.task_done()
