@@ -467,12 +467,14 @@ class Chat(AlternativeConstructors):
         translation_prompt += f"If the text is already in {lang}, then just return ''.\n"
         translation_prompt += f"'''{text}'''"
         translation = "".join(self.respond_system_prompt(prompt=translation_prompt))
-        logger.debug("Translated '{}' to '{}' as '{}'", text, lang, translation)
 
         translation = translation.strip(" '\"")
         if not translation.strip():
             translation = text.strip()
+
+        logger.debug("Translated '{}' to '{}' as '{}'", text, lang, translation)
         type(self)._translation_cache[text][lang] = translation  # noqa: SLF001
+        type(self)._translation_cache[translation][lang] = translation  # noqa: SLF001
 
         return translation
 

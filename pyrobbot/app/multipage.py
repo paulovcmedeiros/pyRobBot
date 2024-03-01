@@ -25,14 +25,8 @@ from pyrobbot.chat_configs import VoiceChatConfigs
 from pyrobbot.general_utils import trim_beginning
 from pyrobbot.openai_utils import OpenAiClientWrapper
 
-from .app_page_templates import (
-    AppPage,
-    ChatBotPage,
-    WebAppChat,
-    _RecoveredChat,
-    filter_page_info_from_queue,
-    get_avatar_images,
-)
+from .app_page_templates import AppPage, ChatBotPage, _RecoveredChat
+from .app_utils import WebAppChat, filter_page_info_from_queue, get_avatar_images
 
 incoming_frame_queue = queue.Queue()
 possible_speech_chunks_queue = queue.Queue()
@@ -313,7 +307,8 @@ class AbstractMultipageApp(ABC):
                 continuous_user_prompt_thread,
                 handle_stt_thread,
             ]:
-                # See <https://github.com/streamlit/streamlit/issues/1326#issuecomment-1597918085>
+                # See <https://github.com/streamlit/streamlit/issues/
+                #      1326#issuecomment-1597918085>
                 add_script_run_ctx(thread)
                 thread.start()
 
