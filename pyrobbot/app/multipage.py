@@ -284,17 +284,6 @@ class AbstractMultipageApp(ABC):
         """Initialise streamlit page configs."""
         st.set_page_config(**kwargs)
 
-        hide_zero_height_elements = """
-            <style>
-            .element-container:has(iframe[height="0"]) {
-              display: none;
-              overflow: hidden;
-              max-height: 0;
-            }
-            </style>
-            """
-        st.markdown(hide_zero_height_elements, unsafe_allow_html=True)
-
         self.listen_thread = listen_thread
         self.continuous_user_prompt_thread = continuous_user_prompt_thread
         self.handle_stt_thread = handle_stt_thread
@@ -371,16 +360,28 @@ class AbstractMultipageApp(ABC):
         add_script_run_ctx(audio_frame_callback)
 
         logger.debug("Initialising input audio stream...")
+        hide_webrtc_streamer_button = """
+            <style>
+            .element-container:has(
+                iframe[title="streamlit_webrtc.component.webrtc_streamer"]
+            ) {
+              display: none;
+              overflow: hidden;
+              max-height: 0;
+            }
+            </style>
+            """
+        st.markdown(hide_webrtc_streamer_button, unsafe_allow_html=True)
+
         try:
-            with st.container(height=0, border=False):
-                self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
-                    key="sendonly-audio",
-                    mode=WebRtcMode.SENDONLY,
-                    rtc_configuration=rtc_configuration,
-                    media_stream_constraints={"audio": True, "video": False},
-                    desired_playing_state=True,
-                    audio_frame_callback=audio_frame_callback,
-                )
+            self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
+                key="sendonly-audio",
+                mode=WebRtcMode.SENDONLY,
+                rtc_configuration=rtc_configuration,
+                media_stream_constraints={"audio": True, "video": False},
+                desired_playing_state=True,
+                audio_frame_callback=audio_frame_callback,
+            )
         except TypeError:
             logger.opt(exception=True).error("Failed to initialise audio stream")
             logger.error("Failed to initialise audio stream")
