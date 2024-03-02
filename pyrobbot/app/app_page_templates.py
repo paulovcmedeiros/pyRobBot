@@ -261,7 +261,7 @@ class ChatBotPage(AppPage):
                     st.caption(message["timestamp"])
                 st.markdown(message["content"])
                 with contextlib.suppress(KeyError):
-                    if audio := message.get("assistant_reply_audio_file"):
+                    if audio := message.get("reply_audio_file_path"):
                         with contextlib.suppress(CouldntDecodeError):
                             self.render_custom_audio_player(audio, autoplay=False)
 
@@ -415,7 +415,7 @@ class ChatBotPage(AppPage):
                                 "role": "assistant",
                                 "name": self.chat_obj.assistant_name,
                                 "content": reply["text"],
-                                "assistant_reply_audio_file": reply["audio"],
+                                "reply_audio_file_path": reply["audio"],
                             }
                         )
 

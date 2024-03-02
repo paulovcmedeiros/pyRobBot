@@ -39,9 +39,10 @@ class ChatContext(ABC):
         """Return the path to the context file."""
         return self.parent_chat.context_file_path
 
-    def add_to_history(self, msg_list: list[dict]):
+    def add_to_history(self, exchange_id: str, msg_list: list[dict]):
         """Add message exchange to history."""
         self.database.insert_message_exchange(
+            exchange_id=exchange_id,
             chat_model=self.parent_chat.model,
             message_exchange=msg_list,
             embedding=self.request_embedding(msg_list=msg_list),
@@ -49,23 +50,24 @@ class ChatContext(ABC):
 
     def load_history(self) -> list[dict]:
         """Load the chat history."""
-        selected_columns = ["timestamp", "message_exchange", "assistant_reply_audio_file"]
-        messages_df = self.database.get_messages_dataframe()[selected_columns]
+        db_history_df = self.database.retrieve_history()
 
         # Convert unix timestamps to datetime objs at the local timezone
-        messages_df["timestamp"] = messages_df["timestamp"].apply(
+        db_history_df["timestamp"] = db_history_df["timestamp"].apply(
             lambda ts: datetime.fromtimestamp(ts)
             .replace(microsecond=0, tzinfo=timezone.utc)
             .astimezone(tz=None)
             .replace(tzinfo=None)
         )
 
-        msg_exchanges = messages_df["message_exchange"].apply(ast.literal_eval).tolist()
+        msg_exchanges = db_history_df["message_exchange"].apply(ast.literal_eval).tolist()
         # Add timestamps and path to eventual audio files to messages
-        for i_msg_exchange, timestamp in enumerate(messages_df["timestamp"]):
+        for i_msg_exchange, timestamp in enumerate(db_history_df["timestamp"]):
+            # Index 0 is for the user's message, index 1 is for the assistant's reply
             msg_exchanges[i_msg_exchange][0]["timestamp"] = timestamp
-            path = messages_df["assistant_reply_audio_file"].iloc[i_msg_exchange]
-            msg_exchanges[i_msg_exchange][1]["assistant_reply_audio_file"] = path
+            msg_exchanges[i_msg_exchange][1]["reply_audio_file_path"] = db_history_df[
+                "reply_audio_file_path"
+            ].iloc[i_msg_exchange]
 
         return list(itertools.chain.from_iterable(msg_exchanges))
 
@@ -140,7 +142,7 @@ class EmbeddingBasedChatContext(ChatContext):
         """Select chat history msgs to use as context for `msg`."""
         relevant_history = []
         for full_context_msg in _select_relevant_history(
-            history_df=self.database.get_messages_dataframe(),
+            history_df=self.database.retrieve_history(),
             embedding=self.request_embedding_for_text(text=msg["content"]),
         ):
             context_msg = {

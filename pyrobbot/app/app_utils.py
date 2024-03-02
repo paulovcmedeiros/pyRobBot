@@ -13,6 +13,7 @@ from pydub import AudioSegment
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 
 from pyrobbot import GeneralDefinitions
+from pyrobbot.chat import AssistantResponseChunk
 from pyrobbot.voice_chat import VoiceChat
 
 if TYPE_CHECKING:
@@ -39,7 +40,6 @@ class AsyncReplier:
 
         self.chat_obj = app_page.chat_obj
         self.question_answer_chunks_queue = queue.Queue()
-        self.audio_reply_chunk_queue = queue.Queue()
 
         self.threads = [
             threading.Thread(name="queue_text_chunks", target=self.queue_text_chunks),
@@ -63,9 +63,13 @@ class AsyncReplier:
 
     def queue_text_chunks(self):
         """Get chunks of the text reply to the prompt and queue them for display."""
+        exchange_id = None
         for chunk in self.chat_obj.answer_question(self.prompt):
-            self.question_answer_chunks_queue.put(chunk.content)
-        self.question_answer_chunks_queue.put(None)
+            self.question_answer_chunks_queue.put(chunk)
+            exchange_id = chunk.exchange_id
+        self.question_answer_chunks_queue.put(
+            AssistantResponseChunk(exchange_id=exchange_id, content=None)
+        )
 
     def play_queued_audios(self):
         """Play queued audio segments."""
@@ -73,12 +77,13 @@ class AsyncReplier:
             try:
                 logger.debug(
                     "Waiting for item from the audio reply chunk queue ({}) items so far",
-                    self.audio_reply_chunk_queue.qsize(),
+                    self.chat_obj.play_speech_queue.qsize(),
                 )
-                audio = self.audio_reply_chunk_queue.get()
+                speech_queue_item = self.chat_obj.play_speech_queue.get()
+                audio = speech_queue_item["speech"]
                 if audio is None:
-                    self.audio_reply_chunk_queue.task_done()
                     logger.debug("Got `None`. No more audio reply chunks to play")
+                    self.chat_obj.play_speech_queue.task_done()
                     break
 
                 logger.debug("Playing audio reply chunk ({}s)", audio.duration_seconds)
@@ -88,17 +93,16 @@ class AsyncReplier:
                     autoplay=True,
                     hidden=True,
                 )
-                self.audio_reply_chunk_queue.task_done()
+                logger.debug(
+                    "Done playing audio reply chunk ({}s)", audio.duration_seconds
+                )
+                self.chat_obj.play_speech_queue.task_done()
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(
                     "Error playing audio reply chunk ({}s)", audio.duration_seconds
                 )
                 logger.error(error)
                 break
-            else:
-                logger.debug(
-                    "Done playing audio reply chunk ({}s)", audio.duration_seconds
-                )
             finally:
                 self.app_page.status_msg_container.empty()
 
@@ -107,44 +111,37 @@ class AsyncReplier:
         text_reply_container = st.empty()
         audio_reply_container = st.empty()
 
-        chunk = ""
+        chunk = AssistantResponseChunk(exchange_id=None, content="")
         full_response = ""
-        current_audio = AudioSegment.empty()
         text_reply_container.markdown("▌")
         self.app_page.status_msg_container.empty()
-        while (chunk is not None) or (current_audio is not None):
+        while chunk.content is not None:
             logger.trace("Waiting for text or audio chunks...")
             # Render text
             with contextlib.suppress(queue.Empty):
                 chunk = self.question_answer_chunks_queue.get_nowait()
-                self.question_answer_chunks_queue.task_done()
-                if chunk is not None:
-                    full_response += chunk
+                if chunk.content is not None:
+                    full_response += chunk.content
                     text_reply_container.markdown(full_response + "▌")
-
-            # Render audio output and play the partial reply audio (if any)
-            with contextlib.suppress(queue.Empty):
-                current_audio = self.chat_obj.play_speech_queue.get_nowait()
-                self.chat_obj.play_speech_queue.task_done()
-                if current_audio is None:
-                    self.audio_reply_chunk_queue.put(None)
-                else:
-                    self.audio_reply_chunk_queue.put(current_audio.speech)
+                self.question_answer_chunks_queue.task_done()
 
         text_reply_container.caption(datetime.datetime.now().replace(microsecond=0))
         text_reply_container.markdown(full_response)
 
+        logger.debug("Waiting for the audio reply to finish...")
+        self.chat_obj.play_speech_queue.join()
+
         logger.debug("Getting path to full audio file for the reply...")
-        try:
-            full_audio_fpath = self.chat_obj.last_answer_full_audio_fpath.get(timeout=2)
-        except queue.Empty:
-            full_audio_fpath = None
+        history_entry_for_this_reply = (
+            self.chat_obj.context_handler.database.retrieve_history(
+                exchange_id=chunk.exchange_id
+            )
+        )
+        full_audio_fpath = history_entry_for_this_reply["reply_audio_file_path"].iloc[0]
+        if full_audio_fpath is None:
             logger.warning("Path to full audio file not available")
         else:
             logger.debug("Got path to full audio file: {}", full_audio_fpath)
-            self.chat_obj.last_answer_full_audio_fpath.task_done()
-
-        if full_audio_fpath:
             self.app_page.render_custom_audio_player(
                 full_audio_fpath, parent_element=audio_reply_container, autoplay=False
             )

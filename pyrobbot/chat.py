@@ -33,6 +33,7 @@ from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
 class AssistantResponseChunk:
     """A chunk of the assistant's response."""
 
+    exchange_id: str
     content: str
     chunk_type: str = "text"
 
@@ -256,17 +257,22 @@ class Chat(AlternativeConstructors):
         self, prompt_msg: dict, add_to_history: bool = True, **kwargs
     ):
         """Yield response from a prompt message."""
+        exchange_id = str(uuid.uuid4())
         code_marker = self._code_marker
         try:
             inside_code_block = False
             for answer_chunk in self._yield_response_from_msg(
-                prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
+                exchange_id=exchange_id,
+                prompt_msg=prompt_msg,
+                add_to_history=add_to_history,
+                **kwargs,
             ):
                 code_marker_detected = code_marker in answer_chunk
                 inside_code_block = (code_marker_detected and not inside_code_block) or (
                     inside_code_block and not code_marker_detected
                 )
                 yield AssistantResponseChunk(
+                    exchange_id=exchange_id,
                     content=answer_chunk.strip(code_marker),
                     chunk_type="code" if inside_code_block else "text",
                 )
@@ -348,9 +354,13 @@ class Chat(AlternativeConstructors):
         )
 
     def _yield_response_from_msg(
-        self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
+        self,
+        exchange_id,
+        prompt_msg: dict,
+        add_to_history: bool = True,
+        skip_check: bool = False,
     ):
-        """Yield response from a prompt message."""
+        """Yield response from a prompt message (lower level interface)."""
         # Get appropriate context for prompt from the context handler
         context = self.context_handler.get_context(msg=prompt_msg)
 
@@ -434,7 +444,7 @@ class Chat(AlternativeConstructors):
                     full_reply_content += " "
                     yield "\n\n"
                     for chunk in self.respond_system_prompt(prompt=prompt):
-                        full_reply_content += chunk
+                        full_reply_content += chunk.strip(self._code_marker)
                         yield chunk
                 else:
                     yield self._translate(
@@ -444,10 +454,11 @@ class Chat(AlternativeConstructors):
         if add_to_history:
             # Put current chat exchange in context handler's history
             self.context_handler.add_to_history(
+                exchange_id=exchange_id,
                 msg_list=[
                     prompt_msg,
                     {"role": "assistant", "content": full_reply_content},
-                ]
+                ],
             )
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):

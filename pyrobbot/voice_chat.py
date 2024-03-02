@@ -5,7 +5,7 @@ import io
 import queue
 import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
 from datetime import datetime
 
 import chime
@@ -78,10 +78,14 @@ class VoiceChat(Chat):
         self.tts_conversion_queue = queue.Queue()
         self.play_speech_queue = queue.Queue()
         self.tts_conversion_watcher_thread = threading.Thread(
-            target=self.handle_tts_queue, args=(self.tts_conversion_queue,), daemon=True
+            target=self.handle_tts_conversion_queue,
+            args=(self.tts_conversion_queue,),
+            daemon=True,
         )
         self.play_speech_thread = threading.Thread(
-            target=self.handle_speech_queue, args=(self.play_speech_queue,), daemon=True
+            target=self.handle_play_speech_queue,
+            args=(self.play_speech_queue,),
+            daemon=True,
         )  # TODO: Do not start this in webchat
         # 3. Watching for expressions that cancel the reply or exit the chat
         self.check_for_interrupt_expressions_queue = queue.Queue()
@@ -93,6 +97,7 @@ class VoiceChat(Chat):
         self.interrupt_reply = threading.Event()
         self.exit_chat = threading.Event()
 
+        # Keep track of played audios to update the history db
         self.current_answer_audios_queue = queue.Queue()
         self.handle_update_audio_history_thread = threading.Thread(
             target=self.handle_update_audio_history,
@@ -100,23 +105,22 @@ class VoiceChat(Chat):
             daemon=True,
         )
 
-        self.last_answer_full_audio_fpath = queue.Queue(maxsize=1)
-
     def start(self):
         """Start the chat."""
         # ruff: noqa: T201
         self.tts_conversion_watcher_thread.start()
         self.play_speech_thread.start()
         if not self.skip_initial_greeting:
-            self.tts_conversion_queue.put(self.initial_greeting)
+            tts_entry = {"exchange_id": self.id, "text": self.initial_greeting}
+            self.tts_conversion_queue.put(tts_entry)
             while self._assistant_still_replying():
                 pygame.time.wait(50)
         self.questions_listening_watcher_thread.start()
         self.check_for_interrupt_expressions_thread.start()
         self.handle_update_audio_history_thread.start()
 
-        while not self.exit_chat.is_set():
-            try:
+        with contextlib.suppress(KeyboardInterrupt, EOFError):
+            while not self.exit_chat.is_set():
                 self.tts_conversion_queue.join()
                 self.play_speech_queue.join()
                 self.current_answer_audios_queue.join()
@@ -146,22 +150,11 @@ class VoiceChat(Chat):
                     self.exit_chat.set()
                 else:
                     chime.success()
-                    info_printed = False
                     for chunk in self.answer_question(question):
-                        if chunk.chunk_type != "code":
-                            continue
-                        if not info_printed:
-                            msg = self._translate(
-                                "I'll write the code in the text output."
-                            )
-                            self.tts_conversion_queue.put(msg)
-                            info_printed = True
-                        print(chunk.content, end="", flush=True)
-                    if info_printed:
-                        print("\n")
-            except (KeyboardInterrupt, EOFError):
-                self.exit_chat.set()
+                        if chunk.chunk_type == "code":
+                            print(chunk.content, end="", flush=True)
 
+        self.exit_chat.set()
         chime.info()
         logger.debug("Leaving chat")
 
@@ -169,78 +162,95 @@ class VoiceChat(Chat):
         """Answer a question."""
         logger.debug("{}> Getting response to '{}'...", self.assistant_name, question)
         sentence_for_tts = ""
-        with self.current_answer_audios_queue.mutex:
-            self.current_answer_audios_queue.queue.clear()
-
+        any_code_chunk_yet = False
         for answer_chunk in self.respond_user_prompt(prompt=question):
             if self.interrupt_reply.is_set() or self.exit_chat.is_set():
                 logger.debug("Reply interrupted.")
                 raise StopIteration
             yield answer_chunk
 
-            if answer_chunk.chunk_type == "text" and not self.reply_only_as_text:
-                # The answer chunk is to be spoken
-                sentence_for_tts += answer_chunk.content
-                stripd_chunk = answer_chunk.content.strip()
-                if stripd_chunk.endswith(("?", "!", ".")):
-                    # Check if second last character is a number, to avoid splitting
-                    if stripd_chunk.endswith("."):
-                        with contextlib.suppress(IndexError):
-                            previous_char = sentence_for_tts.strip()[-2]
-                            if previous_char.isdigit():
-                                continue
-                    # Send sentence for TTS even if the request hasn't finished
-                    self.tts_conversion_queue.put(sentence_for_tts)
-                    sentence_for_tts = ""
+            if not self.reply_only_as_text:
+                if answer_chunk.chunk_type not in ("text", "code"):
+                    raise NotImplementedError(
+                        "Unexpected chunk type: {}".format(answer_chunk.chunk_type)
+                    )
+
+                if answer_chunk.chunk_type == "text":
+                    # The answer chunk is to be spoken
+                    sentence_for_tts += answer_chunk.content
+                    stripd_chunk = answer_chunk.content.strip()
+                    if stripd_chunk.endswith(("?", "!", ".")):
+                        # Check if second last character is a number, to avoid splitting
+                        if stripd_chunk.endswith("."):
+                            with contextlib.suppress(IndexError):
+                                previous_char = sentence_for_tts.strip()[-2]
+                                if previous_char.isdigit():
+                                    continue
+                        # Send sentence for TTS even if the request hasn't finished
+                        tts_entry = {
+                            "exchange_id": answer_chunk.exchange_id,
+                            "text": sentence_for_tts,
+                        }
+                        self.tts_conversion_queue.put(tts_entry)
+                        sentence_for_tts = ""
+                elif answer_chunk.chunk_type == "code" and not any_code_chunk_yet:
+                    msg = self._translate("Code will be displayed in the text output.")
+                    tts_entry = {"exchange_id": answer_chunk.exchange_id, "text": msg}
+                    self.tts_conversion_queue.put(tts_entry)
+                    any_code_chunk_yet = True
 
         if sentence_for_tts and not self.reply_only_as_text:
-            self.tts_conversion_queue.put(sentence_for_tts)
+            tts_entry = {
+                "exchange_id": answer_chunk.exchange_id,
+                "text": sentence_for_tts,
+            }
+            self.tts_conversion_queue.put(tts_entry)
 
         # Signal that the current answer is finished
-        self.tts_conversion_queue.put(None)
+        tts_entry = {"exchange_id": answer_chunk.exchange_id, "text": None}
+        self.tts_conversion_queue.put(tts_entry)
 
     def handle_update_audio_history(self, current_answer_audios_queue: queue.Queue):
-        """Handle updating the chat history with the latest reply's audio file path."""
+        """Handle updating the chat history with the replies' audio file paths."""
         # Merge all AudioSegments in self.current_answer_audios_queue into a single one
-        merged_audio = AudioSegment.empty()
+        merged_audios = defaultdict(AudioSegment.empty)
         while not self.exit_chat.is_set():
             try:
-                new_audio = current_answer_audios_queue.get()
-                if new_audio is not None:
+                logger.debug("Waiting for reply audio chunks to concatenate and save...")
+                audio_chunk_queue_item = current_answer_audios_queue.get()
+                reply_audio_chunk = audio_chunk_queue_item["speech"]
+                exchange_id = audio_chunk_queue_item["exchange_id"]
+                logger.debug("Received audio chunk for response ID {}", exchange_id)
+
+                if reply_audio_chunk is not None:
                     # Reply not yet finished
-                    merged_audio += new_audio
+                    merged_audios[exchange_id] += reply_audio_chunk
+                    logger.debug(
+                        "Response ID {} audio: {}s so far",
+                        exchange_id,
+                        merged_audios[exchange_id].duration_seconds,
+                    )
                     current_answer_audios_queue.task_done()
                     continue
 
                 # Now the reply has finished
-                if merged_audio.duration_seconds < self.min_speech_duration_seconds:
-                    merged_audio = AudioSegment.empty()
-                    self.last_answer_full_audio_fpath.put(None)
-                    current_answer_audios_queue.task_done()
-                    continue
-
+                logger.debug(
+                    "Creating a single audio file for response ID {}...", exchange_id
+                )
+                merged_audio = merged_audios[exchange_id]
                 # Update the chat history with the audio file path
-                audio_file_path = (
-                    self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
+                fpath = self.audio_cache_dir() / f"{datetime.now().isoformat()}.mp3"
+                logger.debug("Updating chat history with audio file path {}", fpath)
+                self.context_handler.database.insert_assistant_audio_file_path(
+                    exchange_id=exchange_id, file_path=fpath
                 )
-                logger.debug(
-                    "Updating chat history with audio file path {}", audio_file_path
-                )
-                self.context_handler.database.update_last_message_exchange_with_audio(
-                    assistant_reply_audio_file=audio_file_path
-                )
-
                 # Save the combined audio as an mp3 file in the cache directory
-                merged_audio.export(audio_file_path, format="mp3")
-                logger.debug("File {} stored", audio_file_path)
-                self.last_answer_full_audio_fpath.put(audio_file_path)
-                logger.debug(
-                    "File {} sent to last_answer_full_audio_fpath queue", audio_file_path
-                )
-
-                merged_audio = AudioSegment.empty()
+                merged_audio.export(fpath, format="mp3")
+                logger.debug("File {} stored", fpath)
+                del merged_audios[exchange_id]
                 current_answer_audios_queue.task_done()
             except Exception as error:  # noqa: BLE001
+                logger.error(error)
                 logger.opt(exception=True).debug(error)
 
     def speak(self, tts: TextToSpeech):
@@ -409,48 +419,71 @@ class VoiceChat(Chat):
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
 
-    def handle_speech_queue(self, speech_queue: queue.Queue[TextToSpeech]):
+    def handle_play_speech_queue(self, play_speech_queue: queue.Queue[TextToSpeech]):
         """Handle the queue of audio segments to be played."""
         while not self.exit_chat.is_set():
             try:
-                speech = speech_queue.get()
-                if speech and not self.interrupt_reply.is_set():
-                    self.speak(speech)
+                play_speech_queue_item = play_speech_queue.get()
+                if play_speech_queue_item and not self.interrupt_reply.is_set():
+                    self.speak(play_speech_queue_item)
             except Exception as error:  # noqa: BLE001, PERF203
                 logger.exception(error)
             finally:
-                speech_queue.task_done()
+                play_speech_queue.task_done()
 
-    def handle_tts_queue(self, text_queue: queue.Queue):
+    def handle_tts_conversion_queue(self, tts_conversion_queue: queue.Queue):
         """Handle the text-to-speech queue."""
+        logger.debug("Chat {}: TTS conversion handler started.", self.id)
         while not self.exit_chat.is_set():
             try:
-                text = text_queue.get()
-                if text is None:
+                tts_entry = tts_conversion_queue.get()
+                if tts_entry["text"] is None:
                     # Signal that the current anwer is finished
-                    self.current_answer_audios_queue.put(None)
-                    self.play_speech_queue.put(None)
+                    play_speech_queue_item = {
+                        "exchange_id": tts_entry["exchange_id"],
+                        "speech": None,
+                    }
+                    self.play_speech_queue.put(play_speech_queue_item)
+                    self.current_answer_audios_queue.put(play_speech_queue_item)
+
+                    logger.debug(
+                        "Reply ID {} notified that is has finished",
+                        tts_entry["exchange_id"],
+                    )
+                    tts_conversion_queue.task_done()
                     continue
 
-                text = text.strip()
+                text = tts_entry["text"].strip()
                 if text and not self.interrupt_reply.is_set():
-                    tts = self.tts(text)
-                    logger.debug("Received text '{}' for TTS", text)
+                    logger.debug(
+                        "Reply ID {}: received text '{}' for TTS",
+                        tts_entry["exchange_id"],
+                        text,
+                    )
 
+                    tts_obj = self.tts(text)
                     # Trigger the TTS conversion
-                    _ = tts.speech
+                    _ = tts_obj.speech
 
-                    logger.debug("Sending TTS for '{}' to the playing queue", text)
-                    # Keep track of audios for the current answer (for the history db)
-                    self.current_answer_audios_queue.put(tts.speech)
-                    # Dispatch the audio to be played
-                    self.play_speech_queue.put(tts)
+                    logger.debug(
+                        "Reply ID {}: Sending speech for '{}' to the playing queue",
+                        tts_entry["exchange_id"],
+                        text,
+                    )
+                    play_speech_queue_item = {
+                        "exchange_id": tts_entry["exchange_id"],
+                        "speech": tts_obj.speech,
+                    }
+                    self.play_speech_queue.put(play_speech_queue_item)
+                    self.current_answer_audios_queue.put(play_speech_queue_item)
+
+                # Pay attention to the indentation level
+                tts_conversion_queue.task_done()
 
             except Exception as error:  # noqa: BLE001
                 logger.opt(exception=True).debug(error)
                 logger.error(error)
-            finally:
-                text_queue.task_done()
+        logger.error("TTS conversion queue handler ended.")
 
     def get_sound_file(self, wav_buffer: io.BytesIO, mode: str = "r"):
         """Return a sound file object."""
