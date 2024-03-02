@@ -163,6 +163,7 @@ class EmbeddingsDatabase:
         query = """
             SELECT messages.id,
                 messages.timestamp,
+                messages.chat_model,
                 messages.message_exchange,
                 reply_audio_files.file_path AS reply_audio_file_path,
                 embedding

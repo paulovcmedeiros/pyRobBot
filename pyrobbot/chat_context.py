@@ -68,6 +68,9 @@ class ChatContext(ABC):
             msg_exchanges[i_msg_exchange][1]["reply_audio_file_path"] = db_history_df[
                 "reply_audio_file_path"
             ].iloc[i_msg_exchange]
+            msg_exchanges[i_msg_exchange][1]["chat_model"] = db_history_df[
+                "chat_model"
+            ].iloc[i_msg_exchange]
 
         return list(itertools.chain.from_iterable(msg_exchanges))
 
