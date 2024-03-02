@@ -278,7 +278,7 @@ class Chat(AlternativeConstructors):
                 )
 
         except (ReachedMaxNumberOfAttemptsError, openai.OpenAIError) as error:
-            yield self.response_failure_message(error=error)
+            yield self.response_failure_message(exchange_id=exchange_id, error=error)
 
     def start(self):
         """Start the chat."""
@@ -319,14 +319,16 @@ class Chat(AlternativeConstructors):
                 print()
             print(df.attrs["disclaimer"])
 
-    def response_failure_message(self, error: Optional[Exception] = None):
+    def response_failure_message(
+        self, exchange_id: Optional[str] = "", error: Optional[Exception] = None
+    ):
         """Return the error message errors getting a response."""
         msg = "Could not get a response right now."
         if error is not None:
             msg += f" The reason seems to be: {error} "
             msg += "Please check your connection or OpenAI API key."
             logger.opt(exception=True).debug(error)
-        return AssistantResponseChunk(msg)
+        return AssistantResponseChunk(exchange_id=exchange_id, content=msg)
 
     def stt(self, speech: AudioSegment):
         """Convert audio to text."""
