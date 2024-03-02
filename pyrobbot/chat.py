@@ -369,7 +369,7 @@ class Chat(AlternativeConstructors):
         for chunk in make_api_chat_completion_call(
             conversation=[self.base_directive, *context, prompt_msg], chat_obj=self
         ):
-            full_reply_content += chunk
+            full_reply_content += chunk.strip(self._code_marker)
             yield chunk
 
         if not skip_check:
