@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Wrappers for argparse functionality."""
 import argparse
+import contextlib
 import sys
+
+from pydantic import BaseModel
 
 from . import GeneralDefinitions
 from .chat_configs import ChatOptions, VoiceChatConfigs
@@ -13,14 +16,19 @@ from .command_definitions import (
 )
 
 
-def _populate_parser_from_pydantic_model(parser, model):
+def _populate_parser_from_pydantic_model(parser, model: BaseModel):
     _argarse2pydantic = {
         "type": model.get_type,
         "default": model.get_default,
         "choices": model.get_allowed_values,
         "help": model.get_description,
     }
+
     for field_name, field in model.model_fields.items():
+        with contextlib.suppress(AttributeError):
+            if not field.json_schema_extra.get("changeable", True):
+                continue
+
         args_opts = {
             key: _argarse2pydantic[key](field_name)
             for key in _argarse2pydantic

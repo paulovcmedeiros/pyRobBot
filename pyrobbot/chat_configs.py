@@ -179,17 +179,20 @@ class VoiceAssistantConfigs(BaseConfigModel):
     exit_expressions: list[str] = Field(
         default=["bye-bye", "ok bye-bye", "okay bye-bye"],
         description="Expression(s) to use in order to exit the chat",
+        json_schema_extra={"changeable": False},
     )
 
     cancel_expressions: list[str] = Field(
         default=["ok", "okay", "cancel", "stop", "listen"],
         description="Word(s) to use in order to cancel the current reply",
+        json_schema_extra={"changeable": False},
     )
 
     min_speech_duration_seconds: float = Field(
         default=0.1,
         gt=0,
         description="Minimum duration of speech (in seconds) for the assistant to listen",
+        json_schema_extra={"changeable": False},
     )
     inactivity_timeout_seconds: int = Field(
         default=1,
@@ -202,14 +205,19 @@ class VoiceAssistantConfigs(BaseConfigModel):
         ge=0.0,
         le=1.0,
         description="Accept audio as speech if the likelihood is above this threshold",
+        json_schema_extra={"changeable": False},
     )
     # sample_rate and frame_duration have to be consistent with the values uaccepted by
     # the webrtcvad package
     sample_rate: Literal[8000, 16000, 32000, 48000] = Field(
-        default=48000, description="Sample rate for audio recording, in Hz."
+        default=48000,
+        description="Sample rate for audio recording, in Hz.",
+        json_schema_extra={"changeable": False},
     )
     frame_duration: Literal[10, 20, 30] = Field(
-        default=20, description="Frame duration for audio recording, in milliseconds."
+        default=20,
+        description="Frame duration for audio recording, in milliseconds.",
+        json_schema_extra={"changeable": False},
     )
     reply_only_as_text: Optional[bool] = Field(
         default=None, description="Reply only as text. The assistant will not speak."

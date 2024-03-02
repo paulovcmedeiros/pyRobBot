@@ -769,6 +769,12 @@ class MultipageChatbotApp(AbstractMultipageApp):
     def _handle_chat_configs_value_selection(self, current_chat_configs, model_fields):
         updates_to_chat_configs = {}
         for field_name, field in model_fields.items():
+            extra_info = field.json_schema_extra or {}
+
+            # Skip fields that are not allowed to be changed
+            if not extra_info.get("changeable", True):
+                continue
+
             title = field_name.replace("_", " ").title()
             choices = VoiceChatConfigs.get_allowed_values(field=field_name)
             description = VoiceChatConfigs.get_description(field=field_name)
@@ -776,9 +782,6 @@ class MultipageChatbotApp(AbstractMultipageApp):
 
             # Check if the field is frozen and disable corresponding UI element if so
             chat_started = self.selected_page.state.get("chat_started", False)
-            extra_info = field.json_schema_extra
-            if extra_info is None:
-                extra_info = {}
             disable_ui_element = extra_info.get("frozen", False) and (
                 chat_started
                 or any(msg["role"] == "user" for msg in self.selected_page.chat_history)
