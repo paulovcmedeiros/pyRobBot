@@ -1,5 +1,5 @@
 [tool.poetry]
-  authors = ["Paulo V C Medeiros <paulo.medeiros@smhi.se>"]
+  authors = ["Paulo V C Medeiros <impaulov@gmail.com>"]
   description = "Chat with GPT LLMs over voice, UI & terminal. All with access to the internet. Powered by OpenAI."
   license = "MIT"
   name = "pyrobbot"
