@@ -424,8 +424,8 @@ class VoiceChat(Chat):
         while not self.exit_chat.is_set():
             try:
                 play_speech_queue_item = play_speech_queue.get()
-                if play_speech_queue_item and not self.interrupt_reply.is_set():
-                    self.speak(play_speech_queue_item)
+                if play_speech_queue_item["speech"] and not self.interrupt_reply.is_set():
+                    self.speak(play_speech_queue_item["tts_obj"])
             except Exception as error:  # noqa: BLE001, PERF203
                 logger.exception(error)
             finally:
@@ -472,6 +472,7 @@ class VoiceChat(Chat):
                     )
                     play_speech_queue_item = {
                         "exchange_id": tts_entry["exchange_id"],
+                        "tts_obj": tts_obj,
                         "speech": tts_obj.speech,
                     }
                     self.play_speech_queue.put(play_speech_queue_item)
