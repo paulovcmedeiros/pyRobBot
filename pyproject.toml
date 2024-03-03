@@ -34,7 +34,7 @@
   audio-recorder-streamlit = "^0.0.8"
   beautifulsoup4 = "^4.12.3"
   chime = "^0.7.0"
-  duckduckgo-search = "^4.5.0"
+  duckduckgo-search = {git = "https://github.com/deedy5/duckduckgo_search"}
   gtts = "^2.5.1"
   httpx = "^0.26.0"
   ipinfo = "^5.0.1"

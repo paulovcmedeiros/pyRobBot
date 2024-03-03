@@ -475,10 +475,12 @@ class Chat(AlternativeConstructors):
             return cached_translation
 
         logger.debug("Processing translation of '{}' to '{}'...", text, lang)
-        translation_prompt = f"Translate the text between triple quotes below to {lang}. "
-        translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
-        translation_prompt += f"If the text is already in {lang}, then just return ''.\n"
-        translation_prompt += f"'''{text}'''"
+        translation_prompt = (
+            f"Translate the text between triple quotes below to {lang}. "
+            "DO NOT WRITE ANYTHING ELSE. Only the translation. "
+            f"If the text is already in {lang}, then don't translate. Just return ''.\n"
+            f"'''{text}'''"
+        )
         translation = "".join(self.respond_system_prompt(prompt=translation_prompt))
 
         translation = translation.strip(" '\"")

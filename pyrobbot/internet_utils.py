@@ -74,17 +74,14 @@ async def async_raw_websearch(
     region: str = GeneralDefinitions.IPINFO["country_name"],
 ):
     """Search the web using DuckDuckGo Search API."""
-    async with AsyncDDGS() as ddgs:
-        async_results = [
-            result
-            async for result in ddgs.text(
-                keywords=query,
-                region=region,
-                max_results=max_results,
-                backend="html",
-            )
-        ]
-        return async_results
+    async with AsyncDDGS(proxies=None) as addgs:
+        results = await addgs.text(
+            keywords=query,
+            region=region,
+            max_results=max_results,
+            backend="html",
+        )
+        return results
 
 
 def raw_websearch(
