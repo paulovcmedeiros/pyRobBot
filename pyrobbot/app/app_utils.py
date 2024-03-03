@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import os
 import queue
 import threading
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ from loguru import logger
 from PIL import Image
 from pydub import AudioSegment
 from streamlit.runtime.scriptrunner import add_script_run_ctx
+from twilio.rest import Client as TwilioClient
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat import AssistantResponseChunk
@@ -147,6 +149,24 @@ class AsyncReplier:
             )
 
         return {"text": full_response, "audio": full_audio_fpath}
+
+
+@st.cache_data
+def get_ice_servers():
+    """Use Twilio's TURN server as recommended by the streamlit-webrtc developers."""
+    try:
+        account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+        auth_token = os.environ["TWILIO_AUTH_TOKEN"]
+    except KeyError:
+        logger.warning(
+            "Twilio credentials are not set. Cannot use their TURN servers. "
+            "Falling back to a free STUN server from Google."
+        )
+        return [{"urls": ["stun:stun.l.google.com:19302"]}]
+
+    client = TwilioClient(account_sid, auth_token)
+    token = client.tokens.create()
+    return token.ice_servers
 
 
 def filter_page_info_from_queue(app_page: "AppPage", the_queue: queue.Queue):

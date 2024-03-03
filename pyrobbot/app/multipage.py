@@ -18,7 +18,7 @@ from loguru import logger
 from pydantic import ValidationError
 from pydub import AudioSegment
 from streamlit.runtime.scriptrunner import add_script_run_ctx
-from streamlit_webrtc import RTCConfiguration, WebRtcMode
+from streamlit_webrtc import WebRtcMode
 
 from pyrobbot import GeneralDefinitions
 from pyrobbot.chat_configs import VoiceChatConfigs
@@ -26,7 +26,12 @@ from pyrobbot.general_utils import trim_beginning
 from pyrobbot.openai_utils import OpenAiClientWrapper
 
 from .app_page_templates import AppPage, ChatBotPage, _RecoveredChat
-from .app_utils import WebAppChat, filter_page_info_from_queue, get_avatar_images
+from .app_utils import (
+    WebAppChat,
+    filter_page_info_from_queue,
+    get_avatar_images,
+    get_ice_servers,
+)
 
 incoming_frame_queue = queue.Queue()
 possible_speech_chunks_queue = queue.Queue()
@@ -309,6 +314,11 @@ class AbstractMultipageApp(ABC):
         self.reply_ongoing = reply_ongoing
 
     @property
+    def ice_servers(self):
+        """Return the ICE servers for WebRTC."""
+        return get_ice_servers()
+
+    @property
     def continuous_audio_input_engine_is_running(self):
         """Return whether the continuous audio input engine is running."""
         return (
@@ -318,12 +328,7 @@ class AbstractMultipageApp(ABC):
         )
 
     def render_continuous_audio_input_widget(self):
-        """Render the continuous audio input widget."""
-        # Definitions related to webrtc_streamer
-        rtc_configuration = RTCConfiguration(
-            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-        )
-
+        """Render the continuous audio input widget using webrtc_streamer."""
         try:
             selected_page = self.selected_page
         except StopIteration:
@@ -377,7 +382,7 @@ class AbstractMultipageApp(ABC):
             self.stream_audio_context = streamlit_webrtc.component.webrtc_streamer(
                 key="sendonly-audio",
                 mode=WebRtcMode.SENDONLY,
-                rtc_configuration=rtc_configuration,
+                rtc_configuration={"iceServers": self.ice_servers},
                 media_stream_constraints={"audio": True, "video": False},
                 desired_playing_state=True,
                 audio_frame_callback=audio_frame_callback,

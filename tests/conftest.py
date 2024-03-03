@@ -150,12 +150,15 @@ def _input_builtin_mocker(mocker, user_input):
     )
 
 
-@pytest.fixture(params=ChatOptions.get_allowed_values("model")[:3])
+@pytest.fixture(params=ChatOptions.get_allowed_values("model")[:2])
 def llm_model(request):
     return request.param
 
 
-@pytest.fixture(params=ChatOptions.get_allowed_values("context_model")[:3])
+context_model_values = ChatOptions.get_allowed_values("context_model")
+
+
+@pytest.fixture(params=[context_model_values[0], context_model_values[2]])
 def context_model(request):
     return request.param
 

@@ -10,11 +10,12 @@ from pyrobbot.sst_and_tts import TextToSpeech
 from pyrobbot.voice_chat import VoiceChat
 
 
-def test_cannot_instanciate_assistant_if_soundcard_not_imported(mocker):
+def test_soundcard_import_check(mocker, caplog):
     """Test that the voice chat cannot be instantiated if soundcard is not imported."""
     mocker.patch("pyrobbot.voice_chat._sounddevice_imported", False)
-    with pytest.raises(ImportError, match="Module `sounddevice`"):
-        VoiceChat(configs=VoiceChatConfigs())
+    _ = VoiceChat(configs=VoiceChatConfigs())
+    msg = "Module `sounddevice`, needed for local audio recording, is not available."
+    assert msg in caplog.text
 
 
 @pytest.mark.parametrize("param_name", ["sample_rate", "frame_duration"])
