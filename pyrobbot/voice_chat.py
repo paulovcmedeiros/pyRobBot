@@ -38,12 +38,11 @@ try:
     with contextlib.suppress(pydub.exceptions.CouldntDecodeError):
         AudioSegment.from_mp3(io.BytesIO())
 except (ImportError, OSError, FileNotFoundError) as error:
-    logger.error(
-        "{}. Can't use module `pydub`. Please check your system's ffmpeg install.", error
-    )
-    _pydub_imported = False
+    logger.exception(error)
+    logger.error("Can't use module `pydub`. Please check your system's ffmpeg install.")
+    _pydub_usable = False
 else:
-    _pydub_imported = True
+    _pydub_usable = True
 
 
 class VoiceChat(Chat):
@@ -520,9 +519,10 @@ def _check_needed_imports():
             "Module `sounddevice`, needed for local audio recording, is not available."
         )
 
-    if not _pydub_imported:
-        raise ImportError(
-            "Module `pydub`, needed for audio conversion, is not available."
+    if not _pydub_usable:
+        logger.error(
+            "Module `pydub`, needed for audio conversion, doesn't seem to be working. "
+            "Voice chat may not be available or may not work as expected."
         )
 
 
