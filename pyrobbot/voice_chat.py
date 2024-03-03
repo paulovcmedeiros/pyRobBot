@@ -58,7 +58,16 @@ class VoiceChat(Chat):
         self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
 
         self.mixer = pygame.mixer
-        self.mixer.init(frequency=self.sample_rate, channels=1, buffer=self.block_size)
+        try:
+            self.mixer.init(
+                frequency=self.sample_rate, channels=1, buffer=self.block_size
+            )
+        except pygame.error as error:
+            logger.exception(error)
+            logger.error(
+                "Can't initialize the mixer. Please check your system's audio settings."
+            )
+            logger.warning("Voice chat may not be available or may not work as expected.")
 
         self.vad = webrtcvad.Vad(2)
 
