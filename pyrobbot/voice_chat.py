@@ -25,7 +25,7 @@ from .sst_and_tts import TextToSpeech
 try:
     import sounddevice as sd
 except OSError as error:
-    logger.error(error)
+    logger.exception(error)
     logger.error(
         "Can't use module `sounddevice`. Please check your system's PortAudio install."
     )
@@ -516,8 +516,8 @@ class VoiceChat(Chat):
 def _check_needed_imports():
     """Check if the needed modules are available."""
     if not _sounddevice_imported:
-        raise ImportError(
-            "Module `sounddevice`, needed for audio recording, is not available."
+        logger.error(
+            "Module `sounddevice`, needed for local audio recording, is not available."
         )
 
     if not _pydub_imported:
