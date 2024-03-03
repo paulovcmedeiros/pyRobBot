@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Unnoficial OpenAI API UI and CLI tool."""
-import contextlib
 import os
 import sys
 import tempfile
@@ -47,7 +46,11 @@ class GeneralDefinitions:
 
     # Location info
     IPINFO = defaultdict(lambda: "unknown")
-    with contextlib.suppress(
-        requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError
-    ):
+    try:
         IPINFO = ipinfo.getHandler().getDetails().all
+    except (
+        requests.exceptions.ReadTimeout,
+        requests.exceptions.ConnectionError,
+        ipinfo.exceptions.RequestQuotaExceededError,
+    ) as error:
+        logger.warning("Cannot get current location info. {}", error)

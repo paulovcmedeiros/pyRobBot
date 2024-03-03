@@ -17,7 +17,7 @@ def testbed_doesnt_actually_connect_to_openai(caplog):
     chat = Chat(configs=chat_configs)
 
     chat.start()
-    success = chat.response_failure_message() in caplog.text
+    success = chat.response_failure_message().content in caplog.text
 
     err_msg = "Refuse to continue: Testbed is trying to connect to OpenAI API!"
     err_msg += f"\nThis is what the logger says:\n{caplog.text}"

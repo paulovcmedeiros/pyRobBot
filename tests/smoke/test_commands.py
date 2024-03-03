@@ -10,7 +10,7 @@ from pyrobbot.argparse_wrapper import get_parsed_args
 
 def test_default_command():
     args = get_parsed_args(argv=[])
-    assert args.command == "voice"
+    assert args.command == "ui"
 
 
 @pytest.mark.usefixtures("_input_builtin_mocker")

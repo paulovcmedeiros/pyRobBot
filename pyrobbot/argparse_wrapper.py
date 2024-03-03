@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Wrappers for argparse functionality."""
 import argparse
+import contextlib
 import sys
+
+from pydantic import BaseModel
 
 from . import GeneralDefinitions
 from .chat_configs import ChatOptions, VoiceChatConfigs
@@ -13,14 +16,19 @@ from .command_definitions import (
 )
 
 
-def _populate_parser_from_pydantic_model(parser, model):
+def _populate_parser_from_pydantic_model(parser, model: BaseModel):
     _argarse2pydantic = {
         "type": model.get_type,
         "default": model.get_default,
         "choices": model.get_allowed_values,
         "help": model.get_description,
     }
+
     for field_name, field in model.model_fields.items():
+        with contextlib.suppress(AttributeError):
+            if not field.json_schema_extra.get("changeable", True):
+                continue
+
         args_opts = {
             key: _argarse2pydantic[key](field_name)
             for key in _argarse2pydantic
@@ -47,7 +55,7 @@ def _populate_parser_from_pydantic_model(parser, model):
     return parser
 
 
-def get_parsed_args(argv=None, default_command="voice"):
+def get_parsed_args(argv=None, default_command="ui"):
     """Get parsed command line arguments.
 
     Args:
@@ -99,6 +107,15 @@ def get_parsed_args(argv=None, default_command="voice"):
         help="Report estimated costs when done with the chat.",
     )
 
+    # Web app chat
+    parser_ui = subparsers.add_parser(
+        "ui",
+        aliases=["app", "webapp", "browser"],
+        parents=[chat_options_parser],
+        help="Run the chat UI on the browser.",
+    )
+    parser_ui.set_defaults(run_command=browser_chat)
+
     # Voice chat
     voice_options_parser = _populate_parser_from_pydantic_model(
         parser=argparse.ArgumentParser(
@@ -108,20 +125,11 @@ def get_parsed_args(argv=None, default_command="voice"):
     )
     parser_voice_chat = subparsers.add_parser(
         "voice",
-        aliases=["v"],
+        aliases=["v", "speech", "talk"],
         parents=[voice_options_parser],
-        help="Run the chat over voice.",
+        help="Run the chat over voice only.",
     )
     parser_voice_chat.set_defaults(run_command=voice_chat)
-
-    # Web app chat
-    parser_ui = subparsers.add_parser(
-        "ui",
-        aliases=["app"],
-        parents=[chat_options_parser],
-        help="Run the chat UI on the browser.",
-    )
-    parser_ui.set_defaults(run_command=browser_chat)
 
     # Terminal chat
     parser_terminal = subparsers.add_parser(

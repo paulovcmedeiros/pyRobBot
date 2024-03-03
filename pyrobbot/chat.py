@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import openai
+from attr import dataclass
 from loguru import logger
 from pydub import AudioSegment
 from tzlocal import get_localzone
@@ -17,11 +18,24 @@ from tzlocal import get_localzone
 from . import GeneralDefinitions
 from .chat_configs import ChatOptions
 from .chat_context import EmbeddingBasedChatContext, FullHistoryChatContext
-from .general_utils import AlternativeConstructors, ReachedMaxNumberOfAttemptsError
+from .general_utils import (
+    AlternativeConstructors,
+    ReachedMaxNumberOfAttemptsError,
+    get_call_traceback,
+)
 from .internet_utils import websearch
 from .openai_utils import OpenAiClientWrapper, make_api_chat_completion_call
-from .sst_and_tts import SpeechToText
+from .sst_and_tts import SpeechToText, TextToSpeech
 from .tokens import PRICE_PER_K_TOKENS_EMBEDDINGS, TokenUsageDatabase
+
+
+@dataclass
+class AssistantResponseChunk:
+    """A chunk of the assistant's response."""
+
+    exchange_id: str
+    content: str
+    chunk_type: str = "text"
 
 
 class Chat(AlternativeConstructors):
@@ -50,7 +64,12 @@ class Chat(AlternativeConstructors):
             NotImplementedError: If the context model specified in configs is unknown.
         """
         self.id = str(uuid.uuid4())
+        logger.trace(
+            "Init chat {}, as requested by from <{}>", self.id, get_call_traceback()
+        )
         logger.debug("Init chat {}", self.id)
+
+        self._code_marker = "\uE001"  # TEST
 
         self._passed_configs = configs
         for field in self._passed_configs.model_fields:
@@ -74,13 +93,14 @@ class Chat(AlternativeConstructors):
     @property
     def base_directive(self):
         """Return the base directive for the LLM."""
+        code_marker = self._code_marker
         local_datetime = datetime.now(get_localzone()).isoformat(timespec="seconds")
         msg_content = (
             f"Your name is {self.assistant_name}. Your model is {self.model}\n"
             f"You are a helpful assistant to {self.username}\n"
             f"You have internet access\n"
-            + "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
-            + "\n"
+            f"You MUST ALWAYS write {code_marker} before AND after code blocks. Example: "
+            f"```foo ... ``` MUST become {code_marker}```foo ... ```{code_marker}\n"
             f"The current city is {GeneralDefinitions.IPINFO['city']} in "
             f"{GeneralDefinitions.IPINFO['country_name']}\n"
             f"The local datetime is {local_datetime}\n"
@@ -95,6 +115,7 @@ class Chat(AlternativeConstructors):
             "  > Do *NOT* apologise nor say you are sorry nor give any excuses.\n"
             "  > Do *NOT* ask for permission to lookup online.\n"
             "  > STATE CLEARLY that you will look it up online.\n"
+            "\n".join([f"{instruct.strip(' .')}." for instruct in self.ai_instructions])
         )
         return {"role": "system", "name": self.system_name, "content": msg_content}
 
@@ -223,24 +244,41 @@ class Chat(AlternativeConstructors):
         self, prompt: str, add_to_history=False, skip_check=True, **kwargs
     ):
         """Respond to a system prompt."""
-        yield from self._respond_prompt(
+        for response_chunk in self._respond_prompt(
             prompt=prompt,
             role="system",
             add_to_history=add_to_history,
             skip_check=skip_check,
             **kwargs,
-        )
+        ):
+            yield response_chunk.content
 
     def yield_response_from_msg(
         self, prompt_msg: dict, add_to_history: bool = True, **kwargs
     ):
         """Yield response from a prompt message."""
+        exchange_id = str(uuid.uuid4())
+        code_marker = self._code_marker
         try:
-            yield from self._yield_response_from_msg(
-                prompt_msg=prompt_msg, add_to_history=add_to_history, **kwargs
-            )
+            inside_code_block = False
+            for answer_chunk in self._yield_response_from_msg(
+                exchange_id=exchange_id,
+                prompt_msg=prompt_msg,
+                add_to_history=add_to_history,
+                **kwargs,
+            ):
+                code_marker_detected = code_marker in answer_chunk
+                inside_code_block = (code_marker_detected and not inside_code_block) or (
+                    inside_code_block and not code_marker_detected
+                )
+                yield AssistantResponseChunk(
+                    exchange_id=exchange_id,
+                    content=answer_chunk.strip(code_marker),
+                    chunk_type="code" if inside_code_block else "text",
+                )
+
         except (ReachedMaxNumberOfAttemptsError, openai.OpenAIError) as error:
-            yield self.response_failure_message(error=error)
+            yield self.response_failure_message(exchange_id=exchange_id, error=error)
 
     def start(self):
         """Start the chat."""
@@ -253,7 +291,7 @@ class Chat(AlternativeConstructors):
                     continue
                 print(f"{self.assistant_name}> ", end="", flush=True)
                 for chunk in self.respond_user_prompt(prompt=question):
-                    print(chunk, end="", flush=True)
+                    print(chunk.content, end="", flush=True)
                 print()
                 print()
         except (KeyboardInterrupt, EOFError):
@@ -281,30 +319,50 @@ class Chat(AlternativeConstructors):
                 print()
             print(df.attrs["disclaimer"])
 
-    def response_failure_message(self, error: Optional[Exception] = None):
+    def response_failure_message(
+        self, exchange_id: Optional[str] = "", error: Optional[Exception] = None
+    ):
         """Return the error message errors getting a response."""
         msg = "Could not get a response right now."
         if error is not None:
             msg += f" The reason seems to be: {error} "
             msg += "Please check your connection or OpenAI API key."
             logger.opt(exception=True).debug(error)
-        return msg
+        return AssistantResponseChunk(exchange_id=exchange_id, content=msg)
 
     def stt(self, speech: AudioSegment):
         """Convert audio to text."""
         return SpeechToText(
             speech=speech,
             openai_client=self.openai_client,
-            general_token_usage_db=self.general_token_usage_db,
-            token_usage_db=self.token_usage_db,
+            engine=self.stt_engine,
             language=self.language,
             timeout=self.timeout,
-        ).text
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+        )
+
+    def tts(self, text: str):
+        """Convert text to audio."""
+        return TextToSpeech(
+            text=text,
+            openai_client=self.openai_client,
+            language=self.language,
+            engine=self.tts_engine,
+            openai_tts_voice=self.openai_tts_voice,
+            timeout=self.timeout,
+            general_token_usage_db=self.general_token_usage_db,
+            token_usage_db=self.token_usage_db,
+        )
 
     def _yield_response_from_msg(
-        self, prompt_msg: dict, add_to_history: bool = True, skip_check: bool = False
+        self,
+        exchange_id,
+        prompt_msg: dict,
+        add_to_history: bool = True,
+        skip_check: bool = False,
     ):
-        """Yield response from a prompt message."""
+        """Yield response from a prompt message (lower level interface)."""
         # Get appropriate context for prompt from the context handler
         context = self.context_handler.get_context(msg=prompt_msg)
 
@@ -313,7 +371,7 @@ class Chat(AlternativeConstructors):
         for chunk in make_api_chat_completion_call(
             conversation=[self.base_directive, *context, prompt_msg], chat_obj=self
         ):
-            full_reply_content += chunk
+            full_reply_content += chunk.strip(self._code_marker)
             yield chunk
 
         if not skip_check:
@@ -388,7 +446,7 @@ class Chat(AlternativeConstructors):
                     full_reply_content += " "
                     yield "\n\n"
                     for chunk in self.respond_system_prompt(prompt=prompt):
-                        full_reply_content += chunk
+                        full_reply_content += chunk.strip(self._code_marker)
                         yield chunk
                 else:
                     yield self._translate(
@@ -398,10 +456,11 @@ class Chat(AlternativeConstructors):
         if add_to_history:
             # Put current chat exchange in context handler's history
             self.context_handler.add_to_history(
+                exchange_id=exchange_id,
                 msg_list=[
                     prompt_msg,
                     {"role": "assistant", "content": full_reply_content},
-                ]
+                ],
             )
 
     def _respond_prompt(self, prompt: str, role: str, **kwargs):
@@ -416,22 +475,30 @@ class Chat(AlternativeConstructors):
             return cached_translation
 
         logger.debug("Processing translation of '{}' to '{}'...", text, lang)
-        translation_prompt = f"Translate the text between triple quotes below to {lang}. "
-        translation_prompt += "DO NOT WRITE ANYTHING ELSE. Only the translation. "
-        translation_prompt += f"If the text is already in {lang}, then just return ''.\n"
-        translation_prompt += f"'''{text}'''"
+        translation_prompt = (
+            f"Translate the text between triple quotes below to {lang}. "
+            "DO NOT WRITE ANYTHING ELSE. Only the translation. "
+            f"If the text is already in {lang}, then don't translate. Just return ''.\n"
+            f"'''{text}'''"
+        )
         translation = "".join(self.respond_system_prompt(prompt=translation_prompt))
 
         translation = translation.strip(" '\"")
         if not translation.strip():
             translation = text.strip()
+
+        logger.debug("Translated '{}' to '{}' as '{}'", text, lang, translation)
         type(self)._translation_cache[text][lang] = translation  # noqa: SLF001
+        type(self)._translation_cache[translation][lang] = translation  # noqa: SLF001
 
         return translation
 
     def __del__(self):
+        """Delete the chat instance."""
+        logger.debug("Deleting chat {}", self.id)
         chat_started = self.context_handler.database.n_entries > 0
         if self.private_mode or not chat_started:
             self.clear_cache()
         else:
             self.save_cache()
+            self.clear_cache()

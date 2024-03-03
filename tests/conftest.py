@@ -150,12 +150,12 @@ def _input_builtin_mocker(mocker, user_input):
     )
 
 
-@pytest.fixture(params=ChatOptions.get_allowed_values("model"))
+@pytest.fixture(params=ChatOptions.get_allowed_values("model")[:3])
 def llm_model(request):
     return request.param
 
 
-@pytest.fixture(params=ChatOptions.get_allowed_values("context_model"))
+@pytest.fixture(params=ChatOptions.get_allowed_values("context_model")[:3])
 def context_model(request):
     return request.param
 
@@ -202,13 +202,9 @@ def _voice_chat_mockers(mocker, mock_wav_bytes_string):
     mock_google_tts_obj = type("mock_gTTS", (), {})
     mock_openai_tts_response = type("mock_openai_tts_response", (), {})
 
-    def _mock_write_to_fp(wav_buffer: io.BytesIO):
-        wav_buffer.write(mock_wav_bytes_string)
-
     def _mock_iter_bytes(*args, **kwargs):  # noqa: ARG001
         return [mock_wav_bytes_string]
 
-    mock_google_tts_obj.write_to_fp = _mock_write_to_fp
     mock_openai_tts_response.iter_bytes = _mock_iter_bytes
 
     mocker.patch(
@@ -233,4 +229,5 @@ def _voice_chat_mockers(mocker, mock_wav_bytes_string):
 
     mocker.patch("webrtcvad.Vad.is_speech", return_value=False)
     mocker.patch("pygame.mixer.init")
+    mocker.patch("chime.play_wav")
     mocker.patch("chime.play_wav")

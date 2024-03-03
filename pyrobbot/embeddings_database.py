@@ -4,8 +4,10 @@ import datetime
 import json
 import sqlite3
 from pathlib import Path
+from typing import Union
 
 import pandas as pd
+from loguru import logger
 
 
 class EmbeddingsDatabase:
@@ -27,50 +29,48 @@ class EmbeddingsDatabase:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
 
-        # SQL to create 'embedding_model' table with 'embedding_model' as primary key
-        create_embedding_model_table = """
+        # SQL to create the nedded tables
+        create_table_sqls = {
+            "embedding_model": """
         CREATE TABLE IF NOT EXISTS embedding_model (
             created_timestamp INTEGER NOT NULL,
             embedding_model TEXT NOT NULL,
             PRIMARY KEY (embedding_model)
         )
-        """
-
-        # SQL to create 'messages' table
-        create_messages_table = """
+        """,
+            "messages": """
         CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY NOT NULL,
             timestamp INTEGER NOT NULL,
             chat_model TEXT NOT NULL,
             message_exchange TEXT NOT NULL,
             embedding TEXT
         )
-        """
+        """,
+            "reply_audio_files": """
+        CREATE TABLE IF NOT EXISTS reply_audio_files (
+            id TEXT PRIMARY KEY NOT NULL,
+            file_path TEXT NOT NULL,
+            FOREIGN KEY (id) REFERENCES messages(id) ON DELETE CASCADE
+        )
+        """,
+        }
 
         with conn:
-            # Create tables
-            conn.execute(create_embedding_model_table)
-            conn.execute(create_messages_table)
+            for table_name, table_create_sql in create_table_sqls.items():
+                # Create tables
+                conn.execute(table_create_sql)
 
-            # Triggers to prevent modification after insertion
-            conn.execute(
+                # Create triggers to prevent modification after insertion
+                conn.execute(
+                    f"""
+                CREATE TRIGGER IF NOT EXISTS prevent_{table_name}_modification
+                BEFORE UPDATE ON {table_name}
+                BEGIN
+                    SELECT RAISE(FAIL,  'Table "{table_name}": modification not allowed');
+                END;
                 """
-            CREATE TRIGGER IF NOT EXISTS prevent_embedding_model_modification
-            BEFORE UPDATE ON embedding_model
-            BEGIN
-                SELECT RAISE(FAIL, 'modification not allowed');
-            END;
-            """
-            )
-
-            conn.execute(
-                """
-            CREATE TRIGGER IF NOT EXISTS prevent_messages_modification
-            BEFORE UPDATE ON messages
-            BEGIN
-                SELECT RAISE(FAIL, 'modification not allowed');
-            END;
-            """
-            )
+                )
 
         # Close the connection to the database
         conn.close()
@@ -95,10 +95,13 @@ class EmbeddingsDatabase:
 
         return embedding_model
 
-    def insert_message_exchange(self, chat_model, message_exchange, embedding):
+    def insert_message_exchange(
+        self, exchange_id, chat_model, message_exchange, embedding
+    ):
         """Insert a message exchange into the database's 'messages' table.
 
         Args:
+            exchange_id (str): The id of the message exchange.
             chat_model (str): The chat model.
             message_exchange: The message exchange.
             embedding: The embedding associated with the message exchange.
@@ -120,23 +123,63 @@ class EmbeddingsDatabase:
         message_exchange = json.dumps(message_exchange)
         embedding = json.dumps(embedding)
         conn = sqlite3.connect(self.db_path)
-        sql = "INSERT INTO messages "
-        sql += "(timestamp, chat_model, message_exchange, embedding) VALUES (?, ?, ?, ?);"
+        sql = """
+          INSERT INTO messages (id, timestamp, chat_model, message_exchange, embedding)
+          VALUES (?, ?, ?, ?, ?)"""
         with conn:
-            conn.execute(sql, (timestamp, chat_model, message_exchange, embedding))
+            conn.execute(
+                sql, (exchange_id, timestamp, chat_model, message_exchange, embedding)
+            )
         conn.close()
 
-    def get_messages_dataframe(self):
-        """Retrieve msg exchanges from the `messages` table. Return them as a DataFrame.
+    def insert_assistant_audio_file_path(
+        self, exchange_id: str, file_path: Union[str, Path]
+    ):
+        """Insert the path to the assistant's reply audio file into the database.
 
-        Returns:
-            pd.DataFrame: A DataFrame containing the message exchanges.
+        Args:
+            exchange_id: The id of the message exchange.
+            file_path: Path to the assistant's reply audio file.
         """
+        file_path = file_path.as_posix()
         conn = sqlite3.connect(self.db_path)
-        query = "SELECT * FROM messages;"
-        messages_df = pd.read_sql_query(query, conn)
+        with conn:
+            # Check if the corresponding id exists in the messages table
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM messages WHERE id=?", (exchange_id,))
+            exists = cursor.fetchone() is not None
+            if exists:
+                # Insert into reply_audio_files
+                cursor.execute(
+                    "INSERT INTO reply_audio_files (id, file_path) VALUES (?, ?)",
+                    (exchange_id, file_path),
+                )
+            else:
+                logger.error("The corresponding id does not exist in the messages table")
         conn.close()
-        return messages_df
+
+    def retrieve_history(self, exchange_id=None):
+        """Retrieve data from all tables in the db combined in a single dataframe."""
+        query = """
+            SELECT messages.id,
+                messages.timestamp,
+                messages.chat_model,
+                messages.message_exchange,
+                reply_audio_files.file_path AS reply_audio_file_path,
+                embedding
+            FROM messages
+            LEFT JOIN reply_audio_files
+            ON messages.id = reply_audio_files.id
+        """
+        if exchange_id:
+            query += f" WHERE messages.id = '{exchange_id}'"
+
+        conn = sqlite3.connect(self.db_path)
+        with conn:
+            data_df = pd.read_sql_query(query, conn)
+        conn.close()
+
+        return data_df
 
     @property
     def n_entries(self):
