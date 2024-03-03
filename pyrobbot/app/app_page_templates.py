@@ -110,12 +110,13 @@ class AppPage(ABC):
 
     def manual_switch_mic_recorder(self):
         """Record audio from the microphone."""
-        studio_microphone = "\U0001F399"
         red_square = "\U0001F7E5"
+        microphone = "\U0001F3A4"
+        play_button = "\U000025B6"
 
         recording = mic_recorder(
             key=f"audiorecorder_widget_{self.page_id}",
-            start_prompt=studio_microphone,
+            start_prompt=play_button + microphone,
             stop_prompt=red_square,
             just_once=True,
             use_container_width=True,

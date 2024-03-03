@@ -646,15 +646,17 @@ class MultipageChatbotApp(AbstractMultipageApp):
                     st.toggle(
                         key="toggle_voice_output",
                         label=speaking_head_in_silhouette,
-                        help="Toggle voice output",
+                        help="Allow the assistant to speak",
                         value=True,
                     )
                 with right:
                     # Add button to toggle continuous voice input
+                    _infinity_emoji = "\U0000221E"
                     st.toggle(
                         key="toggle_continuous_voice_input",
                         label=":microphone:",
-                        help="Toggle continuous voice input",
+                        help="Speak to the assistant in a continuous manner, without "
+                        "clicking the microphone button to start/stop recording",
                         value=False,
                     )
 

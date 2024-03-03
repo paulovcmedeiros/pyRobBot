@@ -55,7 +55,7 @@ def _populate_parser_from_pydantic_model(parser, model: BaseModel):
     return parser
 
 
-def get_parsed_args(argv=None, default_command="voice"):
+def get_parsed_args(argv=None, default_command="ui"):
     """Get parsed command line arguments.
 
     Args:
@@ -107,6 +107,15 @@ def get_parsed_args(argv=None, default_command="voice"):
         help="Report estimated costs when done with the chat.",
     )
 
+    # Web app chat
+    parser_ui = subparsers.add_parser(
+        "ui",
+        aliases=["app", "webapp", "browser"],
+        parents=[chat_options_parser],
+        help="Run the chat UI on the browser.",
+    )
+    parser_ui.set_defaults(run_command=browser_chat)
+
     # Voice chat
     voice_options_parser = _populate_parser_from_pydantic_model(
         parser=argparse.ArgumentParser(
@@ -116,20 +125,11 @@ def get_parsed_args(argv=None, default_command="voice"):
     )
     parser_voice_chat = subparsers.add_parser(
         "voice",
-        aliases=["v"],
+        aliases=["v", "speech", "talk"],
         parents=[voice_options_parser],
-        help="Run the chat over voice.",
+        help="Run the chat over voice only.",
     )
     parser_voice_chat.set_defaults(run_command=voice_chat)
-
-    # Web app chat
-    parser_ui = subparsers.add_parser(
-        "ui",
-        aliases=["app"],
-        parents=[chat_options_parser],
-        help="Run the chat UI on the browser.",
-    )
-    parser_ui.set_defaults(run_command=browser_chat)
 
     # Terminal chat
     parser_terminal = subparsers.add_parser(
