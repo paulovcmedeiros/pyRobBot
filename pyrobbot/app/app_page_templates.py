@@ -1,28 +1,34 @@
 """Utilities for creating pages in a streamlit app."""
 
+import base64
 import contextlib
 import datetime
+import queue
+import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Union
 
 import streamlit as st
-from audiorecorder import audiorecorder
-from PIL import Image
+from audio_recorder_streamlit import audio_recorder
+from loguru import logger
+from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
+from streamlit_mic_recorder import mic_recorder
 
-from pyrobbot import GeneralDefinitions
-from pyrobbot.chat import Chat
-from pyrobbot.chat_configs import ChatOptions
+from pyrobbot.chat_configs import VoiceChatConfigs
+
+from .app_utils import (
+    AsyncReplier,
+    WebAppChat,
+    filter_page_info_from_queue,
+    get_avatar_images,
+    load_chime,
+)
 
 if TYPE_CHECKING:
-    from pyrobbot.app.multipage import MultipageChatbotApp
-
-_AVATAR_FILES_DIR = GeneralDefinitions.APP_DIR / "data"
-_ASSISTANT_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "assistant_avatar.png"
-_USER_AVATAR_FILE_PATH = _AVATAR_FILES_DIR / "user_avatar.png"
-_ASSISTANT_AVATAR_IMAGE = Image.open(_ASSISTANT_AVATAR_FILE_PATH)
-_USER_AVATAR_IMAGE = Image.open(_USER_AVATAR_FILE_PATH)
-
+    from .multipage import MultipageChatbotApp
 
 # Sentinel object for when a chat is recovered from cache
 _RecoveredChat = object()
@@ -91,6 +97,77 @@ class AppPage(ABC):
     def render(self):
         """Create the page."""
 
+    def continuous_mic_recorder(self):
+        """Record audio from the microphone in a continuous loop."""
+        audio_bytes = audio_recorder(
+            text="", icon_size="2x", energy_threshold=-1, key=f"AR_{self.page_id}"
+        )
+
+        if audio_bytes is None:
+            return AudioSegment.silent(duration=0)
+
+        return AudioSegment(data=audio_bytes)
+
+    def manual_switch_mic_recorder(self):
+        """Record audio from the microphone."""
+        red_square = "\U0001F7E5"
+        microphone = "\U0001F3A4"
+        play_button = "\U000025B6"
+
+        recording = mic_recorder(
+            key=f"audiorecorder_widget_{self.page_id}",
+            start_prompt=play_button + microphone,
+            stop_prompt=red_square,
+            just_once=True,
+            use_container_width=True,
+        )
+
+        if recording is None:
+            return AudioSegment.silent(duration=0)
+
+        return AudioSegment(
+            data=recording["bytes"],
+            sample_width=recording["sample_width"],
+            frame_rate=recording["sample_rate"],
+            channels=1,
+        )
+
+    def render_custom_audio_player(
+        self,
+        audio: Union[AudioSegment, str, Path, None],
+        parent_element=None,
+        autoplay: bool = True,
+        hidden=False,
+    ):
+        """Autoplay an audio segment in the streamlit app."""
+        # Adaped from: <https://discuss.streamlit.io/t/
+        #    how-to-play-an-audio-file-automatically-generated-using-text-to-speech-
+        #    in-streamlit/33201/2>
+
+        if audio is None:
+            logger.debug("No audio to play. Not rendering audio player.")
+            return
+
+        if isinstance(audio, (str, Path)):
+            audio = AudioSegment.from_file(audio, format="mp3")
+        elif not isinstance(audio, AudioSegment):
+            raise TypeError(f"Invalid type for audio: {type(audio)}")
+
+        autoplay = "autoplay" if autoplay else ""
+        hidden = "hidden" if hidden else ""
+
+        data = audio.export(format="mp3").read()
+        b64 = base64.b64encode(data).decode()
+        md = f"""
+                <audio controls {autoplay} {hidden} preload="metadata">
+                <source src="data:audio/mp3;base64,{b64}#" type="audio/mp3">
+                </audio>
+                """
+        parent_element = parent_element or st
+        parent_element.markdown(md, unsafe_allow_html=True)
+        if autoplay:
+            time.sleep(audio.duration_seconds)
+
 
 class ChatBotPage(AppPage):
     """Implement a chatbot page in a streamlit application, inheriting from AppPage."""
@@ -98,15 +175,15 @@ class ChatBotPage(AppPage):
     def __init__(
         self,
         parent: "MultipageChatbotApp",
-        chat_obj: Chat = None,
+        chat_obj: WebAppChat = None,
         sidebar_title: str = "",
         page_title: str = "",
     ):
-        """Initialize new instance of the ChatBotPage class with an optional Chat object.
+        """Initialize new instance of the ChatBotPage class with an opt WebAppChat object.
 
         Args:
             parent (MultipageChatbotApp): The parent app of the page.
-            chat_obj (Chat): The chat object. Defaults to None.
+            chat_obj (WebAppChat): The chat object. Defaults to None.
             sidebar_title (str): The sidebar title for the chatbot page.
                 Defaults to an empty string.
             page_title (str): The title for the chatbot page.
@@ -117,36 +194,46 @@ class ChatBotPage(AppPage):
         )
 
         if chat_obj:
+            logger.debug("Setting page chat to chat with ID=<{}>", chat_obj.id)
             self.chat_obj = chat_obj
+        else:
+            logger.debug("ChatBotPage created wihout specific chat. Creating default.")
+            _ = self.chat_obj
+            logger.debug("Default chat id=<{}>", self.chat_obj.id)
 
-        self.avatars = {"assistant": _ASSISTANT_AVATAR_IMAGE, "user": _USER_AVATAR_IMAGE}
+        self.avatars = get_avatar_images()
 
     @property
-    def chat_configs(self) -> ChatOptions:
+    def chat_configs(self) -> VoiceChatConfigs:
         """Return the configs used for the page's chat object."""
         if "chat_configs" not in self.state:
             self.state["chat_configs"] = self.parent.state["chat_configs"]
         return self.state["chat_configs"]
 
     @chat_configs.setter
-    def chat_configs(self, value: ChatOptions):
-        self.state["chat_configs"] = ChatOptions.model_validate(value)
+    def chat_configs(self, value: VoiceChatConfigs):
+        self.state["chat_configs"] = VoiceChatConfigs.model_validate(value)
         if "chat_obj" in self.state:
             del self.state["chat_obj"]
 
     @property
-    def chat_obj(self) -> Chat:
+    def chat_obj(self) -> WebAppChat:
         """Return the chat object responsible for the queries on this page."""
         if "chat_obj" not in self.state:
-            self.chat_obj = Chat(
+            self.chat_obj = WebAppChat(
                 configs=self.chat_configs, openai_client=self.parent.openai_client
             )
         return self.state["chat_obj"]
 
     @chat_obj.setter
-    def chat_obj(self, new_chat_obj: Chat):
+    def chat_obj(self, new_chat_obj: WebAppChat):
         current_chat = self.state.get("chat_obj")
         if current_chat:
+            logger.debug(
+                "Copy new_chat=<{}> into current_chat=<{}>. Current chat ID kept.",
+                new_chat_obj.id,
+                current_chat.id,
+            )
             current_chat.save_cache()
             new_chat_obj.id = current_chat.id
         new_chat_obj.openai_client = self.parent.openai_client
@@ -172,8 +259,12 @@ class ChatBotPage(AppPage):
                 continue
             with st.chat_message(role, avatar=self.avatars.get(role)):
                 with contextlib.suppress(KeyError):
-                    st.caption(message["timestamp"])
+                    st.caption(f"{message['chat_model']}, {message['timestamp']}")
                 st.markdown(message["content"])
+                with contextlib.suppress(KeyError):
+                    if audio := message.get("reply_audio_file_path"):
+                        with contextlib.suppress(CouldntDecodeError):
+                            self.render_custom_audio_player(audio, autoplay=False)
 
     def render_cost_estimate_page(self):
         """Render the estimated costs information in the chat."""
@@ -189,72 +280,154 @@ class ChatBotPage(AppPage):
                 st.write()
             st.caption(df.attrs["disclaimer"])
 
-    def _render_chatbot_page(self):
+    @property
+    def voice_output(self) -> bool:
+        """Return the state of the voice output toggle."""
+        return st.session_state.get("toggle_voice_output", False)
+
+    def play_chime(self, chime_type: str = "correct-answer-tone", parent_element=None):
+        """Sound a chime to send notificatons to the user."""
+        chime = load_chime(chime_type)
+        self.render_custom_audio_player(
+            chime, hidden=True, autoplay=True, parent_element=parent_element
+        )
+
+    def render_title(self):
+        """Render the title of the chatbot page."""
+        with st.container(height=70, border=False):
+            self.title_container = st.empty()
+        with st.container(height=50, border=False):
+            left, _ = st.columns([0.7, 0.3])
+            with left:
+                self.status_msg_container = st.empty()
+        self.title_container.subheader(self.title, divider="rainbow")
+
+    @property
+    def direct_text_prompt(self):
+        """Render chat inut widgets and return the user's input."""
+        placeholder = (
+            f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
+        )
+        text_from_manual_audio_recorder = ""
+        with st.container():
+            left, right = st.columns([0.95, 0.05])
+            with left:
+                text_from_chat_input_widget = st.chat_input(placeholder=placeholder)
+            with right:
+                if not st.session_state.get("toggle_continuous_voice_input"):
+                    audio = self.manual_switch_mic_recorder()
+                    text_from_manual_audio_recorder = self.chat_obj.stt(audio).text
+        return text_from_chat_input_widget or text_from_manual_audio_recorder
+
+    @property
+    def continuous_text_prompt(self):
+        """Wait until a promp from the continuous stream is ready and return it."""
+        if not st.session_state.get("toggle_continuous_voice_input"):
+            return None
+
+        if not self.parent.continuous_audio_input_engine_is_running:
+            logger.warning("Continuous audio input engine is not running!!!")
+            self.status_msg_container.error(
+                "The continuous audio input engine is not running!!!"
+            )
+            return None
+
+        logger.debug("Running on continuous audio prompt. Waiting user input...")
+        with self.status_msg_container:
+            self.play_chime()
+            with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
+                while True:
+                    with self.parent.text_prompt_queue.mutex:
+                        this_page_prompt_queue = filter_page_info_from_queue(
+                            app_page=self, the_queue=self.parent.text_prompt_queue
+                        )
+                    with contextlib.suppress(queue.Empty):
+                        if prompt := this_page_prompt_queue.get_nowait()["text"]:
+                            this_page_prompt_queue.task_done()
+                            break
+                    logger.trace("Still waiting for user text prompt...")
+                    time.sleep(0.1)
+
+        logger.debug("Done getting user input: {}", prompt)
+        return prompt
+
+    def _render_chatbot_page(self):  # noqa: PLR0915
         """Render a chatbot page.
 
         Adapted from:
         <https://docs.streamlit.io/knowledge-base/tutorials/build-conversational-apps>
 
         """
-        title_container = st.empty()
-        title_container.header(self.title, divider="rainbow")
+        self.chat_obj.reply_only_as_text = not self.voice_output
 
-        placeholder = (
-            f"Send a message to {self.chat_obj.assistant_name} ({self.chat_obj.model})"
-        )
-
-        use_microphone_input = st.session_state.get("toggle_mic_input", False)
-        if use_microphone_input:
-            prompt = self.state.pop("recorded_prompt", None)
-        else:
-            prompt = st.chat_input(placeholder=placeholder)
-
-        with st.container(height=600, border=False):
+        self.render_title()
+        chat_msgs_container = st.container(height=600, border=False)
+        with chat_msgs_container:
             self.render_chat_history()
-            # Process user input
-            if prompt:
-                time_now = datetime.datetime.now().replace(microsecond=0)
-                self.state.update({"chat_started": True})
-                # Display user message in chat message container
-                with st.chat_message("user", avatar=self.avatars["user"]):
-                    st.caption(time_now)
-                    st.markdown(prompt)
-                self.chat_history.append(
-                    {
-                        "role": "user",
-                        "name": self.chat_obj.username,
-                        "content": prompt,
-                        "timestamp": time_now,
-                    }
-                )
 
-                # Display (stream) assistant response in chat message container
-                with st.chat_message(
-                    "assistant", avatar=self.avatars["assistant"]
-                ), st.empty():
-                    st.markdown("▌")
-                    full_response = ""
-                    for chunk in self.chat_obj.respond_user_prompt(prompt):
-                        full_response += chunk
-                        st.markdown(full_response + "▌")
-                    st.caption(datetime.datetime.now().replace(microsecond=0))
-                    st.markdown(full_response)
+        # The inputs should be rendered after the chat history. There is a performance
+        # penalty  otherwise, as rendering the history causes streamlit to rerun the
+        # entire page
+        direct_text_prompt = self.direct_text_prompt
+        continuous_stt_prompt = "" if direct_text_prompt else self.continuous_text_prompt
+        prompt = direct_text_prompt or continuous_stt_prompt
 
-                self.chat_history.append(
-                    {
-                        "role": "assistant",
-                        "name": self.chat_obj.assistant_name,
-                        "content": full_response,
-                    }
-                )
+        if prompt:
+            logger.opt(colors=True).debug("<yellow>Recived prompt: {}</yellow>", prompt)
+            self.parent.reply_ongoing.set()
 
-                # Reset title according to conversation initial contents
-                min_history_len_for_summary = 3
-                if (
-                    "page_title" not in self.state
-                    and len(self.chat_history) > min_history_len_for_summary
-                ):
-                    with st.spinner("Working out conversation topic..."):
+            if continuous_stt_prompt:
+                self.play_chime("option-select")
+                self.status_msg_container.success("Got your message!")
+                time.sleep(0.5)
+        elif continuous_stt_prompt:
+            self.status_msg_container.warning(
+                "Could not understand your message. Please try again."
+            )
+            logger.opt(colors=True).debug("<yellow>Received empty prompt</yellow>")
+            self.parent.reply_ongoing.clear()
+
+        if prompt:
+            with chat_msgs_container:
+                # Process user input
+                if prompt:
+                    time_now = datetime.datetime.now().replace(microsecond=0)
+                    self.state.update({"chat_started": True})
+                    # Display user message in chat message container
+                    with st.chat_message("user", avatar=self.avatars["user"]):
+                        st.caption(time_now)
+                        st.markdown(prompt)
+                    self.chat_history.append(
+                        {
+                            "role": "user",
+                            "name": self.chat_obj.username,
+                            "content": prompt,
+                            "timestamp": time_now,
+                            "chat_model": self.chat_obj.model,
+                        }
+                    )
+
+                    # Display (stream) assistant response in chat message container
+                    with st.chat_message("assistant", avatar=self.avatars["assistant"]):
+                        # Process text and audio replies asynchronously
+                        replier = AsyncReplier(self, prompt)
+                        reply = replier.stream_text_and_audio_reply()
+                        self.chat_history.append(
+                            {
+                                "role": "assistant",
+                                "name": self.chat_obj.assistant_name,
+                                "content": reply["text"],
+                                "reply_audio_file_path": reply["audio"],
+                            }
+                        )
+
+                    # Reset title according to conversation initial contents
+                    min_history_len_for_summary = 3
+                    if (
+                        "page_title" not in self.state
+                        and len(self.chat_history) > min_history_len_for_summary
+                    ):
+                        logger.debug("Working out conversation topic...")
                         prompt = "Summarize the previous messages in max 4 words"
                         title = "".join(self.chat_obj.respond_system_prompt(prompt))
                         self.chat_obj.metadata["page_title"] = title
@@ -263,28 +436,47 @@ class ChatBotPage(AppPage):
 
                         self.title = title
                         self.sidebar_title = title
-                        title_container.header(title, divider="rainbow")
+                        self.title_container.header(title, divider="rainbow")
 
-        if use_microphone_input and ("recorded_prompt" not in self.state):
-            _left, center, _right = st.columns([1, 1, 1])
-            with center:
-                audio = audiorecorder(
-                    start_prompt=placeholder.replace("Send", "Record"),
-                    stop_prompt="Stop and send prompt",
-                    pause_prompt="",
-                    key="audiorecorder_widget",
-                )
+                    # Clear the prompt queue for this page, to remove old prompts
+                    with self.parent.continuous_user_prompt_queue.mutex:
+                        filter_page_info_from_queue(
+                            app_page=self,
+                            the_queue=self.parent.continuous_user_prompt_queue,
+                        )
+                    with self.parent.text_prompt_queue.mutex:
+                        filter_page_info_from_queue(
+                            app_page=self, the_queue=self.parent.text_prompt_queue
+                        )
 
-            min_audio_duration_seconds = 0.1
-            if audio.duration_seconds > min_audio_duration_seconds:
-                self.state["recorded_prompt"] = self.chat_obj.stt(audio)
-                self.state.update({"chat_started": True})
-                del st.session_state["audiorecorder_widget"]
-                st.rerun()
+                    replier.join()
+                    self.parent.reply_ongoing.clear()
+
+        if continuous_stt_prompt and not self.parent.reply_ongoing.is_set():
+            logger.opt(colors=True).debug(
+                "<yellow>Rerunning the app to wait for new input...</yellow>"
+            )
+            st.rerun()
 
     def render(self):
         """Render the app's chatbot or costs page, depending on user choice."""
+
+        def _trim_page_padding():
+            md = """
+                <style>
+                    .block-container {
+                        padding-top: 0rem;
+                        padding-bottom: 0rem;
+                        padding-left: 5rem;
+                        padding-right: 5rem;
+                    }
+                </style>
+                """
+            st.markdown(md, unsafe_allow_html=True)
+
+        _trim_page_padding()
         if st.session_state.get("toggle_show_costs"):
             self.render_cost_estimate_page()
         else:
             self._render_chatbot_page()
+        logger.debug("Reached the end of the chatbot page.")

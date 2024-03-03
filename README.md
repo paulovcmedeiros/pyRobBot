@@ -1,12 +1,12 @@
 <div align="center">
 
-[![pyrobbot-logo](./pyrobbot/app/data/assistant_avatar.png)]((https://github.com/paulovcmedeiros/pyRobBot))
+[![pyrobbot-logo](https://github.com/paulovcmedeiros/pyRobBot/blob/main/pyrobbot/app/data/assistant_avatar.png?raw=true)]((https://github.com/paulovcmedeiros/pyRobBot))
 # <code>[pyRobBot](https://github.com/paulovcmedeiros/pyRobBot)</code><br>Chat with GPT LLMs over voice, UI & terminal.<br>All with access to the internet.
 
 [![Pepy Total Downlods](https://img.shields.io/pepy/dt/pyrobbot?style=flat&label=Downloads)](https://www.pepy.tech/projects/pyrobbot)
 [![PyPI - Version](https://img.shields.io/pypi/v/pyrobbot)](https://pypi.org/project/pyrobbot/)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pyrobbot.streamlit.app)
-[<img src="./pyrobbot/app/data/powered-by-openai-badge-outlined-on-dark.svg" width="100">](https://openai.com/blog/openai-api)
+[<img src="https://raw.githubusercontent.com/paulovcmedeiros/pyRobBot/107f4576463d56b8d55bd913a56507940a37b675/pyrobbot/app/data/powered-by-openai-badge-outlined-on-dark.svg" width="100">](https://openai.com/blog/openai-api)
 
 
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
@@ -18,36 +18,42 @@
 </div>
 
 PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
-* A fully configurable **personal assistant** that can speak and listen to you
+* A fully configurable **personal assistant** that can speak and listen to you using AI-generated **human-like voices**
 * An equally fully configurable text-based **chatbot** that can be used either via web UI or terminal
 
 
 ## Features
-- [x] Personal assistant with text-to-speech and speech-to-text capabilities
-  - Talk to the GPT assistant and the assistant will talk back to you!
-  - Choose your preferred language (e.g., `rob --lang pt-br`)
-  - Choose your preferred Text-to-Speech (TTS) engine (e.g., `rob --tts google`)
-    - [OpenAI Text-to-Speech](https://platform.openai.com/docs/guides/text-to-speech) (default): AI-generated *human-like* voice
-    - [Google TTS](https://cloud.google.com/text-to-speech): free at the time being, with decent quality
-  - Choose your preferred Speech-to-Text (STT) engine
-    - Also between OpenAI and Google (default)
+
+Features include, but are not limited to:
+
+- [x] Voice Chat
+  - Continuous voice input and output
+  - No need to press a button: the assistant will keep listening until you stop talking
+
+- [x] Internet access: The assistent will **search the web** to find the answers it doesn't have in its training data
+  - E.g. latest news, current events, weather forecasts, etc.
+
 - [x] Web browser UI (made with [Streamlit](https://pyrobbot.streamlit.app))
+  - Voice chat with continuous voice input and output
+  - Plus, a familiar interface for those who prefer a traditional chatbot experience
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
-  - Input via text or voice
-- [x] Terminal UI
+  - Autosave & retrieve chat history
+    - Resume even the text & voice conversations started outside the web interface
+
+- [x] Chat via terminal
   - For a more "Wake up, Neo" experience
-- [x] Internet access: The assistent will **search the web** and to find the answers it doesn't have in its training data
-  - E.g. current events, weather forecasts, etc.
+
 - [x] Fully configurable
-  - Support for multiple GPT LLMs
+  - Large number of supported languages (*e.g.*, `rob --lang pt-br`)
+  - Support for multiple LLMs through the OpenAI API
+  - Choose your preferred Text-to-Speech (TTS) and Speech-To-Text (STT) engines (google/openai)
   - Control over the parameters passed to the OpenAI API, with (hopefully) sensible defaults
   - Ability to pass base directives to the LLM
     - E.g., to make it adopt a persona, but you decide which directived to pass
   - Dynamically modifiable AI parameters in each chat separately
     - No need to restart the chat
-- [x] Autosave & retrieve chat history
-  - In the browser UI, you can even read the transcripts of your voice conversations with the AI
+
 - [x] Chat context handling using [embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [x] Estimated API token usage and associated costs
 - [x] OpenAI API key is **never** stored on disk
@@ -57,7 +63,7 @@ PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs
 ## System Requirements
 - Python >= 3.9
 - A valid [OpenAI API key](https://platform.openai.com/account/api-keys)
-  - Set in the Web UI or through the environment variable `OPENAI_API_KEY`
+  - Set it in the Web UI or through the environment variable `OPENAI_API_KEY`
 - To enable voice chat, you also need:
   - [PortAudio](https://www.portaudio.com/docs/v19-doxydocs/index.html)
     - Install on Ubuntu with `sudo apt-get --assume-yes install portaudio19-dev python-all-dev`
@@ -68,15 +74,31 @@ PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs
 
 ## Installation
 This, naturally, assumes your system fulfills all [requirements](#system-requirements).
-### Using pip
+
+### Regular Installation
+The recommended way for most users.
+
+#### Using pip
 ```shell
 pip install pyrobbot
 ```
-
-### From source
+#### From the GitHub repository
 ```shell
 pip install git+https://github.com/paulovcmedeiros/pyRobBot.git
 ```
+
+### Developer-Mode Installation
+The recommended way for those who want to contribute to the project. We use [poetry](https://python-poetry.org) with the [poethepoet](https://poethepoet.natn.io/index.html) plugin. To get everything set up, run:
+```shell
+# Clean eventual previous install
+curl -sSL https://install.python-poetry.org | python3 - --uninstall
+rm -rf ${HOME}/.cache/pypoetry/ ${HOME}/.local/bin/poetry ${HOME}/.local/share/pypoetry
+# Download and install poetry
+curl -sSL https://install.python-poetry.org | python3 -
+# Install needed poetry plugin(s)
+poetry self add 'poethepoet[poetry_plugin]'
+```
+
 
 ## Basic Usage
 Upon succesfull installation, you should be able to run
@@ -92,16 +114,16 @@ and general `rob` options. For info about specific subcommands and the
 options that apply to them only, **please run `rob SUBCOMMAND -h`** (note
 that the `-h` goes after the subcommand in this case).
 
-### Chatting by Voice (default)
+### Using the Web UI (defult, supports voice & text chat)
 ```shell
 rob
 ```
-
-### Using the Web UI
-```shell
-rob ui
-```
 See also our [demo Streamlit app](https://pyrobbot.streamlit.app)!
+
+### Chatting Only by Voice
+```shell
+rob voice
+```
 
 ### Running on the Terminal
 ```shell

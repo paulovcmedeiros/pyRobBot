@@ -2,6 +2,7 @@
 
 import io
 import socket
+import uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -69,7 +70,10 @@ class SpeechToText(SpeechAndTextConfigs):
             fallback_stt_function = self._stt_openai
             fallback_name = "openai"
 
-        logger.debug("Converting audio to text ({} STT)...", self.engine)
+        conversion_id = uuid.uuid4()
+        logger.debug(
+            "Converting audio to text ({} STT). Process {}.", self.engine, conversion_id
+        )
         try:
             rtn = stt_function()
         except (
@@ -79,16 +83,24 @@ class SpeechToText(SpeechAndTextConfigs):
         ) as error:
             logger.error(error)
             logger.error(
-                "Can't communicate with `{}` speech-to-text API right now",
+                "{}: Can't communicate with `{}` speech-to-text API right now",
+                conversion_id,
                 self.engine,
             )
-            logger.warning("Trying to use `{}` STT instead", fallback_name)
+            logger.warning(
+                "{}: Trying to use `{}` STT instead", conversion_id, fallback_name
+            )
             rtn = fallback_stt_function()
         except sr.exceptions.UnknownValueError:
-            logger.opt(colors=True).debug("<yellow>Can't understand audio</yellow>")
+            logger.opt(colors=True).debug(
+                "<yellow>{}: Can't understand audio</yellow>", conversion_id
+            )
             rtn = ""
 
         self._text = rtn.strip()
+        logger.opt(colors=True).debug(
+            "<yellow>{}: Done with STT: {}</yellow>", conversion_id, self._text
+        )
 
         return self._text
 
