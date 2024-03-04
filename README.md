@@ -1,7 +1,7 @@
 <div align="center">
 
 [![pyrobbot-logo](https://github.com/paulovcmedeiros/pyRobBot/blob/main/pyrobbot/app/data/assistant_avatar.png?raw=true)]((https://github.com/paulovcmedeiros/pyRobBot))
-# <code>[pyRobBot](https://github.com/paulovcmedeiros/pyRobBot)</code><br>Chat with GPT LLMs over voice, UI & terminal.<br>All with access to the internet.
+# <code>[pyRobBot](https://github.com/paulovcmedeiros/pyRobBot)</code><br>Chat with GPT LLMs over voice, text or both.<br>All with access to the internet.
 
 [![Pepy Total Downlods](https://img.shields.io/pepy/dt/pyrobbot?style=flat&label=Downloads)](https://www.pepy.tech/projects/pyrobbot)
 [![PyPI - Version](https://img.shields.io/pypi/v/pyrobbot)](https://pypi.org/project/pyrobbot/)
@@ -17,9 +17,7 @@
 
 </div>
 
-PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement:
-* A fully configurable **personal assistant** that can speak and listen to you using AI-generated **human-like voices**
-* An equally fully configurable text-based **chatbot** that can be used either via web UI or terminal
+PyRobBot is a python package that uses OpenAI's [GPT large language models (LLMs)](https://platform.openai.com/docs/models) to implement a fully configurable **personal assistant** that, on top of the traditional chatbot interface, can also speak and listen to you using AI-generated **human-like** voices.
 
 
 ## Features
@@ -32,14 +30,21 @@ Features include, but are not limited to:
 
 - [x] Internet access: The assistent will **search the web** to find the answers it doesn't have in its training data
   - E.g. latest news, current events, weather forecasts, etc.
+  - Powered by [DuckDuckGo Search](https://github.com/deedy5/duckduckgo_search)
 
-- [x] Web browser UI (made with [Streamlit](https://pyrobbot.streamlit.app))
-  - Voice chat with continuous voice input and output
-  - Plus, a familiar interface for those who prefer a traditional chatbot experience
+- [x] Web browser user interface
+    - See our [demo app on Streamlit Community Cloud](https://pyrobbot.streamlit.app)
+  - Voice chat with:
+    - **Continuous voice input and output**  (using [streamlit-webrtc](https://github.com/whitphx/streamlit-webrtc))
+    - If you prefer, manual on/off toggling of the microphone (using [streamlit_mic_recorder](https://github.com/B4PT0R/streamlit-mic-recorder))
+  - A familiar text interface integrated with the voice chat, for those who prefer a traditional chatbot experience
+    - Your voice prompts and the assistant's voice replies are shown as text in the chat window
+    - You may also send promts as text even when voice detection is enabled
   - Add/remove conversations dynamically
   - Automatic/editable conversation summary title
   - Autosave & retrieve chat history
     - Resume even the text & voice conversations started outside the web interface
+
 
 - [x] Chat via terminal
   - For a more "Wake up, Neo" experience
