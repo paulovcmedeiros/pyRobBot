@@ -160,7 +160,7 @@ class AppPage(ABC):
         b64 = base64.b64encode(data).decode()
         md = f"""
                 <audio controls {autoplay} {hidden} preload="metadata">
-                <source src="data:audio/mp3;base64,{b64}#" type="audio/mp3">
+                <source src="data:audio/mp3;base64,{b64}#" type="audio/mpeg">
                 </audio>
                 """
         parent_element = parent_element or st
@@ -259,7 +259,10 @@ class ChatBotPage(AppPage):
                 continue
             with st.chat_message(role, avatar=self.avatars.get(role)):
                 with contextlib.suppress(KeyError):
-                    st.caption(f"{message['chat_model']}, {message['timestamp']}")
+                    if role == "assistant":
+                        st.caption(message["chat_model"])
+                    else:
+                        st.caption(message["timestamp"])
                 st.markdown(message["content"])
                 with contextlib.suppress(KeyError):
                     if audio := message.get("reply_audio_file_path"):
@@ -285,7 +288,7 @@ class ChatBotPage(AppPage):
         """Return the state of the voice output toggle."""
         return st.session_state.get("toggle_voice_output", False)
 
-    def play_chime(self, chime_type: str = "correct-answer-tone", parent_element=None):
+    def play_chime(self, chime_type: str = "success", parent_element=None):
         """Sound a chime to send notificatons to the user."""
         chime = load_chime(chime_type)
         self.render_custom_audio_player(
@@ -294,13 +297,12 @@ class ChatBotPage(AppPage):
 
     def render_title(self):
         """Render the title of the chatbot page."""
-        with st.container(height=70, border=False):
+        with st.container(height=145, border=False):
             self.title_container = st.empty()
-        with st.container(height=50, border=False):
+            self.title_container.subheader(self.title, divider="rainbow")
             left, _ = st.columns([0.7, 0.3])
             with left:
                 self.status_msg_container = st.empty()
-        self.title_container.subheader(self.title, divider="rainbow")
 
     @property
     def direct_text_prompt(self):
@@ -310,13 +312,14 @@ class ChatBotPage(AppPage):
         )
         text_from_manual_audio_recorder = ""
         with st.container():
-            left, right = st.columns([0.95, 0.05])
+            left, right = st.columns([0.9, 0.1])
             with left:
                 text_from_chat_input_widget = st.chat_input(placeholder=placeholder)
             with right:
                 if not st.session_state.get("toggle_continuous_voice_input"):
                     audio = self.manual_switch_mic_recorder()
                     text_from_manual_audio_recorder = self.chat_obj.stt(audio).text
+
         return text_from_chat_input_widget or text_from_manual_audio_recorder
 
     @property
@@ -334,7 +337,7 @@ class ChatBotPage(AppPage):
 
         logger.debug("Running on continuous audio prompt. Waiting user input...")
         with self.status_msg_container:
-            self.play_chime()
+            self.play_chime(chime_type="warning")
             with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
                 while True:
                     with self.parent.text_prompt_queue.mutex:
@@ -361,7 +364,7 @@ class ChatBotPage(AppPage):
         self.chat_obj.reply_only_as_text = not self.voice_output
 
         self.render_title()
-        chat_msgs_container = st.container(height=600, border=False)
+        chat_msgs_container = st.container(height=550, border=False)
         with chat_msgs_container:
             self.render_chat_history()
 
@@ -377,7 +380,7 @@ class ChatBotPage(AppPage):
             self.parent.reply_ongoing.set()
 
             if continuous_stt_prompt:
-                self.play_chime("option-select")
+                self.play_chime("success")
                 self.status_msg_container.success("Got your message!")
                 time.sleep(0.5)
         elif continuous_stt_prompt:
@@ -403,7 +406,6 @@ class ChatBotPage(AppPage):
                             "name": self.chat_obj.username,
                             "content": prompt,
                             "timestamp": time_now,
-                            "chat_model": self.chat_obj.model,
                         }
                     )
 
@@ -418,6 +420,7 @@ class ChatBotPage(AppPage):
                                 "name": self.chat_obj.assistant_name,
                                 "content": reply["text"],
                                 "reply_audio_file_path": reply["audio"],
+                                "chat_model": self.chat_obj.model,
                             }
                         )
 

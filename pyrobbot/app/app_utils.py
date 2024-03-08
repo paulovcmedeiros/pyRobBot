@@ -215,12 +215,6 @@ def get_avatar_images():
 @st.cache_data
 def load_chime(chime_type: str) -> AudioSegment:
     """Load a chime sound from the data directory."""
-    type2filename = {
-        "correct-answer-tone": "mixkit-correct-answer-tone-2870.wav",
-        "option-select": "mixkit-interface-option-select-2573.wav",
-    }
-
     return AudioSegment.from_file(
-        GeneralDefinitions.APP_DIR / "data" / type2filename[chime_type],
-        format="wav",
+        GeneralDefinitions.APP_DIR / "data" / f"{chime_type}.wav", format="wav"
     )
