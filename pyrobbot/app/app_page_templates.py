@@ -294,13 +294,12 @@ class ChatBotPage(AppPage):
 
     def render_title(self):
         """Render the title of the chatbot page."""
-        with st.container(height=70, border=False):
+        with st.container(height=145, border=False):
             self.title_container = st.empty()
-        with st.container(height=50, border=False):
+            self.title_container.subheader(self.title, divider="rainbow")
             left, _ = st.columns([0.7, 0.3])
             with left:
                 self.status_msg_container = st.empty()
-        self.title_container.subheader(self.title, divider="rainbow")
 
     @property
     def direct_text_prompt(self):
@@ -310,13 +309,14 @@ class ChatBotPage(AppPage):
         )
         text_from_manual_audio_recorder = ""
         with st.container():
-            left, right = st.columns([0.95, 0.05])
+            left, right = st.columns([0.9, 0.1])
             with left:
                 text_from_chat_input_widget = st.chat_input(placeholder=placeholder)
             with right:
                 if not st.session_state.get("toggle_continuous_voice_input"):
                     audio = self.manual_switch_mic_recorder()
                     text_from_manual_audio_recorder = self.chat_obj.stt(audio).text
+
         return text_from_chat_input_widget or text_from_manual_audio_recorder
 
     @property
@@ -361,7 +361,7 @@ class ChatBotPage(AppPage):
         self.chat_obj.reply_only_as_text = not self.voice_output
 
         self.render_title()
-        chat_msgs_container = st.container(height=600, border=False)
+        chat_msgs_container = st.container(height=550, border=False)
         with chat_msgs_container:
             self.render_chat_history()
 
