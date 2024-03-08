@@ -160,7 +160,7 @@ class AppPage(ABC):
         b64 = base64.b64encode(data).decode()
         md = f"""
                 <audio controls {autoplay} {hidden} preload="metadata">
-                <source src="data:audio/mp3;base64,{b64}#" type="audio/mp3">
+                <source src="data:audio/mp3;base64,{b64}#" type="audio/mpeg">
                 </audio>
                 """
         parent_element = parent_element or st
