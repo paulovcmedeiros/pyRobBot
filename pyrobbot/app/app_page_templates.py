@@ -285,7 +285,7 @@ class ChatBotPage(AppPage):
         """Return the state of the voice output toggle."""
         return st.session_state.get("toggle_voice_output", False)
 
-    def play_chime(self, chime_type: str = "correct-answer-tone", parent_element=None):
+    def play_chime(self, chime_type: str = "success", parent_element=None):
         """Sound a chime to send notificatons to the user."""
         chime = load_chime(chime_type)
         self.render_custom_audio_player(
@@ -334,7 +334,7 @@ class ChatBotPage(AppPage):
 
         logger.debug("Running on continuous audio prompt. Waiting user input...")
         with self.status_msg_container:
-            self.play_chime()
+            self.play_chime(chime_type="warning")
             with st.spinner(f"{self.chat_obj.assistant_name} is listening..."):
                 while True:
                     with self.parent.text_prompt_queue.mutex:
@@ -377,7 +377,7 @@ class ChatBotPage(AppPage):
             self.parent.reply_ongoing.set()
 
             if continuous_stt_prompt:
-                self.play_chime("option-select")
+                self.play_chime("success")
                 self.status_msg_container.success("Got your message!")
                 time.sleep(0.5)
         elif continuous_stt_prompt:
