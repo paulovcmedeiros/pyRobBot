@@ -57,18 +57,6 @@ class VoiceChat(Chat):
 
         self.block_size = int((self.sample_rate * self.frame_duration) / 1000)
 
-        self.mixer = pygame.mixer
-        try:
-            self.mixer.init(
-                frequency=self.sample_rate, channels=1, buffer=self.block_size
-            )
-        except pygame.error as error:
-            logger.exception(error)
-            logger.error(
-                "Can't initialize the mixer. Please check your system's audio settings."
-            )
-            logger.warning("Voice chat may not be available or may not work as expected.")
-
         self.vad = webrtcvad.Vad(2)
 
         self.default_chime_theme = "big-sur"
@@ -112,6 +100,26 @@ class VoiceChat(Chat):
             args=(self.current_answer_audios_queue,),
             daemon=True,
         )
+
+    @property
+    def mixer(self):
+        """Return the mixer object."""
+        mixer = getattr(self, "_mixer", None)
+        if mixer is not None:
+            return mixer
+
+        self._mixer = pygame.mixer
+        try:
+            self.mixer.init(
+                frequency=self.sample_rate, channels=1, buffer=self.block_size
+            )
+        except pygame.error as error:
+            logger.exception(error)
+            logger.error(
+                "Can't initialize the mixer. Please check your system's audio settings."
+            )
+            logger.warning("Voice chat may not be available or may not work as expected.")
+        return self._mixer
 
     def start(self):
         """Start the chat."""
@@ -524,7 +532,7 @@ class VoiceChat(Chat):
 def _check_needed_imports():
     """Check if the needed modules are available."""
     if not _sounddevice_imported:
-        logger.error(
+        logger.warning(
             "Module `sounddevice`, needed for local audio recording, is not available."
         )
 
