@@ -259,7 +259,10 @@ class ChatBotPage(AppPage):
                 continue
             with st.chat_message(role, avatar=self.avatars.get(role)):
                 with contextlib.suppress(KeyError):
-                    st.caption(f"{message['chat_model']}, {message['timestamp']}")
+                    if role == "assistant":
+                        st.caption(message["chat_model"])
+                    else:
+                        st.caption(message["timestamp"])
                 st.markdown(message["content"])
                 with contextlib.suppress(KeyError):
                     if audio := message.get("reply_audio_file_path"):
@@ -403,7 +406,6 @@ class ChatBotPage(AppPage):
                             "name": self.chat_obj.username,
                             "content": prompt,
                             "timestamp": time_now,
-                            "chat_model": self.chat_obj.model,
                         }
                     )
 
@@ -418,6 +420,7 @@ class ChatBotPage(AppPage):
                                 "name": self.chat_obj.assistant_name,
                                 "content": reply["text"],
                                 "reply_audio_file_path": reply["audio"],
+                                "chat_model": self.chat_obj.model,
                             }
                         )
 
